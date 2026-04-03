@@ -66,19 +66,16 @@ def _iter_media_files(root: Path) -> list[Path]:
     )
 
 
-def scan_root(root: Path) -> ScanReport:
-    parsed_files: list[ParsedMedia] = []
-    unparsed_files: list[UnparsedMedia] = []
+def build_report(
+    root: Path,
+    *,
+    parsed_files: list[ParsedMedia],
+    unparsed_files: list[UnparsedMedia],
+) -> ScanReport:
     duplicate_groups: dict[EpisodeKey, list[ParsedMedia]] = defaultdict(list)
     target_collisions: dict[str, list[ParsedMedia]] = defaultdict(list)
 
-    files = _iter_media_files(root)
-    for path in files:
-        parsed = parse_media_file(root=root, path=path)
-        if isinstance(parsed, UnparsedMedia):
-            unparsed_files.append(parsed)
-            continue
-        parsed_files.append(parsed)
+    for parsed in parsed_files:
         duplicate_groups[parsed.key].append(parsed)
         target_collisions[parsed.default_target_name].append(parsed)
 
@@ -91,9 +88,27 @@ def scan_root(root: Path) -> ScanReport:
 
     return ScanReport(
         root=root,
-        total_files=len(files),
+        total_files=len(parsed_files) + len(unparsed_files),
         parsed_files=parsed_files,
         unparsed_files=unparsed_files,
         duplicate_groups=duplicate_groups,
         target_collisions=target_collisions,
+    )
+
+
+def scan_root(root: Path) -> ScanReport:
+    parsed_files: list[ParsedMedia] = []
+    unparsed_files: list[UnparsedMedia] = []
+
+    files = _iter_media_files(root)
+    for path in files:
+        parsed = parse_media_file(root=root, path=path)
+        if isinstance(parsed, UnparsedMedia):
+            unparsed_files.append(parsed)
+            continue
+        parsed_files.append(parsed)
+    return build_report(
+        root=root,
+        parsed_files=parsed_files,
+        unparsed_files=unparsed_files,
     )

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .publisher import apply_publish_plan, build_publish_plan, build_target_path
 from .scanner import scan_root
+from .watch import watch_from_env
 
 
 def _default_download_root(anime_data_root: Path) -> Path:
@@ -70,6 +71,41 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="Emit the plan or result as JSON.",
+    )
+
+    watch = subparsers.add_parser(
+        "watch",
+        help="Poll qBittorrent for completed Bangumi torrents and process them automatically.",
+    )
+    watch.add_argument(
+        "--source-root",
+        type=Path,
+        help="Download root to scan. Defaults to $ANIME_DOWNLOAD_ROOT or downloads/Bangumi.",
+    )
+    watch.add_argument(
+        "--target-root",
+        type=Path,
+        help="Library root for published media. Defaults to $ANIME_LIBRARY_ROOT or library/seasonal.",
+    )
+    watch.add_argument(
+        "--review-root",
+        type=Path,
+        help="Manual review root. Defaults to $ANIME_REVIEW_ROOT or processing/manual_review.",
+    )
+    watch.add_argument(
+        "--once",
+        action="store_true",
+        help="Run one polling iteration and exit.",
+    )
+    watch.add_argument(
+        "--poll-interval",
+        type=int,
+        help="Polling interval in seconds. Defaults to $POSTPROCESSOR_POLL_INTERVAL or 60.",
+    )
+    watch.add_argument(
+        "--keep-losers",
+        action="store_true",
+        help="Keep unselected duplicate files instead of deleting them.",
     )
     return parser
 
@@ -259,6 +295,25 @@ def main() -> None:
             print(f"- delete {item}")
         for item in result["reviewed"]:
             print(f"- review {item['source']} -> {item['target']}")
+        return
+
+    if args.command == "watch":
+        source_root = args.source_root or _default_download_root(anime_data_root)
+        target_root = args.target_root or _default_library_root(anime_data_root)
+        review_root = args.review_root or _default_review_root(anime_data_root)
+        print(f"ANIME_DATA_ROOT={anime_data_root}")
+        print(f"watch source root={source_root}")
+        print(f"watch target root={target_root}")
+        print(f"watch review root={review_root}")
+        watch_from_env(
+            anime_data_root=anime_data_root,
+            source_root=source_root,
+            target_root=target_root,
+            review_root=review_root,
+            once=args.once,
+            poll_interval=args.poll_interval,
+            delete_losers=not args.keep_losers,
+        )
 
 
 if __name__ == "__main__":

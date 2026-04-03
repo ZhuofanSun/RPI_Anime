@@ -16,5 +16,4 @@ fi
 PI_HOST="${PI_HOST:-sunzhuofan@raspberrypi.local}"
 PI_REMOTE_ROOT="${PI_REMOTE_ROOT:-/srv/anime-data/appdata/rpi-anime}"
 
-ssh "${PI_HOST}" "cd '${PI_REMOTE_ROOT}' && docker compose --env-file deploy/.env -f deploy/compose.yaml up -d"
-
+ssh "${PI_HOST}" "cd '${PI_REMOTE_ROOT}' && docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build"

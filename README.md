@@ -73,6 +73,11 @@
 6. 在树莓派上检查 `deploy/.env` 内容。
 7. 运行 `scripts/remote_up.sh` 在树莓派启动或更新容器。
 
+补充：
+
+- `scripts/remote_up.sh` 现在会带 `--build`，确保 `postprocessor` 代码更新后能重建生效。
+- `postprocessor` 现在默认作为常驻服务启动，负责自动监听已完成下载并处理。
+
 ## 直接在树莓派启动服务
 
 如果你不是在本地执行同步脚本，而是已经通过 `ssh` 连上树莓派，直接这样启动整套服务：
@@ -155,6 +160,8 @@ docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.
 - 每集只选一个赢家
 - 当前优先级：`CHS > CHS&CHT > unknown > CHT`，`AVC > HEVC`，`mp4 > mkv`，`1080p > 1440p > 720p > 2160p`
 - 默认先干跑，不直接改文件
+- 常驻 `watch` 服务会轮询 `qBittorrent` 的 `Bangumi` 分类，只要某一集已经有至少一个候选下载完成，就会立刻选优、发布赢家，并停掉/清理其余候选
+- “已完成”的判断来自 `qBittorrent` Web API 返回的 torrent 状态：`amount_left == 0` 或 `progress >= 1.0`
 
 查看发布计划：
 
@@ -176,10 +183,22 @@ docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.
 - 先运行一轮 `publish` 干跑确认赢家选择
 - 确认后再执行 `publish --apply --delete-losers`
 
+自动触发查看方式：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+
+# 看 postprocessor 常驻日志
+docker compose --env-file deploy/.env -f deploy/compose.yaml logs -f postprocessor
+
+# 手动跑一轮，不持续监听
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor watch --once
+```
+
 ## 说明
 
 - `Tailscale` 建议装在树莓派宿主机，不放进 Compose。
 - `AutoBangumi` 使用官方文档给出的容器镜像。
 - `Jellyfin` 使用官方容器镜像。
 - `qBittorrent` 当前 Compose 用常见 Docker 镜像作占位，后续可以按你的偏好调整。
-- `postprocessor` 服务还只是占位骨架，不会默认启动。
+- `postprocessor` 现在会默认启动并常驻监听。

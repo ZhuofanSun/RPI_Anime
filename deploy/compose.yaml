@@ -55,18 +55,24 @@ services:
       - 8.8.8.8
 
   postprocessor:
-    profiles:
-      - postprocessor
     build:
       context: ../services/postprocessor
     container_name: anime-postprocessor
     environment:
       TZ: "${TZ}"
+      PYTHONUNBUFFERED: "1"
       ANIME_DATA_ROOT: "${ANIME_DATA_ROOT}"
       ANIME_COLLECTION_ROOT: "${ANIME_COLLECTION_ROOT}"
+      QBITTORRENT_API_URL: "${QBITTORRENT_API_URL}"
+      QBITTORRENT_USERNAME: "${QBITTORRENT_USERNAME}"
+      QBITTORRENT_PASSWORD: "${QBITTORRENT_PASSWORD}"
+      QBITTORRENT_DOWNLOAD_ROOT: "${QBITTORRENT_DOWNLOAD_ROOT}"
+      POSTPROCESSOR_POLL_INTERVAL: "${POSTPROCESSOR_POLL_INTERVAL}"
+      POSTPROCESSOR_CATEGORY: "${POSTPROCESSOR_CATEGORY}"
+      POSTPROCESSOR_DELETE_LOSERS: "${POSTPROCESSOR_DELETE_LOSERS}"
     volumes:
       - "${ANIME_DATA_ROOT}:/srv/anime-data"
       - "${ANIME_COLLECTION_ROOT}:/srv/anime-collection"
-    entrypoint: ["python", "-m", "anime_postprocessor.main"]
-    command: ["scan"]
-    restart: "no"
+    entrypoint: ["python", "-u", "-m", "anime_postprocessor.main"]
+    command: ["watch"]
+    restart: unless-stopped
