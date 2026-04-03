@@ -15,8 +15,9 @@ fi
 
 PI_HOST="${PI_HOST:-sunzhuofan@raspberrypi.local}"
 PI_REMOTE_ROOT="${PI_REMOTE_ROOT:-/srv/anime-data/appdata/rpi-anime}"
+PI_REMOTE_USER="${PI_REMOTE_USER:-${PI_HOST%@*}}"
 
-ssh "${PI_HOST}" "mkdir -p '${PI_REMOTE_ROOT}'"
+ssh "${PI_HOST}" "sudo mkdir -p '${PI_REMOTE_ROOT}' && sudo chown -R '${PI_REMOTE_USER}:${PI_REMOTE_USER}' '${PI_REMOTE_ROOT}'"
 
 rsync -az --delete \
   --exclude '.git/' \
