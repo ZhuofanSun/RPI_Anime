@@ -133,22 +133,48 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml restart jellyfin
 
 ```bash
 cd /srv/anime-data/appdata/rpi-anime
-docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm --profile postprocessor postprocessor
+docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor
 ```
 
 如果要指定目录：
 
 ```bash
 cd /srv/anime-data/appdata/rpi-anime
-docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm --profile postprocessor postprocessor scan --root /srv/anime-data/downloads/Bangumi
+docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor scan --root /srv/anime-data/downloads/Bangumi
 ```
 
 如果想看 JSON 输出：
 
 ```bash
 cd /srv/anime-data/appdata/rpi-anime
-docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm --profile postprocessor postprocessor scan --json
+docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor scan --json
 ```
+
+当前 `postprocessor` 第二版已经支持单集选优和发布计划：
+
+- 每集只选一个赢家
+- 当前优先级：`CHS > CHS&CHT > unknown > CHT`，`AVC > HEVC`，`mp4 > mkv`，`1080p > 1440p > 720p > 2160p`
+- 默认先干跑，不直接改文件
+
+查看发布计划：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor publish
+```
+
+执行发布并删除未选中的重复文件：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor publish --apply --delete-losers
+```
+
+建议：
+
+- 先把 `AutoBangumi` 下载路径改回 `/downloads/Bangumi`
+- 先运行一轮 `publish` 干跑确认赢家选择
+- 确认后再执行 `publish --apply --delete-losers`
 
 ## 说明
 
