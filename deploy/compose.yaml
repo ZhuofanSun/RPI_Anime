@@ -1,0 +1,69 @@
+services:
+  jellyfin:
+    image: ghcr.io/jellyfin/jellyfin:latest
+    container_name: jellyfin
+    user: "${PUID}:${PGID}"
+    ports:
+      - "${JELLYFIN_PORT}:8096/tcp"
+      - "7359:7359/udp"
+    environment:
+      TZ: "${TZ}"
+      JELLYFIN_PublishedServerUrl: "${JELLYFIN_PUBLISHED_SERVER_URL}"
+    volumes:
+      - "${ANIME_APPDATA_ROOT}/jellyfin/config:/config"
+      - "${ANIME_APPDATA_ROOT}/jellyfin/cache:/cache"
+      - "${ANIME_DATA_ROOT}/library/seasonal:/media/seasonal"
+      - "${ANIME_COLLECTION_ROOT}:/media/collection:ro"
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    ports:
+      - "${QBITTORRENT_WEBUI_PORT}:8080/tcp"
+      - "${QBITTORRENT_TORRENT_PORT}:6881/tcp"
+      - "${QBITTORRENT_TORRENT_PORT}:6881/udp"
+    environment:
+      TZ: "${TZ}"
+      PUID: "${PUID}"
+      PGID: "${PGID}"
+      WEBUI_PORT: "8080"
+      TORRENTING_PORT: "${QBITTORRENT_TORRENT_PORT}"
+    volumes:
+      - "${ANIME_APPDATA_ROOT}/qbittorrent/config:/config"
+      - "${ANIME_DATA_ROOT}/downloads:/downloads"
+    restart: unless-stopped
+
+  autobangumi:
+    image: ghcr.io/estrellaxd/auto_bangumi:latest
+    container_name: autobangumi
+    ports:
+      - "${AUTOBANGUMI_PORT}:7892/tcp"
+    environment:
+      TZ: "${TZ}"
+      PUID: "${PUID}"
+      PGID: "${PGID}"
+      UMASK: "022"
+    volumes:
+      - "${ANIME_APPDATA_ROOT}/autobangumi/config:/app/config"
+      - "${ANIME_APPDATA_ROOT}/autobangumi/data:/app/data"
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
+
+  postprocessor:
+    profiles:
+      - postprocessor
+    build:
+      context: ../services/postprocessor
+    container_name: anime-postprocessor
+    environment:
+      TZ: "${TZ}"
+      ANIME_DATA_ROOT: "${ANIME_DATA_ROOT}"
+      ANIME_COLLECTION_ROOT: "${ANIME_COLLECTION_ROOT}"
+    volumes:
+      - "${ANIME_DATA_ROOT}:/srv/anime-data"
+      - "${ANIME_COLLECTION_ROOT}:/srv/anime-collection"
+    command: ["python", "-m", "anime_postprocessor.main"]
+    restart: "no"
+
