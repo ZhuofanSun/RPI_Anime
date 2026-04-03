@@ -30,6 +30,7 @@
 
 - `AutoBangumi` 的初始化实际上已经完成，正常入口直接访问根路径 `/` 即可。
 - 不要继续使用 `/#/setup` 作为入口。
+- 目前建议关闭 `AutoBangumi` 自动重命名，把下载后的改名、去重、发布交给自定义 `postprocessor`。
 
 ## 当前目录
 
@@ -109,6 +110,44 @@ cd /srv/anime-data/appdata/rpi-anime
 docker compose --env-file deploy/.env -f deploy/compose.yaml restart autobangumi
 docker compose --env-file deploy/.env -f deploy/compose.yaml restart qbittorrent
 docker compose --env-file deploy/.env -f deploy/compose.yaml restart jellyfin
+```
+
+## 后处理模式
+
+如果改为自己接管改名和去重，建议这样做：
+
+1. 关闭 `AutoBangumi` 自动重命名。
+2. 把下载路径放回原始下载区：
+   - `qBittorrent` / `AutoBangumi` 下载目录用 `/downloads/Bangumi`
+3. 让 `Jellyfin` 只读发布后的媒体库：
+   - `/srv/anime-data/library/seasonal`
+
+当前 `postprocessor` 第一版已经能做扫描，不改文件，只报告：
+
+- 哪些文件能解析出番名和集数
+- 哪些是同一集多版本
+- 哪些会在默认改名时撞名
+- 哪些文件解析失败
+
+树莓派上直接运行扫描：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm --profile postprocessor postprocessor
+```
+
+如果要指定目录：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm --profile postprocessor postprocessor scan --root /srv/anime-data/downloads/Bangumi
+```
+
+如果想看 JSON 输出：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm --profile postprocessor postprocessor scan --json
 ```
 
 ## 说明

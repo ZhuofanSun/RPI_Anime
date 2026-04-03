@@ -9,9 +9,11 @@ description = "Post-processing worker for the Raspberry Pi anime library"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.scripts]
+anime-postprocessor = "anime_postprocessor.main:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-

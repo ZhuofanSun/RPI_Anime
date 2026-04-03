@@ -1,0 +1,95 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+from .models import ParsedMedia, UnparsedMedia
+
+MEDIA_EXTENSIONS = {".mkv", ".mp4", ".avi", ".m4v", ".ts"}
+
+_SEASON_EPISODE_PATTERNS = (
+    re.compile(r"\bS(?P<season>\d{1,2})E(?P<episode>\d{1,3})\b", re.IGNORECASE),
+    re.compile(r"第(?P<episode>\d{1,3})[话話集]", re.IGNORECASE),
+    re.compile(r"\[(?P<episode>\d{1,3})(?:v\d+)?\]"),
+    re.compile(r"(?:^|[\s._-])(?P<episode>\d{1,3})(?:v\d+)?(?=[\s._-]|$)"),
+)
+
+_RELEASE_GROUP_PATTERN = re.compile(r"^\[(?P<group>[^\]]+)\]\s*")
+_TRAILING_METADATA_PATTERN = re.compile(r"[\[(].*$")
+_SPACE_PATTERN = re.compile(r"\s+")
+_TITLE_NOISE_PATTERN = re.compile(r"[._]+")
+_NORMALIZE_PATTERN = re.compile(r"[^\w]+", re.UNICODE)
+
+
+def _extract_release_group(stem: str) -> tuple[str | None, str]:
+    match = _RELEASE_GROUP_PATTERN.match(stem)
+    if not match:
+        return None, stem
+    group = match.group("group").strip()
+    remainder = stem[match.end() :].strip()
+    return group, remainder
+
+
+def _find_season_episode(stem: str) -> tuple[int, int, tuple[int, int]] | None:
+    for pattern in _SEASON_EPISODE_PATTERNS:
+        match = pattern.search(stem)
+        if not match:
+            continue
+        season = int(match.groupdict().get("season") or 1)
+        episode = int(match.group("episode"))
+        return season, episode, match.span()
+    return None
+
+
+def _clean_title(raw_title: str) -> str:
+    title = _TITLE_NOISE_PATTERN.sub(" ", raw_title)
+    title = title.strip(" -_.[]()")
+    title = _SPACE_PATTERN.sub(" ", title).strip()
+    return title
+
+
+def normalize_title(title: str) -> str:
+    normalized = _NORMALIZE_PATTERN.sub(" ", title.lower())
+    return _SPACE_PATTERN.sub(" ", normalized).strip()
+
+
+def parse_media_file(root: Path, path: Path) -> ParsedMedia | UnparsedMedia:
+    extension = path.suffix.lower()
+    if extension not in MEDIA_EXTENSIONS:
+        return UnparsedMedia(
+            path=path,
+            relative_path=path.relative_to(root),
+            reason=f"unsupported extension: {extension}",
+        )
+
+    stem = path.stem
+    release_group, remainder = _extract_release_group(stem)
+    season_episode = _find_season_episode(remainder)
+    if season_episode is None:
+        return UnparsedMedia(
+            path=path,
+            relative_path=path.relative_to(root),
+            reason="cannot parse season/episode",
+        )
+
+    season, episode, span = season_episode
+    title_part = remainder[: span[0]]
+    title_part = _TRAILING_METADATA_PATTERN.sub("", title_part)
+    title = _clean_title(title_part)
+    if not title:
+        return UnparsedMedia(
+            path=path,
+            relative_path=path.relative_to(root),
+            reason="empty title after cleanup",
+        )
+
+    return ParsedMedia(
+        path=path,
+        relative_path=path.relative_to(root),
+        title=title,
+        normalized_title=normalize_title(title),
+        season=season,
+        episode=episode,
+        extension=extension,
+        release_group=release_group,
+    )

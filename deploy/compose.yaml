@@ -32,6 +32,7 @@ services:
     volumes:
       - "${ANIME_APPDATA_ROOT}/qbittorrent/config:/config"
       - "${ANIME_DATA_ROOT}/downloads:/downloads"
+      - "${ANIME_DATA_ROOT}/library/seasonal:/library/seasonal"
     restart: unless-stopped
 
   autobangumi:
@@ -66,5 +67,6 @@ services:
     volumes:
       - "${ANIME_DATA_ROOT}:/srv/anime-data"
       - "${ANIME_COLLECTION_ROOT}:/srv/anime-collection"
-    command: ["python", "-m", "anime_postprocessor.main"]
+    entrypoint: ["python", "-m", "anime_postprocessor.main"]
+    command: ["scan"]
     restart: "no"
