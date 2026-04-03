@@ -5,7 +5,12 @@ import json
 import os
 from pathlib import Path
 
-from .publisher import apply_publish_plan, build_publish_plan, build_target_path
+from .publisher import (
+    apply_publish_plan,
+    build_publish_plan,
+    build_target_path,
+    write_library_nfo,
+)
 from .scanner import scan_root
 from .watch import watch_from_env
 
@@ -112,6 +117,21 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Seconds to wait for higher-priority incomplete candidates after the first completion. Defaults to $POSTPROCESSOR_WAIT_TIMEOUT or 1800.",
     )
+
+    nfo = subparsers.add_parser(
+        "write-nfo",
+        help="Write tvshow.nfo files for mapped series already present in the library.",
+    )
+    nfo.add_argument(
+        "--root",
+        type=Path,
+        help="Library root to scan. Defaults to $ANIME_LIBRARY_ROOT or library/seasonal.",
+    )
+    nfo.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit written nfo files as JSON.",
+    )
     return parser
 
 
@@ -178,7 +198,11 @@ def _print_publish_plan(plan) -> None:
     if plan.decisions:
         print("\nselected winners:")
         for decision in plan.decisions:
-            target = build_target_path(plan.library_root, decision.winner)
+            target = build_target_path(
+                plan.library_root,
+                decision.winner,
+                resolver=plan.resolver,
+            )
             print(
                 f"- {decision.key.normalized_title} "
                 f"S{decision.key.season:02d}E{decision.key.episode:02d}"
@@ -205,9 +229,7 @@ def main() -> None:
     anime_collection_root = Path(
         os.environ.get("ANIME_COLLECTION_ROOT", "/srv/anime-collection")
     )
-    download_root = getattr(args, "root", None) or _default_download_root(
-        anime_data_root
-    )
+    download_root = getattr(args, "root", None) or _default_download_root(anime_data_root)
 
     if args.command is None:
         args.command = "scan"
@@ -254,7 +276,11 @@ def main() -> None:
                                     "winner": str(decision.winner.relative_path),
                                     "winner_score": decision.winner_score.summary,
                                     "target": str(
-                                        build_target_path(target_root, decision.winner)
+                                        build_target_path(
+                                            target_root,
+                                            decision.winner,
+                                            resolver=plan.resolver,
+                                        )
                                     ),
                                     "losers": [
                                         {
@@ -320,6 +346,23 @@ def main() -> None:
             delete_losers=not args.keep_losers,
             wait_timeout=args.wait_timeout,
         )
+        return
+
+    if args.command == "write-nfo":
+        library_root = args.root or _default_library_root(anime_data_root)
+        report = scan_root(library_root)
+        written = write_library_nfo(
+            library_root=library_root,
+            parsed_files=report.parsed_files,
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(written, ensure_ascii=False, indent=2))
+            return
+        print(f"library root: {library_root}")
+        print(f"nfo written: {len(written)}")
+        for item in written:
+            print(f"- {item['show_dir']} -> {item['nfo']}")
+        return
 
 
 if __name__ == "__main__":

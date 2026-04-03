@@ -19,6 +19,11 @@
 - `AutoBangumi` 已可登录
 - `Tailscale` 已接入常用设备
 - 本地项目可通过 `scripts/sync_to_pi.sh` 同步到树莓派
+- `postprocessor` 已作为常驻服务运行
+- 下载完成后可自动选优、发布到 `Seasonal` 媒体库
+- 发布时会自动生成 `tvshow.nfo` 和分集同名 `.nfo`
+- 当前已接入番名映射表和等待窗口策略
+- `AniDB` 已在 Jellyfin 中加载，并已手动调整 metadata provider 优先级
 
 当前服务访问地址：
 
@@ -38,7 +43,8 @@
 .
 ├── deploy
 │   ├── .env.example
-│   └── compose.yaml
+│   ├── compose.yaml
+│   └── title_mappings.toml
 ├── scripts
 │   ├── bootstrap_pi.sh
 │   ├── install_tailscale_pi.sh
@@ -77,6 +83,8 @@
 
 - `scripts/remote_up.sh` 现在会带 `--build`，确保 `postprocessor` 代码更新后能重建生效。
 - `postprocessor` 现在默认作为常驻服务启动，负责自动监听已完成下载并处理。
+- `deploy/title_mappings.toml` 用来维护发布目录名、季号修正、集号偏移，以及 Jellyfin 用的 `tvshow.nfo`。
+- 不要用 `sudo docker compose run ...` 跑 `postprocessor` 工具命令，否则新建目录和 `nfo` 容易变成 `root:root`。
 
 ## 直接在树莓派启动服务
 
@@ -127,7 +135,7 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml restart jellyfin
 3. 让 `Jellyfin` 只读发布后的媒体库：
    - `/srv/anime-data/library/seasonal`
 
-当前 `postprocessor` 第一版已经能做扫描，不改文件，只报告：
+当前 `postprocessor` 已经能做扫描和发布。扫描模式会只报告：
 
 - 哪些文件能解析出番名和集数
 - 哪些是同一集多版本
@@ -138,21 +146,21 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml restart jellyfin
 
 ```bash
 cd /srv/anime-data/appdata/rpi-anime
-docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor
 ```
 
 如果要指定目录：
 
 ```bash
 cd /srv/anime-data/appdata/rpi-anime
-docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor scan --root /srv/anime-data/downloads/Bangumi
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor scan --root /srv/anime-data/downloads/Bangumi
 ```
 
 如果想看 JSON 输出：
 
 ```bash
 cd /srv/anime-data/appdata/rpi-anime
-docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor scan --json
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor scan --json
 ```
 
 当前 `postprocessor` 第二版已经支持单集选优和发布计划：
@@ -164,19 +172,22 @@ docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.
 - 如果最高优先级候选已经完成，会立即发布
 - 如果先完成的是低优先级候选，会进入等待窗口；默认等待 `1800` 秒，给更高优先级版本补完机会，超时后再按当时已完成的候选选优
 - “已完成”的判断来自 `qBittorrent` Web API 返回的 torrent 状态：`amount_left == 0` 或 `progress >= 1.0`
+- 发布时会按 `deploy/title_mappings.toml` 改写目标剧名、季号和集号
+- 发布时会在剧集目录下写 `tvshow.nfo`
+- 发布时也会在每一集视频旁边写同名 `.nfo`，分集标题默认用文件名
 
 查看发布计划：
 
 ```bash
 cd /srv/anime-data/appdata/rpi-anime
-docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor publish
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor publish
 ```
 
 执行发布并删除未选中的重复文件：
 
 ```bash
 cd /srv/anime-data/appdata/rpi-anime
-docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor publish --apply --delete-losers
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor publish --apply --delete-losers
 ```
 
 建议：
@@ -196,6 +207,34 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml logs -f postprocess
 # 手动跑一轮，不持续监听
 docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor watch --once
 ```
+
+给现有库补写 `tvshow.nfo`：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm postprocessor write-nfo
+```
+
+## 当前状态总结
+
+- 自动链路现在是：`AutoBangumi -> qBittorrent -> postprocessor -> Jellyfin`
+- `postprocessor` 会读取 qB API 判断任务是否完成，不靠文件时间猜测
+- 已完成任务会先按优先级比较
+- 如果先完成的是低优先级版本，会进入等待窗口，默认 `1800` 秒
+- 新入库内容会自动生成本地 `nfo`
+- 旧内容可以通过 `write-nfo` 补写本地 `nfo`
+- Jellyfin 现在的识别策略是：
+  - 本地 `nfo` 兜底剧名、季号、集号和分集标题
+  - `AniDB` 等动漫 provider 补简介、封面等远程元数据
+  - 其他默认 provider 作为补充
+- Jellyfin 不会按远程元数据库去改视频里的字幕轨或字幕内容
+
+## 下一步建议
+
+1. 先重下一两部有问题的番，观察 `AniDB + 本地 nfo` 下的季度、集号和封面是否稳定。
+2. 把现有 `root:root` 的库目录和 `nfo` 统一修回 `sunzhuofan:sunzhuofan`，避免 Jellyfin 删除本地文件时报权限不足。
+3. 继续只对少量识别不准的番补 `deploy/title_mappings.toml`，不要做全量手工维护。
+4. 如果封面仍然不稳，再补“本地海报/封面缓存”这一步，而不是继续增加标题规则复杂度。
 
 ## 说明
 

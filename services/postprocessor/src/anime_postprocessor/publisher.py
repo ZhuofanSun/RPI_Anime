@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import shutil
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
 from .models import ParsedMedia, UnparsedMedia
 from .scanner import ScanReport
 from .selector import SelectionDecision, build_selection_plan
+from .title_map import ResolvedSeries, TitleMapResolver, load_title_map
 
 
 @dataclass(frozen=True)
@@ -16,22 +18,99 @@ class PublishPlan:
     download_root: Path
     library_root: Path
     review_root: Path
+    resolver: TitleMapResolver
 
 
-def _derive_show_name(media: ParsedMedia) -> str:
-    parts = media.relative_path.parts
-    if len(parts) >= 2 and parts[1].lower().startswith("season "):
-        return parts[0]
-    if len(parts) >= 2:
-        return parts[0]
-    return media.title
+def resolve_series(media: ParsedMedia, resolver: TitleMapResolver | None = None) -> ResolvedSeries:
+    active_resolver = resolver or load_title_map()
+    return active_resolver.resolve(media)
 
 
-def build_target_path(library_root: Path, media: ParsedMedia) -> Path:
-    show_name = _derive_show_name(media)
-    season_folder = f"Season {media.season}"
-    target_name = f"{show_name} S{media.season:02d}E{media.episode:02d}{media.extension}"
-    return library_root / show_name / season_folder / target_name
+def build_target_path(
+    library_root: Path,
+    media: ParsedMedia,
+    resolver: TitleMapResolver | None = None,
+) -> Path:
+    series = resolve_series(media, resolver=resolver)
+    season_folder = f"Season {series.season_number}"
+    target_name = (
+        f"{series.folder_name} "
+        f"S{series.season_number:02d}E{series.episode_number:02d}{media.extension}"
+    )
+    return library_root / series.folder_name / season_folder / target_name
+
+
+def build_series_folder_path(
+    library_root: Path,
+    media: ParsedMedia,
+    resolver: TitleMapResolver | None = None,
+) -> Path:
+    series = resolve_series(media, resolver=resolver)
+    return library_root / series.folder_name
+
+
+def _write_tvshow_nfo(show_dir: Path, series: ResolvedSeries) -> Path:
+    root = ET.Element("tvshow")
+    ET.SubElement(root, "title").text = series.series_title
+    if series.original_title:
+        ET.SubElement(root, "originaltitle").text = series.original_title
+    ET.SubElement(root, "sorttitle").text = series.series_title
+    for provider_name, provider_value in series.provider_ids.items():
+        ET.SubElement(root, provider_name).text = provider_value
+
+    tree = ET.ElementTree(root)
+    nfo_path = show_dir / "tvshow.nfo"
+    tree.write(nfo_path, encoding="utf-8", xml_declaration=True)
+    return nfo_path
+
+
+def _write_episode_nfo(
+    episode_path: Path,
+    *,
+    series: ResolvedSeries,
+    episode_title: str,
+) -> Path:
+    root = ET.Element("episodedetails")
+    ET.SubElement(root, "title").text = episode_title
+    ET.SubElement(root, "showtitle").text = series.series_title
+    ET.SubElement(root, "season").text = str(series.season_number)
+    ET.SubElement(root, "episode").text = str(series.episode_number)
+    if series.original_title:
+        ET.SubElement(root, "originaltitle").text = series.original_title
+
+    tree = ET.ElementTree(root)
+    nfo_path = episode_path.with_suffix(".nfo")
+    tree.write(nfo_path, encoding="utf-8", xml_declaration=True)
+    return nfo_path
+
+
+def write_library_nfo(
+    library_root: Path,
+    parsed_files: list[ParsedMedia],
+    resolver: TitleMapResolver | None = None,
+) -> list[dict]:
+    active_resolver = resolver or load_title_map()
+    written: dict[Path, Path] = {}
+
+    for media in parsed_files:
+        series = resolve_series(media, resolver=active_resolver)
+        if not series.has_mapping:
+            continue
+        show_dir = library_root / media.relative_path.parts[0]
+        show_dir.mkdir(parents=True, exist_ok=True)
+        nfo_path = _write_tvshow_nfo(show_dir, series)
+        written[show_dir] = nfo_path
+        if media.path.exists():
+            _write_episode_nfo(
+                media.path,
+                series=series,
+                episode_title=media.path.stem,
+            )
+
+    return [
+        {"show_dir": str(show_dir), "nfo": str(nfo_path)}
+        for show_dir, nfo_path in sorted(written.items())
+    ]
 
 
 def build_publish_plan(
@@ -40,12 +119,14 @@ def build_publish_plan(
     library_root: Path,
     review_root: Path,
 ) -> PublishPlan:
+    resolver = load_title_map()
     return PublishPlan(
         report=report,
         decisions=build_selection_plan(report.parsed_files),
         download_root=download_root,
         library_root=library_root,
         review_root=review_root,
+        resolver=resolver,
     )
 
 
@@ -78,15 +159,30 @@ def apply_publish_plan(
     reviewed: list[dict] = []
 
     for decision in plan.decisions:
-        target = build_target_path(plan.library_root, decision.winner)
+        target = build_target_path(plan.library_root, decision.winner, resolver=plan.resolver)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(decision.winner.path), str(target))
         _cleanup_empty_dirs(decision.winner.path.parent, plan.download_root)
+        series = resolve_series(decision.winner, resolver=plan.resolver)
+        show_dir = build_series_folder_path(
+            plan.library_root,
+            decision.winner,
+            resolver=plan.resolver,
+        )
+        show_dir.mkdir(parents=True, exist_ok=True)
+        nfo_path = _write_tvshow_nfo(show_dir, series)
+        episode_nfo_path = _write_episode_nfo(
+            target,
+            series=series,
+            episode_title=decision.winner.path.stem,
+        )
         published.append(
             {
                 "source": str(decision.winner.relative_path),
                 "target": str(target),
                 "score": decision.winner_score.summary,
+                "nfo": str(nfo_path),
+                "episode_nfo": str(episode_nfo_path),
             }
         )
 

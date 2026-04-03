@@ -1,0 +1,25 @@
+# 发布目录与 Jellyfin 元数据辅助映射。
+# aliases 用来匹配下载文件解析出的剧名或下载目录名。
+# season_number / episode_offset 只影响“发布后的”季号与集号。
+
+[[series]]
+folder_name = "Steel Ball Run"
+series_title = "Steel Ball Run"
+original_title = "飙马野郎 JOJO的奇妙冒险"
+aliases = [
+  "Steel Ball Run：JoJo no Kimyou na Bouken",
+  "Steel Ball Run JoJo no Kimyou na Bouken",
+  "飙马野郎 JOJO的奇妙冒险",
+]
+
+[[series]]
+folder_name = "Dr. STONE"
+series_title = "Dr. STONE"
+original_title = "石纪元 科学与未来 第3部分"
+season_number = 4
+episode_offset = -24
+aliases = [
+  "Dr Stone 新石紀 第四季",
+  "Dr. STONE SCIENCE FUTURE",
+  "石纪元 科学与未来 第3部分",
+]
