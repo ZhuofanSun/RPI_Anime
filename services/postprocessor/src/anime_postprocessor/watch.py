@@ -11,13 +11,7 @@ from .parser import parse_media_file
 from .publisher import apply_publish_plan, build_publish_plan
 from .qb import QBClient, QBTorrent
 from .scanner import build_report
-
-
-@dataclass
-class GroupState:
-    torrents: list[QBTorrent]
-    parsed_files: list[ParsedMedia]
-    unparsed_files: list[UnparsedMedia]
+from .selector import score_candidate
 
 
 @dataclass(frozen=True)
@@ -172,6 +166,54 @@ def _cleanup_entry(entry: GroupEntry | UnparsedEntry, keep_paths: set[Path], sto
             _cleanup_empty_dirs(item.path.parent, stop_at)
 
 
+def _top_score(parsed_files: list[ParsedMedia]) -> tuple[int, int, int, int] | None:
+    if not parsed_files:
+        return None
+    return max(score_candidate(item).tuple for item in parsed_files)
+
+
+def _first_completion_ts(entries: list[GroupEntry]) -> int | None:
+    timestamps = [
+        entry.torrent.completion_ts
+        for entry in entries
+        if entry.torrent.completed and entry.torrent.completion_ts is not None
+    ]
+    if not timestamps:
+        return None
+    return min(timestamps)
+
+
+def _should_process_group(
+    *,
+    state: list[GroupEntry],
+    completed_entries: list[GroupEntry],
+    now_ts: int,
+    wait_timeout: int,
+) -> tuple[bool, str]:
+    all_parsed = [item for entry in state for item in entry.parsed_files]
+    completed_parsed = [item for entry in completed_entries for item in entry.parsed_files]
+    if not completed_parsed:
+        return False, "no completed candidates"
+
+    overall_top = _top_score(all_parsed)
+    completed_top = _top_score(completed_parsed)
+    if overall_top is not None and completed_top == overall_top:
+        return True, "best candidate already completed"
+
+    if len(completed_entries) == len(state):
+        return True, "all candidates completed"
+
+    first_completion_ts = _first_completion_ts(completed_entries)
+    if first_completion_ts is None:
+        return False, "waiting for completion timestamp"
+
+    elapsed = now_ts - first_completion_ts
+    if elapsed >= wait_timeout:
+        return True, f"wait timeout reached ({elapsed}s)"
+
+    return False, f"waiting for higher-priority candidates ({elapsed}s/{wait_timeout}s)"
+
+
 def _run_once(
     *,
     qb: QBClient,
@@ -181,6 +223,7 @@ def _run_once(
     library_root: Path,
     review_root: Path,
     delete_losers: bool,
+    wait_timeout: int,
 ) -> None:
     torrents = qb.list_torrents(category=category)
     groups, completed_unparsed = _build_groups(
@@ -189,6 +232,7 @@ def _run_once(
         qb_download_root=qb_download_root,
         local_download_root=local_download_root,
     )
+    now_ts = int(time.time())
 
     for key, state in sorted(
         groups.items(),
@@ -199,7 +243,18 @@ def _run_once(
         ),
     ):
         completed_entries = [entry for entry in state if entry.torrent.completed]
-        if not completed_entries:
+        should_process, reason = _should_process_group(
+            state=state,
+            completed_entries=completed_entries,
+            now_ts=now_ts,
+            wait_timeout=wait_timeout,
+        )
+        if not should_process:
+            if completed_entries:
+                print(
+                    f"[watch] defer {key.normalized_title} "
+                    f"S{key.season:02d}E{key.episode:02d}: {reason}"
+                )
             continue
 
         report = build_report(
@@ -239,6 +294,7 @@ def _run_once(
         print(
             f"[watch] processed {key.normalized_title} "
             f"S{key.season:02d}E{key.episode:02d}: "
+            f"reason={reason}; "
             f"published={len(result['published'])} "
             f"deleted={len(result['deleted'])} "
             f"reviewed={len(result['reviewed'])}"
@@ -282,6 +338,7 @@ def watch_loop(
     review_root: Path,
     poll_interval: int,
     delete_losers: bool,
+    wait_timeout: int,
     once: bool,
 ) -> None:
     qb = QBClient(qb_api_url, qb_username, qb_password)
@@ -295,6 +352,7 @@ def watch_loop(
             library_root=library_root,
             review_root=review_root,
             delete_losers=delete_losers,
+            wait_timeout=wait_timeout,
         )
         if once:
             return
@@ -310,6 +368,7 @@ def watch_from_env(
     once: bool = False,
     poll_interval: int | None = None,
     delete_losers: bool | None = None,
+    wait_timeout: int | None = None,
 ) -> None:
     qb_api_url = os.environ.get("QBITTORRENT_API_URL", "http://qbittorrent:8080")
     qb_username = os.environ["QBITTORRENT_USERNAME"]
@@ -319,6 +378,9 @@ def watch_from_env(
         os.environ.get("QBITTORRENT_DOWNLOAD_ROOT", "/downloads/Bangumi")
     )
     interval = poll_interval or int(os.environ.get("POSTPROCESSOR_POLL_INTERVAL", "60"))
+    settle_timeout = wait_timeout or int(
+        os.environ.get("POSTPROCESSOR_WAIT_TIMEOUT", "1800")
+    )
     delete = (
         delete_losers
         if delete_losers is not None
@@ -336,5 +398,6 @@ def watch_from_env(
         review_root=review_root,
         poll_interval=interval,
         delete_losers=delete,
+        wait_timeout=settle_timeout,
         once=once,
     )

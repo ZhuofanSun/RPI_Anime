@@ -107,6 +107,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Keep unselected duplicate files instead of deleting them.",
     )
+    watch.add_argument(
+        "--wait-timeout",
+        type=int,
+        help="Seconds to wait for higher-priority incomplete candidates after the first completion. Defaults to $POSTPROCESSOR_WAIT_TIMEOUT or 1800.",
+    )
     return parser
 
 
@@ -313,6 +318,7 @@ def main() -> None:
             once=args.once,
             poll_interval=args.poll_interval,
             delete_losers=not args.keep_losers,
+            wait_timeout=args.wait_timeout,
         )
 
 

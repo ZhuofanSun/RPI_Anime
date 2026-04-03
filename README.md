@@ -160,7 +160,9 @@ docker compose --profile postprocessor --env-file deploy/.env -f deploy/compose.
 - 每集只选一个赢家
 - 当前优先级：`CHS > CHS&CHT > unknown > CHT`，`AVC > HEVC`，`mp4 > mkv`，`1080p > 1440p > 720p > 2160p`
 - 默认先干跑，不直接改文件
-- 常驻 `watch` 服务会轮询 `qBittorrent` 的 `Bangumi` 分类，只要某一集已经有至少一个候选下载完成，就会立刻选优、发布赢家，并停掉/清理其余候选
+- 常驻 `watch` 服务会轮询 `qBittorrent` 的 `Bangumi` 分类
+- 如果最高优先级候选已经完成，会立即发布
+- 如果先完成的是低优先级候选，会进入等待窗口；默认等待 `1800` 秒，给更高优先级版本补完机会，超时后再按当时已完成的候选选优
 - “已完成”的判断来自 `qBittorrent` Web API 返回的 torrent 状态：`amount_left == 0` 或 `progress >= 1.0`
 
 查看发布计划：

@@ -14,10 +14,15 @@ class QBTorrent:
     progress: float
     amount_left: int
     state: str
+    completion_on: int
 
     @property
     def completed(self) -> bool:
         return self.amount_left == 0 or self.progress >= 1.0
+
+    @property
+    def completion_ts(self) -> int | None:
+        return self.completion_on if self.completion_on > 0 else None
 
 
 class QBClient:
@@ -55,6 +60,7 @@ class QBClient:
                 progress=float(item.get("progress", 0.0)),
                 amount_left=int(item.get("amount_left", 0)),
                 state=item.get("state", ""),
+                completion_on=int(item.get("completion_on", -1)),
             )
             for item in data
         ]
