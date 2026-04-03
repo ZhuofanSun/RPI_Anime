@@ -9,6 +9,28 @@
 - 树莓派上使用 Docker Compose 运行基础服务
 - 后处理程序后续逐步补齐
 
+## 当前进度
+
+当前这套基础链路已经打通：
+
+- 外置盘已完成分区和挂载
+- `Jellyfin` 已可登录
+- `qBittorrent` 已可登录
+- `AutoBangumi` 已可登录
+- `Tailscale` 已接入常用设备
+- 本地项目可通过 `scripts/sync_to_pi.sh` 同步到树莓派
+
+当前服务访问地址：
+
+- `Jellyfin`: `http://sunzhuofan.local:8096`
+- `qBittorrent`: `http://sunzhuofan.local:8080`
+- `AutoBangumi`: `http://sunzhuofan.local:7892`
+
+说明：
+
+- `AutoBangumi` 的初始化实际上已经完成，正常入口直接访问根路径 `/` 即可。
+- 不要继续使用 `/#/setup` 作为入口。
+
 ## 当前目录
 
 ```text
@@ -49,6 +71,45 @@
 5. 如需外网访问，在树莓派运行 `scripts/install_tailscale_pi.sh` 安装 Tailscale。
 6. 在树莓派上检查 `deploy/.env` 内容。
 7. 运行 `scripts/remote_up.sh` 在树莓派启动或更新容器。
+
+## 直接在树莓派启动服务
+
+如果你不是在本地执行同步脚本，而是已经通过 `ssh` 连上树莓派，直接这样启动整套服务：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+docker compose --env-file deploy/.env -f deploy/compose.yaml up -d
+```
+
+常用命令：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+
+# 查看服务状态
+docker compose --env-file deploy/.env -f deploy/compose.yaml ps
+
+# 查看日志
+docker compose --env-file deploy/.env -f deploy/compose.yaml logs -f
+
+# 重启整套服务
+docker compose --env-file deploy/.env -f deploy/compose.yaml restart
+
+# 停止整套服务
+docker compose --env-file deploy/.env -f deploy/compose.yaml down
+
+# 拉起停止的服务或应用配置变更
+docker compose --env-file deploy/.env -f deploy/compose.yaml up -d
+```
+
+如果你只想重启某一个服务：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+docker compose --env-file deploy/.env -f deploy/compose.yaml restart autobangumi
+docker compose --env-file deploy/.env -f deploy/compose.yaml restart qbittorrent
+docker compose --env-file deploy/.env -f deploy/compose.yaml restart jellyfin
+```
 
 ## 说明
 
