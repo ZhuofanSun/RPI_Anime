@@ -47,6 +47,8 @@ services:
     volumes:
       - "${ANIME_APPDATA_ROOT}/autobangumi/config:/app/config"
       - "${ANIME_APPDATA_ROOT}/autobangumi/data:/app/data"
+      - "${ANIME_DATA_ROOT}/downloads:/downloads"
+      - "${ANIME_DATA_ROOT}/library/seasonal:/library/seasonal"
     restart: unless-stopped
     dns:
       - 8.8.8.8
@@ -66,4 +68,3 @@ services:
       - "${ANIME_COLLECTION_ROOT}:/srv/anime-collection"
     command: ["python", "-m", "anime_postprocessor.main"]
     restart: "no"
-

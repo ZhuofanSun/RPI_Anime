@@ -10,9 +10,9 @@ __pycache__/
 
 deploy/.env
 deploy/.secrets/
+deploy/ACCESS.local.md
 
 *.log
 tmp/
 dist/
 build/
-
