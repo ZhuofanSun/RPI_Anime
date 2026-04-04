@@ -46,6 +46,10 @@ class ManualPublishRequest(BaseModel):
     episode: int = Field(..., ge=1, le=999)
 
 
+class TailscaleActionRequest(BaseModel):
+    action: str = Field(..., pattern="^(start|stop)$")
+
+
 def _env(name: str, default: str) -> str:
     return os.environ.get(name, default)
 
@@ -143,6 +147,14 @@ def _extract_temperature(sensors: Any) -> float | None:
     if not numeric_values:
         return None
     return sum(numeric_values) / len(numeric_values)
+
+
+def _tailscale_ip_pair(value: Any) -> tuple[str, str]:
+    if not isinstance(value, list) or not value:
+        return "-", "-"
+    ipv4 = str(value[0]) if value[0] else "-"
+    ipv6 = str(value[1]) if len(value) > 1 and value[1] else "-"
+    return ipv4, ipv6
 
 
 def _container_status_count(containers: dict[str, dict[str, Any]]) -> tuple[int, int]:
@@ -418,32 +430,88 @@ async def _history_sampler_loop() -> None:
         await asyncio.sleep(_sample_interval_seconds())
 
 
-def _tailscale_status(socket_path: str) -> tuple[dict[str, Any] | None, str | None]:
+class UnixHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, unix_socket_path: str, timeout: int) -> None:
+        super().__init__("local-tailscaled.sock", timeout=timeout)
+        self.unix_socket_path = unix_socket_path
+
+    def connect(self) -> None:
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self.unix_socket_path)
+
+
+def _tailscale_localapi_request(
+    socket_path: str,
+    method: str,
+    path: str,
+    *,
+    body: dict[str, Any] | None = None,
+    timeout: int = 5,
+) -> dict[str, Any]:
     try:
-        class UnixHTTPConnection(http.client.HTTPConnection):
-            def __init__(self, unix_socket_path: str, timeout: int) -> None:
-                super().__init__("local-tailscaled.sock", timeout=timeout)
-                self.unix_socket_path = unix_socket_path
-
-            def connect(self) -> None:
-                self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                self.sock.settimeout(self.timeout)
-                self.sock.connect(self.unix_socket_path)
-
         connection = UnixHTTPConnection(socket_path, timeout=5)
-        connection.request(
-            "GET",
-            "/localapi/v0/status",
-            headers={"Host": "local-tailscaled.sock", "Sec-Tailscale": "localapi"},
-        )
+        payload = json.dumps(body).encode("utf-8") if body is not None else None
+        headers = {"Host": "local-tailscaled.sock", "Sec-Tailscale": "localapi"}
+        if payload is not None:
+            headers["Content-Type"] = "application/json"
+            headers["Content-Length"] = str(len(payload))
+        connection.request(method, path, body=payload, headers=headers)
         response = connection.getresponse()
         body = response.read()
         connection.close()
-        if response.status != 200:
-            raise RuntimeError(f"{response.status} {response.reason}")
-        return json.loads(body.decode("utf-8")), None
+        text = body.decode("utf-8", "replace")
+        data: dict[str, Any] | list[Any] | None = None
+        if text:
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                data = None
+        return {
+            "status": response.status,
+            "reason": response.reason,
+            "text": text,
+            "json": data,
+        }
+    except Exception as exc:
+        raise RuntimeError(str(exc)) from exc
+
+
+def _tailscale_status(socket_path: str) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        response = _tailscale_localapi_request(socket_path, "GET", "/localapi/v0/status", timeout=5)
+        if response["status"] != 200:
+            raise RuntimeError(f"{response['status']} {response['reason']}")
+        data = response.get("json")
+        if not isinstance(data, dict):
+            raise RuntimeError("status payload was not valid JSON")
+        return data, None
     except Exception as exc:  # pragma: no cover - defensive wrapper
         return None, str(exc)
+
+
+def _tailscale_prefs(socket_path: str) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        response = _tailscale_localapi_request(socket_path, "GET", "/localapi/v0/prefs", timeout=5)
+        if response["status"] != 200:
+            raise RuntimeError(f"{response['status']} {response['reason']}")
+        data = response.get("json")
+        if not isinstance(data, dict):
+            raise RuntimeError("prefs payload was not valid JSON")
+        return data, None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def _tailscale_patch_prefs(socket_path: str, masked_prefs: dict[str, Any]) -> dict[str, Any]:
+    response = _tailscale_localapi_request(socket_path, "PATCH", "/localapi/v0/prefs", body=masked_prefs, timeout=5)
+    if int(response.get("status", 500)) >= 400:
+        message = _tailscale_localapi_error_message(response)
+        raise RuntimeError(message)
+    data = response.get("json")
+    if not isinstance(data, dict):
+        raise RuntimeError("tailscale prefs patch did not return JSON")
+    return data
 
 
 def _qb_snapshot() -> tuple[dict[str, Any] | None, str | None]:
@@ -516,8 +584,9 @@ def _build_services(
     manual_review_count: int,
     log_count: int,
 ) -> list[dict[str, Any]]:
-    tailscale_self = (tailscale or {}).get("Self", {})
-    tailscale_state = "online" if (tailscale or {}).get("BackendState") == "Running" else "offline"
+    tailscale_self = ((tailscale or {}).get("Self") or {}) if isinstance(tailscale, dict) else {}
+    tailscale_backend_running = (tailscale or {}).get("BackendState") == "Running"
+    tailscale_state = "online" if tailscale_backend_running and tailscale_self.get("Online") else "offline"
     ops_ui_base = _service_link(base_host, int(_env("HOMEPAGE_PORT", "3000")))
 
     def container_uptime(name: str) -> str | None:
@@ -589,8 +658,8 @@ def _build_services(
             "href": f"{ops_ui_base}/tailscale",
             "description": "本地 tailnet 状态与远程访问链路",
             "status": tailscale_state,
-            "meta": tailscale_self.get("TailscaleIPs", ["-"])[0] if tailscale_self else "-",
-            "uptime": tailscale_self.get("DNSName", "-").rstrip(".") if tailscale_self else None,
+            "meta": _tailscale_ip_pair(tailscale_self.get("TailscaleIPs") if tailscale_self else None)[0],
+            "uptime": _strip_trailing_dot(tailscale_self.get("DNSName")) if tailscale_self else None,
             "internal": True,
         },
     ]
@@ -621,6 +690,29 @@ def _library_root() -> Path:
 
 def _format_timestamp(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+
+
+def _strip_trailing_dot(value: str | None) -> str:
+    if not value:
+        return "-"
+    return value.rstrip(".")
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value or value.startswith("0001-01-01"):
+        return None
+    normalized = value.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def _format_iso_datetime(value: str | None) -> str:
+    parsed = _parse_iso_datetime(value)
+    if not parsed:
+        return "-"
+    return parsed.strftime("%Y-%m-%d %H:%M")
 
 
 def _review_bucket_reason(bucket: str) -> str:
@@ -919,6 +1011,283 @@ def build_logs_payload(
     }
 
 
+def build_tailscale_payload() -> dict[str, Any]:
+    base_host = _env("HOMEPAGE_BASE_HOST", socket.gethostname())
+    tailscale_socket = _env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock")
+    tailscale, tailscale_error = _tailscale_status(tailscale_socket)
+    prefs, prefs_error = _tailscale_prefs(tailscale_socket)
+    self_info = ((tailscale or {}).get("Self") or {}) if isinstance(tailscale, dict) else {}
+    peer_map = ((tailscale or {}).get("Peer") or {}) if isinstance(tailscale, dict) else {}
+    peer_values = list(peer_map.values()) if isinstance(peer_map, dict) else []
+    backend_state = (tailscale or {}).get("BackendState", "unavailable") if tailscale else "unavailable"
+    health_messages = list((tailscale or {}).get("Health", [])) if isinstance(tailscale, dict) else []
+    online_peer_count = sum(1 for peer in peer_values if peer.get("Online"))
+    exit_node_candidates = sum(1 for peer in peer_values if peer.get("ExitNodeOption"))
+    tail_ip, ipv6 = _tailscale_ip_pair(self_info.get("TailscaleIPs") if self_info else None)
+    dns_name = _strip_trailing_dot(self_info.get("DNSName"))
+    self_online = bool(self_info.get("Online"))
+    want_running = bool((prefs or {}).get("WantRunning")) if isinstance(prefs, dict) else backend_state == "Running"
+    reachability = "Online" if self_online else ("Stopped" if not want_running else "Offline")
+    logged_out = bool((prefs or {}).get("LoggedOut")) if isinstance(prefs, dict) else backend_state in {"NeedsLogin", "NoState"}
+    machinekey_error = any("machinekey" in str(message).lower() for message in health_messages)
+    control_action = "stop" if want_running else "start"
+    control_label = "关闭 Tailscale" if control_action == "stop" else "开启 Tailscale"
+    if control_action == "stop":
+        control_detail = "仅停止 tailnet 连接，保留当前节点授权与配置。"
+    elif machinekey_error:
+        control_detail = "当前本地 state 已损坏，需要先重建宿主机 Tailscale 状态。"
+    elif backend_state in {"NeedsLogin", "NoState"} or logged_out:
+        control_detail = "启动 backend 后会进入登录态，需要在树莓派终端或网页登录完成授权。"
+    else:
+        control_detail = "恢复 tailnet backend 与远程访问链路。"
+    if self_online:
+        self_note = "当前节点已在线，可通过 Tailscale IP 或 MagicDNS 从其他设备访问。"
+    elif machinekey_error:
+        self_note = "当前节点的本地 state 已损坏。请先完整重建 /var/lib/tailscale，然后再重新登录。"
+    elif backend_state in {"NeedsLogin", "NoState"} or logged_out:
+        self_note = "当前节点已经脱离 tailnet，会话需要重新登录后才能恢复。"
+    elif not want_running:
+        self_note = "当前节点已关闭 Tailscale 网络连接，但授权仍保留，可随时重新开启。"
+    else:
+        self_note = "后台进程仍在运行，但控制面或 peer 可达性异常，节点当前不可用。"
+
+    summary_cards = [
+        {
+            "label": "Backend",
+            "value": backend_state,
+            "detail": "local socket only",
+        },
+        {
+            "label": "Reachability",
+            "value": reachability,
+            "detail": "coordination + peer connectivity",
+        },
+        {
+            "label": "Peers",
+            "value": str(len(peer_values)),
+            "detail": f"{online_peer_count} online · {exit_node_candidates} exit-node capable",
+        },
+        {
+            "label": "Tailnet IP",
+            "value": tail_ip,
+            "detail": dns_name,
+        },
+    ]
+
+    self_cards = [
+        {
+            "label": "Host",
+            "value": self_info.get("HostName") or base_host,
+            "detail": dns_name,
+        },
+        {
+            "label": "Reachability",
+            "value": "Yes" if self_online else "No",
+            "detail": "tailnet reachable" if self_online else "currently unreachable from tailnet",
+        },
+        {
+            "label": "IPv4",
+            "value": tail_ip,
+            "detail": "primary tailnet address",
+        },
+        {
+            "label": "IPv6",
+            "value": ipv6,
+            "detail": "secondary tailnet address",
+        },
+        {
+            "label": "Current Addr",
+            "value": self_info.get("CurAddr") or "-",
+            "detail": f"relay {self_info.get('Relay') or '-'}",
+        },
+        {
+            "label": "Traffic",
+            "value": f"{_format_bytes(self_info.get('RxBytes'))} ↓",
+            "detail": f"{_format_bytes(self_info.get('TxBytes'))} ↑",
+        },
+    ]
+
+    peers = [
+        {
+            "id": peer.get("PublicKey") or str(peer.get("ID") or peer.get("HostName") or "peer"),
+            "host_name": peer.get("HostName", "Unknown"),
+            "dns_name": _strip_trailing_dot(peer.get("DNSName")),
+            "ip": _tailscale_ip_pair(peer.get("TailscaleIPs"))[0],
+            "ipv6": _tailscale_ip_pair(peer.get("TailscaleIPs"))[1],
+            "os": peer.get("OS", "-"),
+            "online": bool(peer.get("Online")),
+            "active": bool(peer.get("Active")),
+            "status": "online" if peer.get("Online") else "offline",
+            "current_addr": peer.get("CurAddr") or "-",
+            "relay": peer.get("Relay") or "-",
+            "rx_label": _format_bytes(peer.get("RxBytes")),
+            "tx_label": _format_bytes(peer.get("TxBytes")),
+            "last_write_label": _format_iso_datetime(peer.get("LastWrite")),
+            "last_seen_label": _format_iso_datetime(peer.get("LastSeen")),
+            "last_handshake_label": _format_iso_datetime(peer.get("LastHandshake")),
+            "key_expiry_label": _format_iso_datetime(peer.get("KeyExpiry")),
+            "exit_node_option": bool(peer.get("ExitNodeOption")),
+            "exit_node": bool(peer.get("ExitNode")),
+        }
+        for peer in sorted(
+            peer_values,
+            key=lambda item: (
+                not bool(item.get("Online")),
+                not bool(item.get("Active")),
+                str(item.get("HostName", "")).lower(),
+            ),
+        )
+    ]
+
+    diagnostics = []
+    if tailscale_error:
+        diagnostics.append(
+            {
+                "source": "tailscale-localapi",
+                "message": tailscale_error,
+            }
+        )
+    if prefs_error:
+        diagnostics.append(
+            {
+                "source": "tailscale-prefs",
+                "message": prefs_error,
+            }
+        )
+    diagnostics.extend(
+        {
+            "source": "tailscale-health",
+            "message": message,
+        }
+        for message in health_messages
+    )
+
+    return {
+        "title": "Tailscale",
+        "subtitle": "本地 tailnet 状态、peer 列表和节点可达性诊断。",
+        "refresh_interval_seconds": 15,
+        "socket_path": tailscale_socket,
+        "summary_cards": summary_cards,
+        "self_cards": self_cards,
+        "self_note": self_note,
+        "peers": peers,
+        "peer_total": len(peers),
+        "peer_online": online_peer_count,
+        "backend_state": backend_state,
+        "reachability": reachability,
+        "want_running": want_running,
+        "logged_out": logged_out,
+        "machinekey_error": machinekey_error,
+        "control": {
+            "action": control_action,
+            "label": control_label,
+            "detail": control_detail,
+        },
+        "self": {
+            "host_name": self_info.get("HostName") or _env("HOMEPAGE_BASE_HOST", socket.gethostname()),
+            "dns_name": dns_name,
+            "tail_ip": tail_ip,
+            "os": self_info.get("OS", "-"),
+            "key_expiry_label": _format_iso_datetime(self_info.get("KeyExpiry")),
+            "relay": self_info.get("Relay") or "-",
+            "current_addr": self_info.get("CurAddr") or "-",
+        },
+        "diagnostics": diagnostics,
+        "last_updated": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def _tailscale_status_or_raise(socket_path: str) -> dict[str, Any]:
+    status, error = _tailscale_status(socket_path)
+    if error or not isinstance(status, dict):
+        raise RuntimeError(error or "tailscale status unavailable")
+    return status
+
+
+def _tailscale_localapi_error_message(response: dict[str, Any]) -> str:
+    text = str(response.get("text") or "").strip()
+    if text:
+        return text
+    return f"{response.get('status')} {response.get('reason')}"
+
+
+def _tailscale_start_action(socket_path: str) -> dict[str, Any]:
+    _tailscale_patch_prefs(
+        socket_path,
+        {
+            "WantRunning": True,
+            "WantRunningSet": True,
+        },
+    )
+
+    start = _tailscale_localapi_request(socket_path, "POST", "/localapi/v0/start", body={})
+    if int(start.get("status", 500)) >= 400:
+        raise RuntimeError(_tailscale_localapi_error_message(start))
+
+    time.sleep(1)
+    status = _tailscale_status_or_raise(socket_path)
+    auth_url = str(status.get("AuthURL") or "").strip()
+    backend_state = str(status.get("BackendState") or "")
+    if backend_state == "Running" and bool((status.get("Self") or {}).get("Online")):
+        return {
+            "ok": True,
+            "action": "start",
+            "message": "Tailscale 已恢复在线。",
+        }
+
+    interactive_error: str | None = None
+    if backend_state in {"NeedsLogin", "NoState", "Starting"}:
+        try:
+            login = _tailscale_localapi_request(socket_path, "POST", "/localapi/v0/login-interactive")
+            if int(login.get("status", 500)) >= 400:
+                interactive_error = _tailscale_localapi_error_message(login)
+        except Exception as exc:
+            interactive_error = str(exc)
+
+        time.sleep(1)
+        status = _tailscale_status_or_raise(socket_path)
+        auth_url = str(status.get("AuthURL") or "").strip()
+        backend_state = str(status.get("BackendState") or "")
+
+    if auth_url:
+        return {
+            "ok": True,
+            "action": "start",
+            "message": "Tailscale 已生成登录链接，请在浏览器里完成授权。",
+            "auth_url": auth_url,
+        }
+
+    if backend_state == "Running" and bool((status.get("Self") or {}).get("Online")):
+        return {
+            "ok": True,
+            "action": "start",
+            "message": "Tailscale 已恢复在线。",
+        }
+
+    if interactive_error:
+        raise RuntimeError(interactive_error)
+    return {
+        "ok": True,
+        "action": "start",
+        "message": "Tailscale backend 已开启，但当前版本没有回传登录链接。请在树莓派终端执行 sudo tailscale login 或 sudo tailscale up 完成授权。",
+    }
+
+
+def _tailscale_stop_action(socket_path: str) -> dict[str, Any]:
+    _tailscale_patch_prefs(
+        socket_path,
+        {
+            "WantRunning": False,
+            "WantRunningSet": True,
+        },
+    )
+    return {
+        "ok": True,
+        "action": "stop",
+        "message": "已关闭 Tailscale 网络连接，当前节点授权仍保留，下次可直接重新开启。",
+    }
+
+
 def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
     review_root = _manual_review_root()
     items = _manual_review_items(review_root)
@@ -1052,8 +1421,8 @@ def build_overview() -> dict[str, Any]:
     seasonal_root = anime_data_root / "library" / "seasonal"
     downloads_root = anime_data_root / "downloads" / "Bangumi"
 
-    tailscale_self = (tailscale or {}).get("Self", {})
-    tailscale_peers = (tailscale or {}).get("Peer", {}) if isinstance(tailscale, dict) else {}
+    tailscale_self = ((tailscale or {}).get("Self") or {}) if isinstance(tailscale, dict) else {}
+    tailscale_peers = ((tailscale or {}).get("Peer") or {}) if isinstance(tailscale, dict) else {}
     tailscale_peer_values = list(tailscale_peers.values()) if isinstance(tailscale_peers, dict) else []
     tailnet_online_peers = sum(1 for peer in tailscale_peer_values if peer.get("Online"))
     running_services, total_services = _container_status_count(containers)
@@ -1150,12 +1519,12 @@ def build_overview() -> dict[str, Any]:
         {
             "label": "Tailnet",
             "value": (tailscale or {}).get("BackendState", "unknown") if tailscale else "unavailable",
-            "detail": tailscale_self.get("HostName", base_host),
+            "detail": tailscale_self.get("HostName") or base_host,
         },
         {
             "label": "Tailscale IP",
-            "value": tailscale_self.get("TailscaleIPs", ["-"])[0] if tailscale_self else "-",
-            "detail": tailscale_self.get("DNSName", "-").rstrip(".") if tailscale_self else "-",
+            "value": _tailscale_ip_pair(tailscale_self.get("TailscaleIPs") if tailscale_self else None)[0],
+            "detail": _strip_trailing_dot(tailscale_self.get("DNSName")) if tailscale_self else "-",
         },
         {
             "label": "Peers",
@@ -1306,6 +1675,51 @@ def logs_api(
             limit=limit,
         )
     )
+
+
+@app.get("/api/tailscale")
+def tailscale_api() -> JSONResponse:
+    return JSONResponse(build_tailscale_payload())
+
+
+@app.post("/api/tailscale/action")
+def tailscale_action_api(payload: TailscaleActionRequest) -> JSONResponse:
+    socket_path = _env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock")
+    action = payload.action
+
+    try:
+        if action == "start":
+            result = _tailscale_start_action(socket_path)
+            append_event(
+                source="tailscale",
+                level="warning",
+                action="start",
+                message="Triggered Tailscale start flow from Ops UI",
+                details={
+                    "auth_url": result.get("auth_url"),
+                },
+            )
+            return JSONResponse(result)
+
+        result = _tailscale_stop_action(socket_path)
+        append_event(
+            source="tailscale",
+            level="warning",
+            action="stop",
+            message="Triggered Tailscale stop flow from Ops UI",
+        )
+        return JSONResponse(result)
+    except RuntimeError as exc:
+        append_event(
+            source="tailscale",
+            level="error",
+            action=action,
+            message=f"Tailscale action failed: {action}",
+            details={
+                "error": str(exc),
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/api/logs/clear")

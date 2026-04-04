@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tailscale Workspace</title>
+    <title>Tailscale</title>
     <script>
       (() => {
         try {
@@ -23,39 +23,153 @@
   </head>
   <body>
     <div class="page-shell">
-      <main class="placeholder-shell">
-        <section class="placeholder-panel">
-          <div class="hero-links">
-            <a class="hero-link" href="/">Dashboard</a>
-            <span class="hero-link-sep">/</span>
-            <span class="hero-link-current">Tailscale</span>
+      <header class="hero">
+        <div class="hero-copy">
+          <div class="hero-nav">
+            <a class="ghost-link ghost-link-subtle" href="/">← 返回 Dashboard</a>
+            <div class="hero-links">
+              <a class="hero-link" href="/">Dashboard</a>
+              <span class="hero-link-sep">/</span>
+              <span class="hero-link-current">Tailscale</span>
+            </div>
           </div>
-          <div class="placeholder-toolbar">
-            <div class="eyebrow">Tailscale</div>
-            <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
-              <span class="theme-toggle-copy">
-                <span class="theme-toggle-title">Theme</span>
-                <span class="theme-toggle-state" data-theme-label>Light</span>
-              </span>
-              <span class="theme-toggle-track" aria-hidden="true">
-                <span class="theme-toggle-icon">☀</span>
-                <span class="theme-toggle-icon">☾</span>
-                <span class="theme-toggle-thumb"></span>
-              </span>
-            </button>
+          <div class="eyebrow">Tailscale</div>
+          <h1 id="tailscale-title">Tailscale</h1>
+          <p id="tailscale-subtitle">本地 tailnet 状态、peer 列表和节点可达性诊断。</p>
+        </div>
+        <div class="hero-meta">
+          <div class="meta-pill">
+            <span class="meta-label">Socket</span>
+            <span class="meta-value meta-value-compact" id="tailscale-socket">-</span>
           </div>
-          <h1>Tailscale 工作区占位</h1>
-          <p>
-            这一页后面会接本地 tailnet 状态详情、peer 列表、最近活跃连接和诊断信息。
-            它只使用本机状态，不会去调用官方云 API。
-          </p>
-          <div class="placeholder-actions">
-            <a class="service-link" href="/">Back to Dashboard</a>
-            <a class="ghost-link" href="/logs">Open Logs</a>
+          <div class="meta-pill">
+            <span class="meta-label">Updated</span>
+            <span class="meta-value" id="tailscale-updated">-</span>
+          </div>
+          <div class="meta-pill meta-pill-subtle">
+            <span class="meta-label">Auto Refresh</span>
+            <span class="meta-value" id="tailscale-refresh">15s</span>
+          </div>
+          <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
+            <span class="theme-toggle-copy">
+              <span class="theme-toggle-title">Theme</span>
+              <span class="theme-toggle-state" data-theme-label>Light</span>
+            </span>
+            <span class="theme-toggle-track" aria-hidden="true">
+              <span class="theme-toggle-icon">☀</span>
+              <span class="theme-toggle-icon">☾</span>
+              <span class="theme-toggle-thumb"></span>
+            </span>
+          </button>
+        </div>
+      </header>
+
+      <div id="tailscale-flash" class="flash-stack" aria-live="polite"></div>
+
+      <main class="content-grid">
+        <section class="panel panel-wide">
+          <div class="panel-head panel-head-compact">
+            <div class="panel-heading">
+              <h2>Peer 列表</h2>
+              <p>按在线优先排序，显示每台设备的系统、尾网地址、最近写入和 key 到期时间。</p>
+            </div>
+            <span id="tailscale-peer-meta" class="panel-badge panel-badge-muted">-</span>
+          </div>
+          <div id="tailscale-peer-list" class="review-list">
+            <article class="review-item is-skeleton" aria-hidden="true">
+              <div class="review-item-top">
+                <div class="review-item-heading skeleton-stack">
+                  <span class="skeleton-pill"></span>
+                  <span class="skeleton-line skeleton-line-title"></span>
+                </div>
+                <div class="review-item-side skeleton-stack">
+                  <span class="skeleton-line skeleton-line-short"></span>
+                  <span class="skeleton-line skeleton-line-short"></span>
+                </div>
+              </div>
+              <div class="review-item-grid">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head panel-head-compact">
+            <div class="panel-heading">
+              <h2>状态概览</h2>
+              <p>只读取本机 Tailscale LocalAPI，不依赖官方云接口。</p>
+            </div>
+            <span id="tailscale-backend-badge" class="panel-badge panel-badge-muted">-</span>
+          </div>
+          <div id="tailscale-summary" class="metric-grid review-summary-grid">
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head panel-head-compact panel-head-actions">
+            <div class="panel-heading">
+              <h2>本机节点</h2>
+              <p>当前这台树莓派在 tailnet 里的身份、地址和有效期。</p>
+            </div>
+            <div class="tailscale-control-strip">
+              <span id="tailscale-self-badge" class="panel-badge panel-badge-muted">-</span>
+              <button id="tailscale-toggle-button" class="action-button action-button-compact" type="button" disabled>
+                开启 Tailscale
+              </button>
+            </div>
+          </div>
+          <p id="tailscale-self-note" class="panel-note">本机节点摘要会在这里显示。</p>
+          <div id="tailscale-action-status" class="flash-stack" aria-live="polite"></div>
+          <div id="tailscale-self" class="metric-grid tailscale-self-grid">
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
           </div>
         </section>
       </main>
     </div>
     <script src="/static/theme.js" defer></script>
+    <script src="/static/tailscale.js" defer></script>
   </body>
 </html>

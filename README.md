@@ -17,7 +17,7 @@
 - `Jellyfin` 已可登录
 - `qBittorrent` 已可登录
 - `AutoBangumi` 已可登录
-- `Tailscale` 已接入常用设备
+- `Tailscale` 内页已接入本地状态、peer 列表和节点诊断
 - 本地项目可通过 `scripts/sync_to_pi.sh` 同步到树莓派
 - `postprocessor` 已作为常驻服务运行
 - 下载完成后可自动选优、发布到 `Seasonal` 媒体库
@@ -31,6 +31,8 @@
 - `ops-ui` 首页与 `Ops Review` 已补首屏骨架、会话缓存和返回按钮，减轻页面切换时的空白感
 - `Ops Review` 详情页已接入具体动作：`retry parse`、手动发布到 `Seasonal`、删除当前文件
 - `Logs` 页已接入结构化事件日志，可按来源、等级和关键字筛选，并支持手动清理
+- `Tailscale` 内页已接入本地 tailnet 状态、本机节点详情、peer 列表和手动开/关按钮
+- 宿主机 `Tailscale` 已完成一次干净重建，当前处于 `NeedsLogin`，等待重新授权回到 tailnet
 
 当前服务访问地址：
 
@@ -57,6 +59,7 @@
 ├── scripts
 │   ├── bootstrap_pi.sh
 │   ├── install_tailscale_pi.sh
+│   ├── remote_tailscale.sh
 │   ├── remote_up.sh
 │   └── sync_to_pi.sh
 ├── services
@@ -91,7 +94,8 @@
 
 补充：
 
-- `scripts/remote_up.sh` 现在会带 `--build`，确保 `postprocessor` 代码更新后能重建生效。
+- `scripts/remote_up.sh` 现在会优先重建 `postprocessor`，而 `homepage` 走源码挂载和 `--no-build` 更新，避免树莓派侧反复因为 PyPI/DNS 问题卡在重建前端镜像。
+- `scripts/remote_tailscale.sh` 用于从本地直接通过 SSH 控制树莓派宿主机的 `Tailscale`：`start / stop / status / rebuild`。
 - `postprocessor` 现在默认作为常驻服务启动，负责自动监听已完成下载并处理。
 - `deploy/title_mappings.toml` 用来维护发布目录名、季号修正、集号偏移，以及 Jellyfin 用的 `tvshow.nfo`。
 - 不要用 `sudo docker compose run ...` 跑 `postprocessor` 工具命令，否则新建目录和 `nfo` 容易变成 `root:root`。
@@ -99,7 +103,80 @@
 - `ops-ui` 的前端是静态 `HTML + CSS + JS`，后端是 `FastAPI`，运行时通过 `Glances`、`qBittorrent API` 和本地 `Tailscale` socket 汇总状态。
 - `ops-ui` 会把趋势采样数据写到 `${ANIME_APPDATA_ROOT}/ops-ui/history.json`，用于 24 小时折线、Jellyfin 播放流量趋势和 7 日下载柱状图，不会因为容器重启立刻清空。
 - `ops-ui` 会把结构化事件日志写到 `${ANIME_APPDATA_ROOT}/ops-ui/events.json`，默认保留最近 `1500` 条，超出后自动裁剪。
-- `ops-ui` 现在对 `${ANIME_DATA_ROOT}` 具有写权限，仅用于 `Ops Review` 的受控文件动作；主页服务也固定按 `${PUID}:${PGID}` 运行，避免重新引入 `root:root` 文件。
+- `ops-ui` 现在对 `${ANIME_DATA_ROOT}` 具有写权限，仅用于 `Ops Review` 的受控文件动作。
+- 为了调用本地 `Tailscale` LocalAPI 写接口，`homepage` 服务当前以 `root` 运行；`ops-ui` 状态数据仍然只写到 `${ANIME_APPDATA_ROOT}/ops-ui`。
+- `ops-ui` 里的 `Tailscale` 按钮现在走真正的 `start / stop` 语义：
+  - `start` 通过 LocalAPI 打开 backend，并在需要时进入登录态
+  - `stop` 通过 `WantRunning=false` 关闭 tailnet 连接，但不清除当前授权
+- `homepage` 现在额外挂载本地源码目录，当前迭代可以用 `docker compose ... up -d --no-build homepage` 热更新页面逻辑，不必每次都重建镜像。
+
+## Tailscale 状态文件
+
+`/var/lib/tailscale/tailscaled.state` 主要存这些内容：
+
+- 本机 machine key / node key
+- 登录 profile 与节点偏好
+- `WantRunning` 等本地运行状态
+
+如果它正常，这个文件很重要；如果它已经坏到出现 `_machinekey invalid`，那它对运行时就没有继续保留价值了，最多只值得做备份留档。  
+你这台树莓派刚才就是这种情况，所以已经做过一次完整目录级备份与重建。
+
+当前备份目录在树莓派宿主机上：
+
+- `/var/lib/tailscale-backup-20260404-030423`
+
+当前新的状态目录已经是干净的，`tailscaled` 处于：
+
+- `BackendState=NeedsLogin`
+
+这说明：
+
+- 坏掉的 machine key 已经清掉了
+- 宿主机 `tailscaled` 服务已恢复到可重新登录的正常状态
+- 剩下只差一次授权登录
+
+## Tailscale 控制
+
+树莓派宿主机上直接运行：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+./scripts/tailscale_control_pi.sh status
+./scripts/tailscale_control_pi.sh start
+./scripts/tailscale_control_pi.sh stop
+./scripts/tailscale_control_pi.sh login
+```
+
+本地电脑直接远程运行：
+
+```bash
+./scripts/remote_tailscale.sh status
+./scripts/remote_tailscale.sh start
+./scripts/remote_tailscale.sh stop
+./scripts/remote_tailscale.sh rebuild
+```
+
+完整重建宿主机 Tailscale：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+./scripts/tailscale_rebuild_pi.sh
+```
+
+重建后的标准收尾动作：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+./scripts/tailscale_control_pi.sh start
+sudo tailscale login
+```
+
+说明：
+
+- `start` / `stop` 是真正的开关，不是 `logout`
+- `stop` 只会断开 tailnet，不会清掉授权
+- 如果 `start` 后页面或 API 已经给出登录链接，直接打开授权即可；如果没有，再执行一次 `sudo tailscale login`
+- `tailscaled` 本身由宿主机 `systemd` 管理，不依赖 Compose；只要 `sudo systemctl enable --now tailscaled` 生效，它就会随树莓派开机稳定启动
 
 ## 直接在树莓派启动服务
 
@@ -246,8 +323,8 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm po
 
 ## 下一步建议
 
-1. 下一步优先继续补 `Logs` 和 `Tailscale` 内页，把内部工具页做完整。
-2. 然后再加受控的“单服务重启 / 整套重启”动作，不直接暴露原始 Docker 能力。
+1. 下一步先在树莓派宿主机执行一次 `sudo tailscale login`，把当前 `NeedsLogin` 的新状态重新授权回 tailnet。
+2. 然后再补 `Postprocessor` 内页和受控的“单服务重启 / 整套重启”动作。
 3. 转码优化继续暂缓，等实际出现播放转码问题后再针对性处理。
 
 ## 说明

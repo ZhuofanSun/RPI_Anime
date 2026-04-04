@@ -326,6 +326,10 @@ html[data-theme="dark"] .theme-toggle-thumb {
   align-items: flex-start;
 }
 
+.panel-head-actions {
+  align-items: flex-start;
+}
+
 .panel-heading {
   display: flex;
   flex-direction: column;
@@ -365,6 +369,13 @@ html[data-theme="dark"] .theme-toggle-thumb {
 .panel-badge-muted {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   color: var(--muted);
+}
+
+.flash-link {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .panel-note {
@@ -571,6 +582,18 @@ html[data-theme="dark"] .theme-toggle-thumb {
 
 .review-summary-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.tailscale-self-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tailscale-control-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
 }
 
 .review-toolbar {
@@ -790,6 +813,13 @@ html[data-theme="dark"] .theme-toggle-thumb {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+.tailscale-peer-topline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .review-detail-stack {
@@ -1015,6 +1045,12 @@ html[data-theme="dark"] .theme-toggle-thumb {
   transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease, opacity 160ms ease;
 }
 
+.action-button-compact {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 0.92rem;
+}
+
 .action-button:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 18px 32px rgba(21, 94, 117, 0.22);
@@ -1238,6 +1274,70 @@ html[data-theme="dark"] .theme-toggle-thumb {
   overflow-x: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.workspace-link-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.workspace-link-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 156px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel-strong), var(--panel-soft));
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.workspace-link-card::before {
+  content: "";
+  position: absolute;
+  inset: 1px 1px auto;
+  height: 34%;
+  border-radius: inherit;
+  background: linear-gradient(180deg, var(--surface-highlight), transparent);
+  pointer-events: none;
+}
+
+.workspace-link-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+  border-color: color-mix(in srgb, var(--teal) 20%, var(--line));
+}
+
+.workspace-link-anchor,
+.workspace-link-code {
+  display: block;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.workspace-link-anchor:hover {
+  border-color: color-mix(in srgb, var(--teal) 28%, var(--line));
+  color: var(--teal);
+}
+
+.workspace-link-detail {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
 }
 
 .trend-grid {
@@ -1705,7 +1805,15 @@ html[data-theme="dark"] .skeleton-chart::after {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .workspace-link-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .review-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tailscale-self-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1763,7 +1871,15 @@ html[data-theme="dark"] .skeleton-chart::after {
     grid-template-columns: 1fr;
   }
 
+  .workspace-link-grid {
+    grid-template-columns: 1fr;
+  }
+
   .review-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tailscale-self-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1784,6 +1900,10 @@ html[data-theme="dark"] .skeleton-chart::after {
   .panel-head {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .tailscale-control-strip {
+    justify-content: flex-start;
   }
 
   .review-item-top,
