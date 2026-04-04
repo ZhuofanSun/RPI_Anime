@@ -1,4 +1,42 @@
 services:
+  homepage:
+    build:
+      context: ../services/ops_ui
+    container_name: homepage
+    ports:
+      - "${HOMEPAGE_PORT}:3000/tcp"
+    environment:
+      TZ: "${TZ}"
+      ANIME_DATA_ROOT: "${ANIME_DATA_ROOT}"
+      HOMEPAGE_BASE_HOST: "${HOMEPAGE_BASE_HOST}"
+      GLANCES_API_URL: "http://glances:61208/api/4"
+      TAILSCALE_SOCKET: "/var/run/tailscale/tailscaled.sock"
+      JELLYFIN_PORT: "${JELLYFIN_PORT}"
+      QBITTORRENT_WEBUI_PORT: "${QBITTORRENT_WEBUI_PORT}"
+      AUTOBANGUMI_PORT: "${AUTOBANGUMI_PORT}"
+      GLANCES_PORT: "${GLANCES_PORT}"
+      QBITTORRENT_API_URL: "${QBITTORRENT_API_URL}"
+      QBITTORRENT_USERNAME: "${QBITTORRENT_USERNAME}"
+      QBITTORRENT_PASSWORD: "${QBITTORRENT_PASSWORD}"
+      POSTPROCESSOR_CATEGORY: "${POSTPROCESSOR_CATEGORY}"
+    volumes:
+      - "${ANIME_DATA_ROOT}:/srv/anime-data:ro"
+      - "/var/run/tailscale:/var/run/tailscale:ro"
+    restart: unless-stopped
+
+  glances:
+    image: nicolargo/glances:latest-full
+    container_name: glances
+    pid: host
+    ports:
+      - "${GLANCES_PORT}:61208/tcp"
+    environment:
+      TZ: "${TZ}"
+      GLANCES_OPT: "-w"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    restart: unless-stopped
+
   jellyfin:
     image: ghcr.io/jellyfin/jellyfin:latest
     container_name: jellyfin

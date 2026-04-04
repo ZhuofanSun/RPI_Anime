@@ -24,12 +24,15 @@
 - 发布时会自动生成 `tvshow.nfo` 和分集同名 `.nfo`
 - 当前已接入番名映射表和等待窗口策略
 - `AniDB` 已在 Jellyfin 中加载，并已手动调整 metadata provider 优先级
+- 阶段一运维首页已切到自定义 `ops-ui + Glances`
 
 当前服务访问地址：
 
+- `Ops UI`: `http://sunzhuofan.local:3000`
 - `Jellyfin`: `http://sunzhuofan.local:8096`
 - `qBittorrent`: `http://sunzhuofan.local:8080`
 - `AutoBangumi`: `http://sunzhuofan.local:7892`
+- `Glances`: `http://sunzhuofan.local:61208`
 
 说明：
 
@@ -51,6 +54,7 @@
 │   ├── remote_up.sh
 │   └── sync_to_pi.sh
 ├── services
+│   ├── ops_ui
 │   └── postprocessor
 └── 树莓派私人影音库方案.md
 ```
@@ -85,6 +89,8 @@
 - `postprocessor` 现在默认作为常驻服务启动，负责自动监听已完成下载并处理。
 - `deploy/title_mappings.toml` 用来维护发布目录名、季号修正、集号偏移，以及 Jellyfin 用的 `tvshow.nfo`。
 - 不要用 `sudo docker compose run ...` 跑 `postprocessor` 工具命令，否则新建目录和 `nfo` 容易变成 `root:root`。
+- `3000` 端口现在跑的是自定义 `ops-ui`，不是第三方 Homepage 镜像。
+- `ops-ui` 的前端是静态 `HTML + CSS + JS`，后端是 `FastAPI`，运行时通过 `Glances`、`qBittorrent API` 和本地 `Tailscale` socket 汇总状态。
 
 ## 直接在树莓派启动服务
 
@@ -231,8 +237,8 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm po
 
 ## 下一步建议
 
-1. 下一阶段优先做运维首页，方案见 [运维首页计划.md](/Users/sunzhuofan/RPI_Anime/运维首页计划.md)。
-2. 先落地 `Homepage`，把 `Jellyfin`、`qBittorrent`、`AutoBangumi`、`Tailscale` 本地状态和项目入口集中到一个页面。
+1. 下一阶段继续做运维首页，方案见 [运维首页计划.md](/Users/sunzhuofan/RPI_Anime/运维首页计划.md)。
+2. 当前阶段一已经是自定义 `ops-ui`，先把服务入口、系统状态、下载链路和 `Tailscale` 本地状态稳定下来。
 3. 后续再单独补 `ops-review`，把 `manual_review` 的可视化和处理网页化。
 4. 转码优化先暂缓，等实际出现播放转码问题后再针对性处理。
 

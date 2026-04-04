@@ -1,0 +1,71 @@
+- 播放与媒体:
+    - Jellyfin:
+        icon: jellyfin.png
+        href: "http://{{HOMEPAGE_VAR_BASE_HOST}}:{{HOMEPAGE_VAR_JELLYFIN_PORT}}"
+        description: 私人影音库与播放入口
+        server: my-docker
+        container: jellyfin
+        showStats: true
+
+- 下载与订阅:
+    - qBittorrent:
+        icon: qbittorrent.png
+        href: "http://{{HOMEPAGE_VAR_BASE_HOST}}:{{HOMEPAGE_VAR_QBITTORRENT_PORT}}"
+        description: 下载、做种与分类
+        server: my-docker
+        container: qbittorrent
+        showStats: true
+        widgets:
+          - type: qbittorrent
+            url: "http://qbittorrent:8080"
+            username: "{{HOMEPAGE_VAR_QBITTORRENT_USERNAME}}"
+            password: "{{HOMEPAGE_VAR_QBITTORRENT_PASSWORD}}"
+            enableLeechProgress: true
+            enableLeechSize: true
+
+    - AutoBangumi:
+        icon: mdi-rss-box
+        href: "http://{{HOMEPAGE_VAR_BASE_HOST}}:{{HOMEPAGE_VAR_AUTOBANGUMI_PORT}}"
+        description: RSS 订阅与下载规则
+        server: my-docker
+        container: autobangumi
+        showStats: true
+
+    - Postprocessor:
+        icon: mdi-file-cog-outline
+        description: 自动选优、入库与 NFO 生成
+        server: my-docker
+        container: anime-postprocessor
+        showStats: true
+
+- 运维与网络:
+    - Homepage:
+        icon: mdi-view-dashboard-outline
+        href: "http://{{HOMEPAGE_VAR_BASE_HOST}}:{{HOMEPAGE_VAR_HOMEPAGE_PORT}}"
+        description: 统一入口页
+        server: my-docker
+        container: homepage
+        showStats: true
+
+    - Glances:
+        icon: glances.png
+        href: "http://{{HOMEPAGE_VAR_BASE_HOST}}:{{HOMEPAGE_VAR_GLANCES_PORT}}"
+        description: 树莓派主机监控
+        server: my-docker
+        container: glances
+        showStats: true
+        widgets:
+          - type: glances
+            url: "http://glances:61208"
+            version: 4
+            metric: cpu
+            refreshInterval: 5000
+            pointsLimit: 20
+
+    - Tailscale:
+        icon: tailscale.png
+        description: 本地状态在阶段二接入
+
+    - 人工审核:
+        icon: mdi-clipboard-alert-outline
+        description: ops-review 在阶段二接入

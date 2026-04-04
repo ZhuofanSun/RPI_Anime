@@ -1,0 +1,36 @@
+title: RPI Anime Ops
+description: Raspberry Pi anime library dashboard
+language: zh-Hans
+theme: dark
+color: slate
+iconStyle: theme
+headerStyle: boxedWidgets
+statusStyle: dot
+target: _self
+fullWidth: true
+useEqualHeights: true
+disableCollapse: true
+hideVersion: true
+disableUpdateCheck: true
+
+quicklaunch:
+  provider: duckduckgo
+  searchDescriptions: true
+  mobileButtonPosition: bottom-right
+
+layout:
+  播放与媒体:
+    tab: 媒体
+    style: row
+    columns: 1
+    icon: mdi-play-box-multiple-outline
+  下载与订阅:
+    tab: 媒体
+    style: row
+    columns: 3
+    icon: mdi-download-network-outline
+  运维与网络:
+    tab: 运维
+    style: row
+    columns: 4
+    icon: mdi-monitor-dashboard
