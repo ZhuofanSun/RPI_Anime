@@ -231,10 +231,10 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm po
 
 ## 下一步建议
 
-1. 先重下一两部有问题的番，观察 `AniDB + 本地 nfo` 下的季度、集号和封面是否稳定。
-2. 把现有 `root:root` 的库目录和 `nfo` 统一修回 `sunzhuofan:sunzhuofan`，避免 Jellyfin 删除本地文件时报权限不足。
-3. 继续只对少量识别不准的番补 `deploy/title_mappings.toml`，不要做全量手工维护。
-4. 如果封面仍然不稳，再补“本地海报/封面缓存”这一步，而不是继续增加标题规则复杂度。
+1. 下一阶段优先做运维首页，方案见 [运维首页计划.md](/Users/sunzhuofan/RPI_Anime/运维首页计划.md)。
+2. 先落地 `Homepage`，把 `Jellyfin`、`qBittorrent`、`AutoBangumi`、`Tailscale` 本地状态和项目入口集中到一个页面。
+3. 后续再单独补 `ops-review`，把 `manual_review` 的可视化和处理网页化。
+4. 转码优化先暂缓，等实际出现播放转码问题后再针对性处理。
 
 ## 说明
 
