@@ -1117,6 +1117,48 @@ html[data-theme="dark"] .theme-toggle-thumb {
   gap: 14px;
 }
 
+.post-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.post-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.post-candidate-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.post-candidate-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.post-candidate-chip strong {
+  color: var(--ink);
+}
+
+.post-candidate-chip-complete {
+  border-color: color-mix(in srgb, #16a34a 24%, var(--line));
+  background: color-mix(in srgb, #16a34a 10%, transparent);
+}
+
 .log-entry {
   position: relative;
   display: flex;

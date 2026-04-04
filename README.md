@@ -32,7 +32,8 @@
 - `Ops Review` 详情页已接入具体动作：`retry parse`、手动发布到 `Seasonal`、删除当前文件
 - `Logs` 页已接入结构化事件日志，可按来源、等级和关键字筛选，并支持手动清理
 - `Tailscale` 内页已接入本地 tailnet 状态、本机节点详情、peer 列表和手动开/关按钮
-- 宿主机 `Tailscale` 已完成一次干净重建，当前处于 `NeedsLogin`，等待重新授权回到 tailnet
+- `Postprocessor` 内页已接入运行概览、等待窗口快照、最近事件和手动命令入口
+- 宿主机 `Tailscale` 已完成干净重建并重新授权，当前已回到 `Running` 在线状态
 
 当前服务访问地址：
 
@@ -125,15 +126,15 @@
 
 - `/var/lib/tailscale-backup-20260404-030423`
 
-当前新的状态目录已经是干净的，`tailscaled` 处于：
+当前新的状态目录已经是干净的，宿主机 `tailscaled` 已经重新登录并回到：
 
-- `BackendState=NeedsLogin`
+- `BackendState=Running`
 
 这说明：
 
 - 坏掉的 machine key 已经清掉了
 - 宿主机 `tailscaled` 服务已恢复到可重新登录的正常状态
-- 剩下只差一次授权登录
+- 当前 tailnet 已恢复，可通过新的 Tailscale IP 和 MagicDNS 访问
 
 ## Tailscale 控制
 
@@ -323,8 +324,8 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm po
 
 ## 下一步建议
 
-1. 下一步先在树莓派宿主机执行一次 `sudo tailscale login`，把当前 `NeedsLogin` 的新状态重新授权回 tailnet。
-2. 然后再补 `Postprocessor` 内页和受控的“单服务重启 / 整套重启”动作。
+1. 下一步先补 `Postprocessor` 内页和受控的“单服务重启 / 整套重启”动作。
+2. 然后再考虑宿主机异常退出、断电和状态备份的兜底措施。
 3. 转码优化继续暂缓，等实际出现播放转码问题后再针对性处理。
 
 ## 说明
