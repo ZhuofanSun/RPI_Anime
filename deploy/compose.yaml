@@ -13,6 +13,7 @@ services:
       HOMEPAGE_BASE_HOST: "${HOMEPAGE_BASE_HOST}"
       GLANCES_API_URL: "http://glances:61208/api/4"
       TAILSCALE_SOCKET: "/var/run/tailscale/tailscaled.sock"
+      DOCKER_SOCKET: "/var/run/docker.sock"
       JELLYFIN_PORT: "${JELLYFIN_PORT}"
       QBITTORRENT_WEBUI_PORT: "${QBITTORRENT_WEBUI_PORT}"
       AUTOBANGUMI_PORT: "${AUTOBANGUMI_PORT}"
@@ -30,9 +31,15 @@ services:
       - "${ANIME_DATA_ROOT}:/srv/anime-data"
       - "${ANIME_APPDATA_ROOT}/ops-ui:/data"
       - "/var/run/tailscale:/var/run/tailscale:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock"
       - "../services/ops_ui/src:/app/services/ops_ui/src:ro"
       - "../services/postprocessor/src:/app/services/postprocessor/src:ro"
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   glances:
     image: nicolargo/glances:latest-full
@@ -46,6 +53,11 @@ services:
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   jellyfin:
     image: ghcr.io/jellyfin/jellyfin:latest
@@ -63,6 +75,11 @@ services:
       - "${ANIME_DATA_ROOT}/library/seasonal:/media/seasonal"
       - "${ANIME_COLLECTION_ROOT}:/media/collection:ro"
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
@@ -82,6 +99,11 @@ services:
       - "${ANIME_DATA_ROOT}/downloads:/downloads"
       - "${ANIME_DATA_ROOT}/library/seasonal:/library/seasonal"
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   autobangumi:
     image: ghcr.io/estrellaxd/auto_bangumi:latest
@@ -99,6 +121,11 @@ services:
       - "${ANIME_DATA_ROOT}/downloads:/downloads"
       - "${ANIME_DATA_ROOT}/library/seasonal:/library/seasonal"
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     dns:
       - 8.8.8.8
 
@@ -127,3 +154,8 @@ services:
     entrypoint: ["python", "-u", "-m", "anime_postprocessor.main"]
     command: ["watch"]
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

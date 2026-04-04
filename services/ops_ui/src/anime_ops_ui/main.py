@@ -52,6 +52,10 @@ class TailscaleActionRequest(BaseModel):
     action: str = Field(..., pattern="^(start|stop)$")
 
 
+class ServiceRestartRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=64)
+
+
 def _env(name: str, default: str) -> str:
     return os.environ.get(name, default)
 
@@ -433,8 +437,8 @@ async def _history_sampler_loop() -> None:
 
 
 class UnixHTTPConnection(http.client.HTTPConnection):
-    def __init__(self, unix_socket_path: str, timeout: int) -> None:
-        super().__init__("local-tailscaled.sock", timeout=timeout)
+    def __init__(self, unix_socket_path: str, timeout: int, host: str = "local-unix-socket") -> None:
+        super().__init__(host, timeout=timeout)
         self.unix_socket_path = unix_socket_path
 
     def connect(self) -> None:
@@ -443,22 +447,26 @@ class UnixHTTPConnection(http.client.HTTPConnection):
         self.sock.connect(self.unix_socket_path)
 
 
-def _tailscale_localapi_request(
+def _unix_socket_request(
     socket_path: str,
+    *,
+    host: str,
     method: str,
     path: str,
-    *,
     body: dict[str, Any] | None = None,
     timeout: int = 5,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     try:
-        connection = UnixHTTPConnection(socket_path, timeout=5)
+        connection = UnixHTTPConnection(socket_path, timeout=timeout, host=host)
         payload = json.dumps(body).encode("utf-8") if body is not None else None
-        headers = {"Host": "local-tailscaled.sock", "Sec-Tailscale": "localapi"}
+        request_headers = {"Host": host}
+        if headers:
+            request_headers.update(headers)
         if payload is not None:
-            headers["Content-Type"] = "application/json"
-            headers["Content-Length"] = str(len(payload))
-        connection.request(method, path, body=payload, headers=headers)
+            request_headers["Content-Type"] = "application/json"
+            request_headers["Content-Length"] = str(len(payload))
+        connection.request(method, path, body=payload, headers=request_headers)
         response = connection.getresponse()
         body = response.read()
         connection.close()
@@ -477,6 +485,25 @@ def _tailscale_localapi_request(
         }
     except Exception as exc:
         raise RuntimeError(str(exc)) from exc
+
+
+def _tailscale_localapi_request(
+    socket_path: str,
+    method: str,
+    path: str,
+    *,
+    body: dict[str, Any] | None = None,
+    timeout: int = 5,
+) -> dict[str, Any]:
+    return _unix_socket_request(
+        socket_path,
+        host="local-tailscaled.sock",
+        method=method,
+        path=path,
+        body=body,
+        timeout=timeout,
+        headers={"Sec-Tailscale": "localapi"},
+    )
 
 
 def _tailscale_status(socket_path: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -514,6 +541,85 @@ def _tailscale_patch_prefs(socket_path: str, masked_prefs: dict[str, Any]) -> di
     if not isinstance(data, dict):
         raise RuntimeError("tailscale prefs patch did not return JSON")
     return data
+
+
+def _docker_socket_path() -> str:
+    return _env("DOCKER_SOCKET", "/var/run/docker.sock")
+
+
+def _docker_api_version() -> str:
+    return _env("DOCKER_API_VERSION", "v1.43").lstrip("/")
+
+
+def _docker_api_request(
+    method: str,
+    path: str,
+    *,
+    body: dict[str, Any] | None = None,
+    timeout: int = 10,
+) -> dict[str, Any]:
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    return _unix_socket_request(
+        _docker_socket_path(),
+        host="docker.sock",
+        method=method,
+        path=f"/{_docker_api_version()}{normalized_path}",
+        body=body,
+        timeout=timeout,
+    )
+
+
+def _docker_restart_container(container_name: str, *, timeout_seconds: int = 10) -> None:
+    response = _docker_api_request(
+        "POST",
+        f"/containers/{container_name}/restart?t={timeout_seconds}",
+        timeout=timeout_seconds + 5,
+    )
+    if int(response.get("status", 500)) not in {204}:
+        raise RuntimeError(
+            response.get("text") or f"docker restart failed for {container_name}: {response.get('status')} {response.get('reason')}"
+        )
+
+
+def _service_restart_specs() -> dict[str, dict[str, Any]]:
+    return {
+        "jellyfin": {"kind": "container", "container_name": "jellyfin", "label": "Jellyfin"},
+        "qbittorrent": {"kind": "container", "container_name": "qbittorrent", "label": "qBittorrent"},
+        "autobangumi": {"kind": "container", "container_name": "autobangumi", "label": "AutoBangumi"},
+        "glances": {"kind": "container", "container_name": "glances", "label": "Glances"},
+        "postprocessor": {"kind": "container", "container_name": "anime-postprocessor", "label": "Postprocessor"},
+        "homepage": {"kind": "container", "container_name": "homepage", "label": "Ops UI"},
+        "tailscale": {"kind": "tailscale", "label": "Tailscale"},
+    }
+
+
+def _stack_restart_targets() -> list[str]:
+    return ["jellyfin", "qbittorrent", "autobangumi", "glances", "postprocessor", "homepage"]
+
+
+def _append_service_control_event(
+    *,
+    level: str,
+    action: str,
+    message: str,
+    target: str,
+    details: dict[str, Any] | None = None,
+) -> None:
+    payload = {"target": target}
+    if details:
+        payload.update(details)
+    append_event(
+        source="service-control",
+        level=level,
+        action=action,
+        message=message,
+        details=payload,
+    )
+
+
+def _run_background(name: str, callback: Any) -> None:
+    thread = threading.Thread(target=callback, name=name, daemon=True)
+    thread.start()
 
 
 def _qb_snapshot() -> tuple[dict[str, Any] | None, str | None]:
@@ -597,38 +703,51 @@ def _build_services(
 
     return [
         {
+            "id": "jellyfin",
             "name": "Jellyfin",
             "href": _service_link(base_host, int(_env("JELLYFIN_PORT", "8096"))),
             "description": "私人影音库与播放入口",
             "status": containers.get("jellyfin", {}).get("status", "unknown"),
             "meta": "Media server",
             "uptime": container_uptime("jellyfin"),
+            "restart_target": "jellyfin",
+            "restart_label": "Restart",
         },
         {
+            "id": "qbittorrent",
             "name": "qBittorrent",
             "href": _service_link(base_host, int(_env("QBITTORRENT_WEBUI_PORT", "8080"))),
             "description": "下载、任务队列和分类",
             "status": containers.get("qbittorrent", {}).get("status", "unknown"),
             "meta": "Download client",
             "uptime": container_uptime("qbittorrent"),
+            "restart_target": "qbittorrent",
+            "restart_label": "Restart",
         },
         {
+            "id": "autobangumi",
             "name": "AutoBangumi",
             "href": _service_link(base_host, int(_env("AUTOBANGUMI_PORT", "7892"))),
             "description": "RSS 订阅、规则和自动投递",
             "status": containers.get("autobangumi", {}).get("status", "unknown"),
             "meta": "Subscription",
             "uptime": container_uptime("autobangumi"),
+            "restart_target": "autobangumi",
+            "restart_label": "Restart",
         },
         {
+            "id": "glances",
             "name": "Glances",
             "href": _service_link(base_host, int(_env("GLANCES_PORT", "61208"))),
             "description": "更细的系统、容器和进程监控页",
             "status": containers.get("glances", {}).get("status", "unknown"),
             "meta": "System monitor",
             "uptime": container_uptime("glances"),
+            "restart_target": "glances",
+            "restart_label": "Restart",
         },
         {
+            "id": "postprocessor",
             "name": "Postprocessor",
             "href": f"{ops_ui_base}/postprocessor",
             "description": "下载完成后的选优、发布和 NFO 生成",
@@ -636,8 +755,11 @@ def _build_services(
             "meta": "Background worker",
             "uptime": container_uptime("anime-postprocessor"),
             "internal": True,
+            "restart_target": "postprocessor",
+            "restart_label": "Restart",
         },
         {
+            "id": "ops-review",
             "name": "Ops Review",
             "href": f"{ops_ui_base}/ops-review",
             "description": "人工审核队列、详情页和受控文件动作",
@@ -645,8 +767,13 @@ def _build_services(
             "meta": f"{manual_review_count} files",
             "uptime": "Review workspace",
             "internal": True,
+            "restart_target": "homepage",
+            "restart_label": "Restart UI",
+            "restart_requires_reload": True,
+            "restart_name": "Ops UI",
         },
         {
+            "id": "logs",
             "name": "Logs",
             "href": f"{ops_ui_base}/logs",
             "description": "结构化事件日志、来源筛选、等级着色与清理",
@@ -654,8 +781,13 @@ def _build_services(
             "meta": f"{log_count} events",
             "uptime": f"cap {event_log_cap()}",
             "internal": True,
+            "restart_target": "homepage",
+            "restart_label": "Restart UI",
+            "restart_requires_reload": True,
+            "restart_name": "Ops UI",
         },
         {
+            "id": "tailscale",
             "name": "Tailscale",
             "href": f"{ops_ui_base}/tailscale",
             "description": "本地 tailnet 状态与远程访问链路",
@@ -663,6 +795,8 @@ def _build_services(
             "meta": _tailscale_ip_pair(tailscale_self.get("TailscaleIPs") if tailscale_self else None)[0],
             "uptime": _strip_trailing_dot(tailscale_self.get("DNSName")) if tailscale_self else None,
             "internal": True,
+            "restart_target": "tailscale",
+            "restart_label": "Restart",
         },
     ]
 
@@ -1595,6 +1729,142 @@ def _tailscale_stop_action(socket_path: str) -> dict[str, Any]:
     }
 
 
+def _tailscale_restart_action(socket_path: str) -> dict[str, Any]:
+    _tailscale_stop_action(socket_path)
+    time.sleep(1)
+    return _tailscale_start_action(socket_path)
+
+
+def _restart_service_now(target: str) -> dict[str, Any]:
+    specs = _service_restart_specs()
+    spec = specs.get(target)
+    if not spec:
+        raise HTTPException(status_code=404, detail=f"unknown restart target: {target}")
+
+    label = str(spec["label"])
+    kind = str(spec["kind"])
+    if kind == "tailscale":
+        result = _tailscale_restart_action(_env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock"))
+        return {
+            "ok": True,
+            "target": target,
+            "label": label,
+            "message": result.get("message") or f"{label} 已重启。",
+            "auth_url": result.get("auth_url"),
+        }
+
+    container_name = str(spec["container_name"])
+    _docker_restart_container(container_name)
+    return {
+        "ok": True,
+        "target": target,
+        "label": label,
+        "message": f"{label} 已发送重启指令。",
+    }
+
+
+def _schedule_homepage_restart(target: str = "homepage") -> dict[str, Any]:
+    spec = _service_restart_specs()["homepage"]
+    label = str(spec["label"])
+    container_name = str(spec["container_name"])
+
+    def runner() -> None:
+        time.sleep(1.2)
+        try:
+            _append_service_control_event(
+                level="warning",
+                action="restart-service",
+                message=f"Restarting {label} container",
+                target=target,
+                details={"container": container_name},
+            )
+            _docker_restart_container(container_name)
+        except Exception as exc:
+            _append_service_control_event(
+                level="error",
+                action="restart-service",
+                message=f"Failed to restart {label}",
+                target=target,
+                details={"container": container_name, "error": str(exc)},
+            )
+
+    _run_background("restart-homepage", runner)
+    return {
+        "ok": True,
+        "scheduled": True,
+        "target": target,
+        "label": label,
+        "reload_after_seconds": 6,
+        "message": "已安排 Ops UI 重启，当前页面会短暂断开并自动恢复。",
+    }
+
+
+def _schedule_stack_restart() -> dict[str, Any]:
+    targets = _stack_restart_targets()
+    specs = _service_restart_specs()
+
+    def runner() -> None:
+        for target in targets[:-1]:
+            spec = specs[target]
+            label = str(spec["label"])
+            container_name = str(spec["container_name"])
+            try:
+                _append_service_control_event(
+                    level="warning",
+                    action="restart-stack",
+                    message=f"Restarting {label}",
+                    target=target,
+                    details={"container": container_name},
+                )
+                _docker_restart_container(container_name)
+                _append_service_control_event(
+                    level="success",
+                    action="restart-stack",
+                    message=f"Restarted {label}",
+                    target=target,
+                    details={"container": container_name},
+                )
+            except Exception as exc:
+                _append_service_control_event(
+                    level="error",
+                    action="restart-stack",
+                    message=f"Failed to restart {label}",
+                    target=target,
+                    details={"container": container_name, "error": str(exc)},
+                )
+            time.sleep(0.8)
+
+        homepage_spec = specs["homepage"]
+        homepage_name = str(homepage_spec["container_name"])
+        _append_service_control_event(
+            level="warning",
+            action="restart-stack",
+            message="Restarting Ops UI as the final stack step",
+            target="homepage",
+            details={"container": homepage_name},
+        )
+        time.sleep(1.0)
+        try:
+            _docker_restart_container(homepage_name)
+        except Exception as exc:
+            _append_service_control_event(
+                level="error",
+                action="restart-stack",
+                message="Failed to restart Ops UI at the final stack step",
+                target="homepage",
+                details={"container": homepage_name, "error": str(exc)},
+            )
+
+    _run_background("restart-compose-stack", runner)
+    return {
+        "ok": True,
+        "scheduled": True,
+        "targets": targets,
+        "reload_after_seconds": 8,
+        "message": "已安排整套服务重启，不包含 Tailscale；Ops UI 会在最后重启。",
+    }
+
+
 def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
     review_root = _manual_review_root()
     items = _manual_review_items(review_root)
@@ -1909,6 +2179,10 @@ def build_overview() -> dict[str, Any]:
         "queue_cards": queue_cards,
         "trend_cards": trend_cards,
         "network_cards": network_cards,
+        "stack_control": {
+            "label": "Restart Stack",
+            "detail": "compose only · homepage last",
+        },
         "generated_from": {
             "glances": glances_base,
             "tailscale_socket": tailscale_socket,
@@ -2032,6 +2306,57 @@ def tailscale_action_api(payload: TailscaleActionRequest) -> JSONResponse:
             },
         )
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/services/restart")
+def restart_service_api(payload: ServiceRestartRequest) -> JSONResponse:
+    target = payload.target.strip().lower()
+    specs = _service_restart_specs()
+    if target not in specs:
+        raise HTTPException(status_code=404, detail=f"unknown restart target: {target}")
+
+    if target == "homepage":
+        _append_service_control_event(
+            level="warning",
+            action="restart-service",
+            message="Scheduled Ops UI restart from dashboard",
+            target=target,
+        )
+        return JSONResponse(_schedule_homepage_restart(target=target))
+
+    try:
+        result = _restart_service_now(target)
+        _append_service_control_event(
+            level="success",
+            action="restart-service",
+            message=f"Restarted {result['label']}",
+            target=target,
+            details={"auth_url": result.get("auth_url")},
+        )
+        return JSONResponse(result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _append_service_control_event(
+            level="error",
+            action="restart-service",
+            message=f"Failed to restart {specs[target]['label']}",
+            target=target,
+            details={"error": str(exc)},
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/services/restart-all")
+def restart_all_services_api() -> JSONResponse:
+    _append_service_control_event(
+        level="warning",
+        action="restart-stack",
+        message="Scheduled compose stack restart from dashboard",
+        target="stack",
+        details={"targets": _stack_restart_targets()},
+    )
+    return JSONResponse(_schedule_stack_restart())
 
 
 @app.post("/api/logs/clear")

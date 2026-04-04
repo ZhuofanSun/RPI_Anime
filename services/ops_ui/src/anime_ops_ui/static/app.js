@@ -9,11 +9,15 @@ const pageSubtitle = document.getElementById("page-subtitle");
 const hostName = document.getElementById("host-name");
 const lastUpdated = document.getElementById("last-updated");
 const refreshIntervalLabel = document.getElementById("refresh-interval");
+const servicePanelFeedback = document.getElementById("service-panel-feedback");
+const restartStackButton = document.getElementById("restart-stack-button");
+const restartStackDetail = document.getElementById("restart-stack-detail");
 const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v1";
 
 let refreshIntervalMs = 8000;
 let refreshInFlight = false;
 let refreshTimerId = null;
+let feedbackTimerId = null;
 
 function serviceInitials(name) {
   return name
@@ -22,6 +26,28 @@ function serviceInitials(name) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function resolveServiceHref(service) {
+  if (!service?.href) {
+    return "#";
+  }
+
+  try {
+    const currentUrl = new URL(window.location.href);
+    const targetUrl = new URL(service.href, currentUrl);
+
+    if (service.internal) {
+      return `${currentUrl.origin}${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+    }
+
+    targetUrl.protocol = currentUrl.protocol;
+    targetUrl.hostname = currentUrl.hostname;
+    targetUrl.port = targetUrl.port || currentUrl.port;
+    return targetUrl.toString();
+  } catch {
+    return service.href;
+  }
 }
 
 function statusClass(status) {
@@ -37,6 +63,50 @@ function statusLabel(status) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+function showServiceFeedback(kind, message) {
+  if (!servicePanelFeedback) return;
+  if (feedbackTimerId) {
+    window.clearTimeout(feedbackTimerId);
+  }
+  servicePanelFeedback.textContent = message;
+  servicePanelFeedback.className = `inline-feedback inline-feedback-${kind || "info"}`;
+  feedbackTimerId = window.setTimeout(() => {
+    servicePanelFeedback.className = "inline-feedback is-hidden";
+    servicePanelFeedback.textContent = "";
+  }, 6000);
+}
+
+function setButtonBusy(button, busy, busyLabel = "Working…") {
+  if (!button) return;
+  if (busy) {
+    button.dataset.originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = busyLabel;
+    return;
+  }
+  button.disabled = false;
+  if (button.dataset.originalLabel) {
+    button.textContent = button.dataset.originalLabel;
+    delete button.dataset.originalLabel;
+  }
+}
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {}
+  if (!response.ok) {
+    throw new Error(payload?.detail || payload?.message || `HTTP ${response.status}`);
+  }
+  return payload || {};
+}
+
 function metricTemplate(card) {
   return `
     <article class="metric-card">
@@ -48,9 +118,23 @@ function metricTemplate(card) {
 }
 
 function serviceTemplate(service) {
-  const href = service.href || "#";
+  const href = resolveServiceHref(service);
   const disabled = service.href ? "" : "disabled";
   const internal = Boolean(service.internal);
+  const restartTarget = service.restart_target || "";
+  const restartButton = restartTarget
+    ? `
+        <button
+          class="action-button action-button-compact action-button-secondary service-restart-button"
+          type="button"
+          data-service-restart="${restartTarget}"
+          data-service-name="${service.restart_name || service.name}"
+          data-service-reload="${service.restart_requires_reload ? "true" : "false"}"
+        >
+          ${service.restart_label || "Restart"}
+        </button>
+      `
+    : "";
   const linkAttrs = service.href
     ? internal
       ? ""
@@ -77,6 +161,7 @@ function serviceTemplate(service) {
         <a class="service-link ${disabled}" href="${href}" ${linkAttrs}>
           ${service.href ? (internal ? "Open Workspace" : "Open Service") : "Coming Next"}
         </a>
+        ${restartButton}
       </div>
     </article>
   `;
@@ -211,10 +296,13 @@ function formatUpdatedLabel(cachedAt) {
 function renderOverview(data, { cachedAt } = {}) {
   pageTitle.textContent = data.title;
   pageSubtitle.textContent = data.subtitle;
-  hostName.textContent = data.host;
+  hostName.textContent = window.location.host || data.host;
   lastUpdated.textContent = formatUpdatedLabel(cachedAt);
   refreshIntervalMs = (data.refresh_interval_seconds || 8) * 1000;
   refreshIntervalLabel.textContent = `Auto · ${Math.round(refreshIntervalMs / 1000)}s`;
+  if (restartStackDetail && data.stack_control?.detail) {
+    restartStackDetail.textContent = data.stack_control.detail;
+  }
 
   servicesGrid.innerHTML = data.services.map(serviceTemplate).join("");
   trendGrid.innerHTML = data.trend_cards.map(trendTemplate).join("");
@@ -222,6 +310,61 @@ function renderOverview(data, { cachedAt } = {}) {
   queueCards.innerHTML = data.queue_cards.map(metricTemplate).join("");
   networkCards.innerHTML = data.network_cards.map(metricTemplate).join("");
   diagnostics.innerHTML = diagnosticsTemplate(data.diagnostics || []);
+}
+
+async function handleServiceRestart(button) {
+  const target = button.dataset.serviceRestart;
+  const name = button.dataset.serviceName || target;
+  const requiresReload = button.dataset.serviceReload === "true";
+  const confirmMessage = requiresReload
+    ? `将重启 ${name}，当前页面会短暂断开。继续吗？`
+    : `将重启 ${name}。继续吗？`;
+  if (!window.confirm(confirmMessage)) {
+    return;
+  }
+
+  try {
+    setButtonBusy(button, true, "Restarting…");
+    const payload = await postJson("/api/services/restart", { target });
+    showServiceFeedback("success", payload.message || `${name} 重启指令已发送。`);
+    const reloadAfterSeconds = Number(payload.reload_after_seconds || 0);
+    if (reloadAfterSeconds > 0 || requiresReload) {
+      window.setTimeout(() => {
+        window.location.reload();
+      }, Math.max(reloadAfterSeconds, 5) * 1000);
+      return;
+    }
+    window.setTimeout(() => {
+      refreshOverview();
+    }, 1600);
+  } catch (error) {
+    showServiceFeedback("error", error.message || `${name} 重启失败。`);
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+async function handleRestartStack() {
+  if (!restartStackButton) return;
+  const confirmMessage =
+    "将依次重启 Jellyfin、qBittorrent、AutoBangumi、Glances、Postprocessor 和 Ops UI，不包含 Tailscale。继续吗？";
+  if (!window.confirm(confirmMessage)) {
+    return;
+  }
+
+  try {
+    setButtonBusy(restartStackButton, true, "Restarting…");
+    const payload = await postJson("/api/services/restart-all");
+    showServiceFeedback("warning", payload.message || "整套服务重启已安排。");
+    const reloadAfterSeconds = Number(payload.reload_after_seconds || 8);
+    window.setTimeout(() => {
+      window.location.reload();
+    }, Math.max(reloadAfterSeconds, 6) * 1000);
+  } catch (error) {
+    showServiceFeedback("error", error.message || "整套服务重启失败。");
+  } finally {
+    setButtonBusy(restartStackButton, false);
+  }
 }
 
 function scheduleRefresh() {
@@ -261,5 +404,17 @@ const cachedOverview = loadOverviewCache();
 if (cachedOverview) {
   renderOverview(cachedOverview.data, { cachedAt: cachedOverview.cachedAt });
 }
+
+servicesGrid?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-service-restart]");
+  if (!button) return;
+  event.preventDefault();
+  handleServiceRestart(button);
+});
+
+restartStackButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  handleRestartStack();
+});
 
 refreshOverview();

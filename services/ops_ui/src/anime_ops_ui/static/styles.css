@@ -327,7 +327,51 @@ html[data-theme="dark"] .theme-toggle-thumb {
 }
 
 .panel-head-actions {
-  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.panel-action-hint {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.inline-feedback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--muted);
+}
+
+.inline-feedback.is-hidden {
+  display: none;
+}
+
+.inline-feedback-success {
+  border-color: color-mix(in srgb, var(--teal) 38%, var(--line));
+  background: color-mix(in srgb, var(--teal) 11%, transparent);
+  color: var(--teal);
+}
+
+.inline-feedback-warning {
+  border-color: color-mix(in srgb, #d97706 38%, var(--line));
+  background: color-mix(in srgb, #d97706 10%, transparent);
+  color: #d97706;
+}
+
+.inline-feedback-error {
+  border-color: color-mix(in srgb, var(--rose) 42%, var(--line));
+  background: color-mix(in srgb, var(--rose) 11%, transparent);
+  color: var(--rose);
 }
 
 .panel-heading {
@@ -538,6 +582,9 @@ html[data-theme="dark"] .theme-toggle-thumb {
 }
 
 .service-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin-top: auto;
 }
 
@@ -568,6 +615,10 @@ html[data-theme="dark"] .theme-toggle-thumb {
   background: color-mix(in srgb, var(--ink) 12%, transparent);
   color: var(--muted);
   pointer-events: none;
+}
+
+.service-restart-button {
+  width: 100%;
 }
 
 .metric-grid {
@@ -1061,6 +1112,18 @@ html[data-theme="dark"] .theme-toggle-thumb {
   opacity: 0.48;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.action-button-secondary {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.action-button-secondary:hover:not(:disabled) {
+  box-shadow: 0 14px 22px rgba(15, 23, 42, 0.14);
+  filter: none;
 }
 
 .action-button-danger {

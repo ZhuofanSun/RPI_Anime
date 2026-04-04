@@ -33,15 +33,23 @@
 - `Logs` 页已接入结构化事件日志，可按来源、等级和关键字筛选，并支持手动清理
 - `Tailscale` 内页已接入本地 tailnet 状态、本机节点详情、peer 列表和手动开/关按钮
 - `Postprocessor` 内页已接入运行概览、等待窗口快照、最近事件和手动命令入口
+- `ops-ui` 首页已接入单服务重启与整套服务重启动作，并带确认与结果提示
+- `ops-ui` 首页服务按钮已改成跟随当前访问地址，在 `.local`、`Tailscale IP`、`MagicDNS` 下都会跳到对应 host
 - 宿主机 `Tailscale` 已完成干净重建并重新授权，当前已回到 `Running` 在线状态
 
 当前服务访问地址：
 
-- `Ops UI`: `http://sunzhuofan.local:3000`
-- `Jellyfin`: `http://sunzhuofan.local:8096`
-- `qBittorrent`: `http://sunzhuofan.local:8080`
-- `AutoBangumi`: `http://sunzhuofan.local:7892`
-- `Glances`: `http://sunzhuofan.local:61208`
+- `Ops UI`: `http://<当前访问地址>:3000`
+- `Jellyfin`: `http://<当前访问地址>:8096`
+- `qBittorrent`: `http://<当前访问地址>:8080`
+- `AutoBangumi`: `http://<当前访问地址>:7892`
+- `Glances`: `http://<当前访问地址>:61208`
+
+例如：
+
+- 局域网：`sunzhuofan.local`
+- Tailscale IP：`100.123.232.73`
+- MagicDNS：`rpi.tail9ac25e.ts.net`
 
 说明：
 
@@ -105,10 +113,22 @@
 - `ops-ui` 会把趋势采样数据写到 `${ANIME_APPDATA_ROOT}/ops-ui/history.json`，用于 24 小时折线、Jellyfin 播放流量趋势和 7 日下载柱状图，不会因为容器重启立刻清空。
 - `ops-ui` 会把结构化事件日志写到 `${ANIME_APPDATA_ROOT}/ops-ui/events.json`，默认保留最近 `1500` 条，超出后自动裁剪。
 - `ops-ui` 现在对 `${ANIME_DATA_ROOT}` 具有写权限，仅用于 `Ops Review` 的受控文件动作。
-- 为了调用本地 `Tailscale` LocalAPI 写接口，`homepage` 服务当前以 `root` 运行；`ops-ui` 状态数据仍然只写到 `${ANIME_APPDATA_ROOT}/ops-ui`。
+- 为了调用本地 `Tailscale` LocalAPI 写接口和 Docker 本地 socket，`homepage` 服务当前以 `root` 运行；`ops-ui` 状态数据仍然只写到 `${ANIME_APPDATA_ROOT}/ops-ui`。
 - `ops-ui` 里的 `Tailscale` 按钮现在走真正的 `start / stop` 语义：
   - `start` 通过 LocalAPI 打开 backend，并在需要时进入登录态
   - `stop` 通过 `WantRunning=false` 关闭 tailnet 连接，但不清除当前授权
+- `ops-ui` 首页里的重启动作只做两类：
+  - 单服务重启：支持 `Jellyfin`、`qBittorrent`、`AutoBangumi`、`Glances`、`Postprocessor`、`Ops UI` 和 `Tailscale`
+  - 整套服务重启：只重启 compose 栈，不包含 `Tailscale`，并把 `Ops UI` 放到最后一步
+- `ops-ui` 首页里的打开按钮不再信任后端返回的固定 host：
+  - 外部服务：沿用当前页面的 host，只替换目标端口
+  - 内部工作页：沿用当前页面的完整 origin
+  - 这样从 `.local`、`Tailscale IP`、`MagicDNS` 打开首页时，按钮都会跳到同一访问链路
+- compose 里的主要服务现在都启用了 Docker 日志轮转：
+  - driver: `json-file`
+  - `max-size=10m`
+  - `max-file=3`
+  - 这样单个容器默认最多保留约 `30MB` 的本地 Docker 日志
 - `homepage` 现在额外挂载本地源码目录，当前迭代可以用 `docker compose ... up -d --no-build homepage` 热更新页面逻辑，不必每次都重建镜像。
 
 ## Tailscale 状态文件
@@ -178,6 +198,10 @@ sudo tailscale login
 - `stop` 只会断开 tailnet，不会清掉授权
 - 如果 `start` 后页面或 API 已经给出登录链接，直接打开授权即可；如果没有，再执行一次 `sudo tailscale login`
 - `tailscaled` 本身由宿主机 `systemd` 管理，不依赖 Compose；只要 `sudo systemctl enable --now tailscaled` 生效，它就会随树莓派开机稳定启动
+- compose 里的各个容器目前都是 `restart: unless-stopped`
+  - 正常重启宿主机后，它们会自动回来
+  - 但如果你手动 `docker stop ...` 或 `docker compose stop` 过，它们不会在下次开机时自己恢复
+  - 如果你执行的是 `docker compose down`，容器会被删除，之后也需要手工 `up -d`
 
 ## 直接在树莓派启动服务
 
@@ -324,8 +348,8 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml run --build --rm po
 
 ## 下一步建议
 
-1. 下一步先补 `Postprocessor` 内页和受控的“单服务重启 / 整套重启”动作。
-2. 然后再考虑宿主机异常退出、断电和状态备份的兜底措施。
+1. 下一步可以补宿主机异常退出、断电和状态备份的兜底措施。
+2. 然后再考虑是否给首页加更强的运维统计、服务级健康检查或批量运维动作。
 3. 转码优化继续暂缓，等实际出现播放转码问题后再针对性处理。
 
 ## 说明

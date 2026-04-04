@@ -60,10 +60,19 @@
 
       <main class="content-grid">
         <section class="panel panel-wide">
-          <div class="panel-head">
-            <h2>服务入口</h2>
-            <p>一个页面统一进入媒体、下载和网络链路。</p>
+          <div class="panel-head panel-head-compact">
+            <div class="panel-heading">
+              <h2>服务入口</h2>
+              <p>一个页面统一进入媒体、下载和网络链路。</p>
+            </div>
+            <div class="panel-head-actions">
+              <button id="restart-stack-button" class="action-button action-button-compact action-button-secondary" type="button">
+                Restart Stack
+              </button>
+              <span class="panel-action-hint" id="restart-stack-detail">compose only · homepage last</span>
+            </div>
           </div>
+          <div id="service-panel-feedback" class="inline-feedback is-hidden" role="status" aria-live="polite"></div>
           <div id="services-grid" class="services-grid">
             <article class="service-card is-skeleton" aria-hidden="true">
               <div class="service-top">
