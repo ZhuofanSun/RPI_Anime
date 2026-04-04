@@ -4,13 +4,41 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ops Review Placeholder</title>
+    <script>
+      (() => {
+        try {
+          const key = "anime-ops-ui-theme";
+          const stored = localStorage.getItem(key);
+          const theme =
+            stored ||
+            (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light");
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch {}
+      })();
+    </script>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div class="page-shell">
       <main class="placeholder-shell">
         <section class="placeholder-panel">
-          <div class="eyebrow">Ops Review</div>
+          <div class="placeholder-toolbar">
+            <div class="eyebrow">Ops Review</div>
+            <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
+              <span class="theme-toggle-copy">
+                <span class="theme-toggle-title">Theme</span>
+                <span class="theme-toggle-state" data-theme-label>Light</span>
+              </span>
+              <span class="theme-toggle-track" aria-hidden="true">
+                <span class="theme-toggle-icon">☀</span>
+                <span class="theme-toggle-icon">☾</span>
+                <span class="theme-toggle-thumb"></span>
+              </span>
+            </button>
+          </div>
           <h1>人工审核页占位</h1>
           <p>
             这一页下一阶段会接入 `manual_review` 列表、失败原因、重试解析和发布动作。
@@ -23,5 +51,6 @@
         </section>
       </main>
     </div>
+    <script src="/static/theme.js" defer></script>
   </body>
 </html>
