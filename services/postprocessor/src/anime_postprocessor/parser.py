@@ -19,6 +19,7 @@ _TRAILING_METADATA_PATTERN = re.compile(r"[\[(].*$")
 _SPACE_PATTERN = re.compile(r"\s+")
 _TITLE_NOISE_PATTERN = re.compile(r"[._]+")
 _NORMALIZE_PATTERN = re.compile(r"[^\w]+", re.UNICODE)
+_SEASON_FOLDER_PATTERN = re.compile(r"^(?:season\s*\d+|s\d+)$", re.IGNORECASE)
 
 
 def _extract_release_group(stem: str) -> tuple[str | None, str]:
@@ -53,12 +54,24 @@ def normalize_title(title: str) -> str:
     return _SPACE_PATTERN.sub(" ", normalized).strip()
 
 
+def _fallback_title_from_relative_path(relative_path: Path) -> str:
+    for part in reversed(relative_path.parts[:-1]):
+        cleaned = _clean_title(part)
+        if not cleaned:
+            continue
+        if _SEASON_FOLDER_PATTERN.fullmatch(cleaned):
+            continue
+        return cleaned
+    return ""
+
+
 def parse_media_file(root: Path, path: Path) -> ParsedMedia | UnparsedMedia:
+    relative_path = path.relative_to(root)
     extension = path.suffix.lower()
     if extension not in MEDIA_EXTENSIONS:
         return UnparsedMedia(
             path=path,
-            relative_path=path.relative_to(root),
+            relative_path=relative_path,
             reason=f"unsupported extension: {extension}",
         )
 
@@ -68,7 +81,7 @@ def parse_media_file(root: Path, path: Path) -> ParsedMedia | UnparsedMedia:
     if season_episode is None:
         return UnparsedMedia(
             path=path,
-            relative_path=path.relative_to(root),
+            relative_path=relative_path,
             reason="cannot parse season/episode",
         )
 
@@ -77,15 +90,17 @@ def parse_media_file(root: Path, path: Path) -> ParsedMedia | UnparsedMedia:
     title_part = _TRAILING_METADATA_PATTERN.sub("", title_part)
     title = _clean_title(title_part)
     if not title:
+        title = _fallback_title_from_relative_path(relative_path)
+    if not title:
         return UnparsedMedia(
             path=path,
-            relative_path=path.relative_to(root),
+            relative_path=relative_path,
             reason="empty title after cleanup",
         )
 
     return ParsedMedia(
         path=path,
-        relative_path=path.relative_to(root),
+        relative_path=relative_path,
         title=title,
         normalized_title=normalize_title(title),
         season=season,

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
-import shutil
 import time
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -123,49 +123,6 @@ def _build_groups(
 
     return groups, completed_unparsed
 
-
-def _cleanup_empty_dirs(path: Path, stop_at: Path) -> None:
-    current = path
-    while current != stop_at and current.is_dir():
-        try:
-            current.rmdir()
-        except OSError:
-            break
-        current = current.parent
-
-
-def _is_within(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
-
-def _cleanup_entry(entry: GroupEntry | UnparsedEntry, keep_paths: set[Path], stop_at: Path) -> None:
-    content_root = entry.content_root
-
-    if content_root.exists() and content_root.is_dir():
-        if not any(_is_within(keep_path, content_root) for keep_path in keep_paths):
-            shutil.rmtree(content_root, ignore_errors=True)
-            _cleanup_empty_dirs(content_root.parent, stop_at)
-            return
-
-    for media_path in entry.media_paths:
-        if media_path in keep_paths:
-            continue
-        if media_path.exists() and media_path.is_file():
-            media_path.unlink()
-            _cleanup_empty_dirs(media_path.parent, stop_at)
-
-    for item in entry.unparsed_files:
-        if item.path in keep_paths:
-            continue
-        if item.path.exists() and item.path.is_file():
-            item.path.unlink()
-            _cleanup_empty_dirs(item.path.parent, stop_at)
-
-
 def _top_score(parsed_files: list[ParsedMedia]) -> tuple[int, int, int, int] | None:
     if not parsed_files:
         return None
@@ -232,6 +189,7 @@ def _run_once(
         qb_download_root=qb_download_root,
         local_download_root=local_download_root,
     )
+    review_root.mkdir(parents=True, exist_ok=True)
     now_ts = int(time.time())
 
     for key, state in sorted(
@@ -257,73 +215,81 @@ def _run_once(
                 )
             continue
 
-        report = build_report(
-            root=local_download_root,
-            parsed_files=[
-                item
-                for entry in completed_entries
-                for item in entry.parsed_files
-                if item.path.exists()
-            ],
-            unparsed_files=[
-                item
-                for entry in completed_entries
-                for item in entry.unparsed_files
-                if item.path.exists()
-            ],
-        )
-        if not report.parsed_files:
-            continue
-        plan = build_publish_plan(
-            report=report,
-            download_root=local_download_root,
-            library_root=library_root,
-            review_root=review_root,
-        )
-        hashes = sorted({entry.torrent.torrent_hash for entry in state})
-        winner_paths = {decision.winner.path for decision in plan.decisions}
-        qb.pause(hashes)
-        qb.delete(hashes, delete_files=False)
-        result = apply_publish_plan(
-            plan,
-            delete_losers=delete_losers,
-            move_unparsed_to_review=True,
-        )
-        for entry in state:
-            _cleanup_entry(entry, keep_paths=winner_paths, stop_at=local_download_root)
-        print(
-            f"[watch] processed {key.normalized_title} "
-            f"S{key.season:02d}E{key.episode:02d}: "
-            f"reason={reason}; "
-            f"published={len(result['published'])} "
-            f"deleted={len(result['deleted'])} "
-            f"reviewed={len(result['reviewed'])}"
-        )
+        try:
+            report = build_report(
+                root=local_download_root,
+                parsed_files=[
+                    item
+                    for entry in completed_entries
+                    for item in entry.parsed_files
+                    if item.path.exists()
+                ],
+                unparsed_files=[
+                    item
+                    for entry in completed_entries
+                    for item in entry.unparsed_files
+                    if item.path.exists()
+                ],
+            )
+            if not report.parsed_files:
+                continue
+            plan = build_publish_plan(
+                report=report,
+                download_root=local_download_root,
+                library_root=library_root,
+                review_root=review_root,
+            )
+            hashes = sorted({entry.torrent.torrent_hash for entry in state})
+            qb.pause(hashes)
+            qb.delete(hashes, delete_files=False)
+            result = apply_publish_plan(
+                plan,
+                delete_losers=delete_losers,
+                move_unparsed_to_review=True,
+            )
+            print(
+                f"[watch] processed {key.normalized_title} "
+                f"S{key.season:02d}E{key.episode:02d}: "
+                f"reason={reason}; "
+                f"published={len(result['published'])} "
+                f"deleted={len(result['deleted'])} "
+                f"reviewed={len(result['reviewed'])}"
+            )
+        except Exception as exc:
+            print(
+                f"[watch] error processing {key.normalized_title} "
+                f"S{key.season:02d}E{key.episode:02d}: {exc}"
+            )
+            traceback.print_exc()
 
     for entry in completed_unparsed:
-        hashes = [entry.torrent.torrent_hash]
-        qb.pause(hashes)
-        qb.delete(hashes, delete_files=False)
-        report = build_report(
-            root=local_download_root,
-            parsed_files=[],
-            unparsed_files=[item for item in entry.unparsed_files if item.path.exists()],
-        )
-        plan = build_publish_plan(
-            report=report,
-            download_root=local_download_root,
-            library_root=library_root,
-            review_root=review_root,
-        )
-        result = apply_publish_plan(
-            plan,
-            delete_losers=delete_losers,
-            move_unparsed_to_review=True,
-        )
-        print(
-            f"[watch] moved unparsed torrent to review: {entry.torrent.name} "
-            f"reviewed={len(result['reviewed'])}"
-        )
+        try:
+            hashes = [entry.torrent.torrent_hash]
+            qb.pause(hashes)
+            qb.delete(hashes, delete_files=False)
+            report = build_report(
+                root=local_download_root,
+                parsed_files=[],
+                unparsed_files=[item for item in entry.unparsed_files if item.path.exists()],
+            )
+            plan = build_publish_plan(
+                report=report,
+                download_root=local_download_root,
+                library_root=library_root,
+                review_root=review_root,
+            )
+            result = apply_publish_plan(
+                plan,
+                delete_losers=delete_losers,
+                move_unparsed_to_review=True,
+            )
+            print(
+                f"[watch] moved unparsed torrent to review: {entry.torrent.name} "
+                f"reviewed={len(result['reviewed'])}"
+            )
+        except Exception as exc:
+            print(f"[watch] error moving unparsed torrent {entry.torrent.name}: {exc}")
+            traceback.print_exc()
 
 
 def watch_loop(

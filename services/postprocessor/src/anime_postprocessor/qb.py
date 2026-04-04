@@ -5,6 +5,30 @@ from dataclasses import dataclass
 import requests
 
 
+_COMPLETED_STATES = {
+    "uploading",
+    "pausedUP",
+    "queuedUP",
+    "stalledUP",
+    "checkingUP",
+    "forcedUP",
+}
+
+_INCOMPLETE_STATES = {
+    "allocating",
+    "downloading",
+    "metaDL",
+    "pausedDL",
+    "queuedDL",
+    "stalledDL",
+    "checkingDL",
+    "forcedDL",
+    "checkingResumeData",
+    "moving",
+    "unknown",
+}
+
+
 @dataclass(frozen=True)
 class QBTorrent:
     torrent_hash: str
@@ -18,7 +42,13 @@ class QBTorrent:
 
     @property
     def completed(self) -> bool:
-        return self.amount_left == 0 or self.progress >= 1.0
+        if self.state in _COMPLETED_STATES:
+            return True
+        if self.state in _INCOMPLETE_STATES:
+            return False
+        if self.completion_on > 0:
+            return True
+        return self.amount_left == 0 and self.progress >= 1.0
 
     @property
     def completion_ts(self) -> int | None:
