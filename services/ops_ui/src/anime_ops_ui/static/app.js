@@ -12,7 +12,7 @@ const refreshIntervalLabel = document.getElementById("refresh-interval");
 const servicePanelFeedback = document.getElementById("service-panel-feedback");
 const restartStackButton = document.getElementById("restart-stack-button");
 const restartStackDetail = document.getElementById("restart-stack-detail");
-const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v1";
+const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v2";
 
 let refreshIntervalMs = 8000;
 let refreshInFlight = false;

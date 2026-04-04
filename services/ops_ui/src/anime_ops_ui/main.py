@@ -16,7 +16,7 @@ import time
 from typing import Any
 
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -2217,8 +2217,25 @@ async def lifespan(_app: FastAPI):
             pass
 
 
+OPS_UI_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
 app = FastAPI(title="Anime Ops UI", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.middleware("http")
+async def disable_browser_cache_for_ui_assets(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path in {"/", "/ops-review", "/ops-review/item", "/postprocessor", "/tailscale", "/logs"} or path.startswith("/static/"):
+        for header, value in OPS_UI_NO_CACHE_HEADERS.items():
+            response.headers[header] = value
+    return response
 
 
 @app.get("/healthz")
@@ -2485,32 +2502,32 @@ def manual_review_delete(id: str = Query(...)) -> JSONResponse:
 
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
 @app.get("/ops-review")
 def ops_review_placeholder() -> FileResponse:
-    return FileResponse(STATIC_DIR / "ops-review.html")
+    return FileResponse(STATIC_DIR / "ops-review.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
 @app.get("/ops-review/item")
 def ops_review_item_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "ops-review-item.html")
+    return FileResponse(STATIC_DIR / "ops-review-item.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
 @app.get("/postprocessor")
 def postprocessor_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "postprocessor.html")
+    return FileResponse(STATIC_DIR / "postprocessor.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
 @app.get("/tailscale")
 def tailscale_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "tailscale.html")
+    return FileResponse(STATIC_DIR / "tailscale.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
 @app.get("/logs")
 def logs_placeholder() -> FileResponse:
-    return FileResponse(STATIC_DIR / "logs.html")
+    return FileResponse(STATIC_DIR / "logs.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
 def main() -> None:
