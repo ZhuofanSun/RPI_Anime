@@ -29,6 +29,7 @@ if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
     sys.path.insert(0, str(POSTPROCESSOR_SRC))
 
 from anime_postprocessor.models import ParsedMedia, UnparsedMedia
+from anime_postprocessor.eventlog import append_event, clear_events, event_log_cap, event_log_path, read_events
 from anime_postprocessor.parser import normalize_title, parse_media_file
 from anime_postprocessor.publisher import build_target_path, publish_media
 from anime_postprocessor.selector import score_candidate
@@ -513,6 +514,7 @@ def _build_services(
     tailscale: dict[str, Any] | None,
     *,
     manual_review_count: int,
+    log_count: int,
 ) -> list[dict[str, Any]]:
     tailscale_self = (tailscale or {}).get("Self", {})
     tailscale_state = "online" if (tailscale or {}).get("BackendState") == "Running" else "offline"
@@ -576,10 +578,10 @@ def _build_services(
         {
             "name": "Logs",
             "href": f"{ops_ui_base}/logs",
-            "description": "完整日志页占位，下一阶段会聚合服务日志",
-            "status": "coming-soon",
-            "meta": "Logs route",
-            "uptime": "Next phase",
+            "description": "结构化事件日志、来源筛选、等级着色与清理",
+            "status": "online",
+            "meta": f"{log_count} events",
+            "uptime": f"cap {event_log_cap()}",
             "internal": True,
         },
         {
@@ -841,6 +843,82 @@ def build_manual_review_payload() -> dict[str, Any]:
     }
 
 
+def build_logs_payload(
+    *,
+    level: str | None = None,
+    source: str | None = None,
+    search: str | None = None,
+    limit: int = 300,
+) -> dict[str, Any]:
+    raw_events = read_events()
+    keyword = (search or "").strip().lower()
+    filtered = []
+    for item in raw_events:
+        if level and item.get("level") != level:
+            continue
+        if source and item.get("source") != source:
+            continue
+        if keyword:
+            haystack = " ".join(
+                [
+                    str(item.get("source", "")),
+                    str(item.get("level", "")),
+                    str(item.get("action", "")),
+                    str(item.get("message", "")),
+                    json.dumps(item.get("details", {}), ensure_ascii=False),
+                ]
+            ).lower()
+            if keyword not in haystack:
+                continue
+        filtered.append(item)
+
+    visible = filtered[: max(20, min(limit, event_log_cap()))]
+    levels = sorted({str(item.get("level", "info")) for item in raw_events})
+    sources = sorted({str(item.get("source", "unknown")) for item in raw_events})
+    level_counts: dict[str, int] = {}
+    for item in raw_events:
+        item_level = str(item.get("level", "info"))
+        level_counts[item_level] = level_counts.get(item_level, 0) + 1
+
+    summary_cards = [
+        {
+            "label": "Visible",
+            "value": str(len(visible)),
+            "detail": f"{len(filtered)} matched / {len(raw_events)} total",
+        },
+        {
+            "label": "Sources",
+            "value": str(len(sources)),
+            "detail": ", ".join(sources[:3]) if sources else "no sources yet",
+        },
+        {
+            "label": "Errors",
+            "value": str(level_counts.get("error", 0)),
+            "detail": f"{level_counts.get('warning', 0)} warnings",
+        },
+        {
+            "label": "Retention",
+            "value": str(event_log_cap()),
+            "detail": str(event_log_path()),
+        },
+    ]
+
+    return {
+        "title": "Logs",
+        "subtitle": "项目侧结构化事件日志，优先覆盖自动处理、人工审核与运维动作。",
+        "refresh_interval_seconds": 10,
+        "summary_cards": summary_cards,
+        "levels": levels,
+        "sources": sources,
+        "items": visible,
+        "total_count": len(raw_events),
+        "matched_count": len(filtered),
+        "retention_cap": event_log_cap(),
+        "storage_path": str(event_log_path()),
+        "last_updated": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
 def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
     review_root = _manual_review_root()
     items = _manual_review_items(review_root)
@@ -917,6 +995,16 @@ def _publish_review_media(media: ParsedMedia, *, review_root: Path) -> dict[str,
             media=media,
         )
     except FileExistsError as exc:
+        append_event(
+            source="ops-review",
+            level="error",
+            action="publish",
+            message=f"Publish target already exists for {media.title} S{media.season:02d}E{media.episode:02d}",
+            details={
+                "target": str(build_target_path(_library_root(), media)),
+                "error": str(exc),
+            },
+        )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return result
 
@@ -1056,6 +1144,7 @@ def build_overview() -> dict[str, Any]:
         },
     ]
     manual_review_count = _count_media_files(manual_review_root)
+    log_count = len(read_events())
 
     network_cards = [
         {
@@ -1138,6 +1227,7 @@ def build_overview() -> dict[str, Any]:
             containers,
             tailscale,
             manual_review_count=manual_review_count,
+            log_count=log_count,
         ),
         "system_cards": system_cards,
         "queue_cards": queue_cards,
@@ -1155,6 +1245,17 @@ def build_overview() -> dict[str, Any]:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await asyncio.to_thread(_sample_history_once, force=True)
+    append_event(
+        source="ops-ui",
+        level="info",
+        action="startup",
+        message="Ops UI service started",
+        details={
+            "refresh_interval_seconds": _refresh_interval_seconds(),
+            "log_cap": event_log_cap(),
+            "history_file": str(_history_file()),
+        },
+    )
     sampler_task = asyncio.create_task(_history_sampler_loop())
     try:
         yield
@@ -1190,6 +1291,44 @@ def manual_review_item(id: str = Query(...)) -> JSONResponse:
     return JSONResponse(build_manual_review_item_payload(id))
 
 
+@app.get("/api/logs")
+def logs_api(
+    level: str | None = Query(default=None),
+    source: str | None = Query(default=None),
+    q: str | None = Query(default=None),
+    limit: int = Query(default=300, ge=20, le=1500),
+) -> JSONResponse:
+    return JSONResponse(
+        build_logs_payload(
+            level=level,
+            source=source,
+            search=q,
+            limit=limit,
+        )
+    )
+
+
+@app.post("/api/logs/clear")
+def clear_logs_api() -> JSONResponse:
+    result = clear_events()
+    append_event(
+        source="ops-ui",
+        level="warning",
+        action="clear-logs",
+        message="Structured event log was cleared from the Logs workspace",
+        details={
+            "cleared": result["cleared"],
+        },
+    )
+    return JSONResponse(
+        {
+            "ok": True,
+            "message": f"已清理结构化日志，清除 {result['cleared']} 条旧记录。",
+            "cleared": result["cleared"],
+        }
+    )
+
+
 @app.post("/api/manual-review/item/retry-parse")
 def manual_review_retry_parse(id: str = Query(...)) -> JSONResponse:
     item, item_path, review_root = _manual_review_item_or_404(id)
@@ -1210,6 +1349,16 @@ def manual_review_retry_parse(id: str = Query(...)) -> JSONResponse:
         episode=int(parsed["episode"]),
     )
     result = _publish_review_media(media, review_root=review_root)
+    append_event(
+        source="ops-review",
+        level="success",
+        action="retry-parse",
+        message=f"Published from retry parse: {media.title} S{media.season:02d}E{media.episode:02d}",
+        details={
+            "source": str(media.relative_path),
+            "target": result["target"],
+        },
+    )
     return JSONResponse(
         {
             "ok": True,
@@ -1239,6 +1388,16 @@ def manual_review_publish(
         episode=payload.episode,
     )
     result = _publish_review_media(media, review_root=review_root)
+    append_event(
+        source="ops-review",
+        level="success",
+        action="manual-publish",
+        message=f"Manually published {title} S{payload.season:02d}E{payload.episode:02d}",
+        details={
+            "source": str(media.relative_path),
+            "target": result["target"],
+        },
+    )
     return JSONResponse(
         {
             "ok": True,
@@ -1253,6 +1412,16 @@ def manual_review_publish(
 def manual_review_delete(id: str = Query(...)) -> JSONResponse:
     item, item_path, review_root = _manual_review_item_or_404(id)
     result = _delete_review_file(item_path, review_root)
+    append_event(
+        source="ops-review",
+        level="warning",
+        action="delete",
+        message=f"Deleted manual review file: {item['filename']}",
+        details={
+            "relative_path": item["relative_path"],
+            "size": result["deleted_size_label"],
+        },
+    )
     return JSONResponse(
         {
             "ok": True,

@@ -6,6 +6,7 @@ import traceback
 from dataclasses import dataclass
 from pathlib import Path
 
+from .eventlog import append_event
 from .models import EpisodeKey, ParsedMedia, UnparsedMedia
 from .parser import parse_media_file
 from .publisher import apply_publish_plan, build_publish_plan
@@ -255,10 +256,38 @@ def _run_once(
                 f"deleted={len(result['deleted'])} "
                 f"reviewed={len(result['reviewed'])}"
             )
+            append_event(
+                source="postprocessor",
+                level="success",
+                action="watch-process-group",
+                message=(
+                    f"Processed {key.normalized_title} "
+                    f"S{key.season:02d}E{key.episode:02d}"
+                ),
+                details={
+                    "reason": reason,
+                    "published": len(result["published"]),
+                    "deleted": len(result["deleted"]),
+                    "reviewed": len(result["reviewed"]),
+                    "winner_targets": [item["target"] for item in result["published"]],
+                },
+            )
         except Exception as exc:
             print(
                 f"[watch] error processing {key.normalized_title} "
                 f"S{key.season:02d}E{key.episode:02d}: {exc}"
+            )
+            append_event(
+                source="postprocessor",
+                level="error",
+                action="watch-process-group",
+                message=(
+                    f"Failed to process {key.normalized_title} "
+                    f"S{key.season:02d}E{key.episode:02d}"
+                ),
+                details={
+                    "error": str(exc),
+                },
             )
             traceback.print_exc()
 
@@ -287,8 +316,26 @@ def _run_once(
                 f"[watch] moved unparsed torrent to review: {entry.torrent.name} "
                 f"reviewed={len(result['reviewed'])}"
             )
+            append_event(
+                source="postprocessor",
+                level="warning",
+                action="watch-unparsed-to-review",
+                message=f"Moved unparsed torrent to manual review: {entry.torrent.name}",
+                details={
+                    "reviewed": len(result["reviewed"]),
+                },
+            )
         except Exception as exc:
             print(f"[watch] error moving unparsed torrent {entry.torrent.name}: {exc}")
+            append_event(
+                source="postprocessor",
+                level="error",
+                action="watch-unparsed-to-review",
+                message=f"Failed to move unparsed torrent to manual review: {entry.torrent.name}",
+                details={
+                    "error": str(exc),
+                },
+            )
             traceback.print_exc()
 
 
@@ -309,6 +356,19 @@ def watch_loop(
 ) -> None:
     qb = QBClient(qb_api_url, qb_username, qb_password)
     qb.auth()
+    append_event(
+        source="postprocessor",
+        level="info",
+        action="watch-start",
+        message="Postprocessor watch loop started",
+        details={
+            "category": category,
+            "poll_interval": poll_interval,
+            "wait_timeout": wait_timeout,
+            "delete_losers": delete_losers,
+            "once": once,
+        },
+    )
     while True:
         _run_once(
             qb=qb,
