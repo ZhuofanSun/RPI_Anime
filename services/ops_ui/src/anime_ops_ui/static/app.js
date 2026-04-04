@@ -9,6 +9,7 @@ const pageSubtitle = document.getElementById("page-subtitle");
 const hostName = document.getElementById("host-name");
 const lastUpdated = document.getElementById("last-updated");
 const refreshIntervalLabel = document.getElementById("refresh-interval");
+const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v1";
 
 let refreshIntervalMs = 8000;
 let refreshInFlight = false;
@@ -49,7 +50,12 @@ function metricTemplate(card) {
 function serviceTemplate(service) {
   const href = service.href || "#";
   const disabled = service.href ? "" : "disabled";
-  const externalAttrs = service.href ? 'target="_blank" rel="noopener noreferrer"' : 'aria-disabled="true"';
+  const internal = Boolean(service.internal);
+  const linkAttrs = service.href
+    ? internal
+      ? ""
+      : 'target="_blank" rel="noopener noreferrer"'
+    : 'aria-disabled="true"';
   return `
     <article class="service-card">
       <div class="service-top">
@@ -68,8 +74,8 @@ function serviceTemplate(service) {
         <div class="service-uptime">${service.uptime || "-"}</div>
       </div>
       <div class="service-actions">
-        <a class="service-link ${disabled}" href="${href}" ${externalAttrs}>
-          ${service.href ? "Open Service" : "Coming Next"}
+        <a class="service-link ${disabled}" href="${href}" ${linkAttrs}>
+          ${service.href ? (internal ? "Open Workspace" : "Open Service") : "Coming Next"}
         </a>
       </div>
     </article>
@@ -174,6 +180,50 @@ function diagnosticsTemplate(items) {
     .join("");
 }
 
+function loadOverviewCache() {
+  try {
+    const raw = window.sessionStorage.getItem(OVERVIEW_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.data) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveOverviewCache(data) {
+  try {
+    window.sessionStorage.setItem(
+      OVERVIEW_CACHE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        data,
+      })
+    );
+  } catch {}
+}
+
+function formatUpdatedLabel(cachedAt) {
+  return new Date(cachedAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function renderOverview(data, { cachedAt } = {}) {
+  pageTitle.textContent = data.title;
+  pageSubtitle.textContent = data.subtitle;
+  hostName.textContent = data.host;
+  lastUpdated.textContent = formatUpdatedLabel(cachedAt);
+  refreshIntervalMs = (data.refresh_interval_seconds || 8) * 1000;
+  refreshIntervalLabel.textContent = `Auto · ${Math.round(refreshIntervalMs / 1000)}s`;
+
+  servicesGrid.innerHTML = data.services.map(serviceTemplate).join("");
+  trendGrid.innerHTML = data.trend_cards.map(trendTemplate).join("");
+  systemCards.innerHTML = data.system_cards.map(metricTemplate).join("");
+  queueCards.innerHTML = data.queue_cards.map(metricTemplate).join("");
+  networkCards.innerHTML = data.network_cards.map(metricTemplate).join("");
+  diagnostics.innerHTML = diagnosticsTemplate(data.diagnostics || []);
+}
+
 function scheduleRefresh() {
   if (refreshTimerId) {
     clearTimeout(refreshTimerId);
@@ -195,19 +245,8 @@ async function refreshOverview() {
     }
 
     const data = await response.json();
-    pageTitle.textContent = data.title;
-    pageSubtitle.textContent = data.subtitle;
-    hostName.textContent = data.host;
-    lastUpdated.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    refreshIntervalMs = (data.refresh_interval_seconds || 8) * 1000;
-    refreshIntervalLabel.textContent = `Auto · ${Math.round(refreshIntervalMs / 1000)}s`;
-
-    servicesGrid.innerHTML = data.services.map(serviceTemplate).join("");
-    trendGrid.innerHTML = data.trend_cards.map(trendTemplate).join("");
-    systemCards.innerHTML = data.system_cards.map(metricTemplate).join("");
-    queueCards.innerHTML = data.queue_cards.map(metricTemplate).join("");
-    networkCards.innerHTML = data.network_cards.map(metricTemplate).join("");
-    diagnostics.innerHTML = diagnosticsTemplate(data.diagnostics || []);
+    renderOverview(data);
+    saveOverviewCache(data);
   } catch (error) {
     diagnostics.innerHTML = diagnosticsTemplate([
       { source: "frontend", message: error.message || String(error) },
@@ -216,6 +255,11 @@ async function refreshOverview() {
     refreshInFlight = false;
     scheduleRefresh();
   }
+}
+
+const cachedOverview = loadOverviewCache();
+if (cachedOverview) {
+  renderOverview(cachedOverview.data, { cachedAt: cachedOverview.cachedAt });
 }
 
 refreshOverview();

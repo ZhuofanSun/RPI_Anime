@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Logs Placeholder</title>
+    <title>Tailscale Workspace</title>
     <script>
       (() => {
         try {
@@ -28,10 +28,10 @@
           <div class="hero-links">
             <a class="hero-link" href="/">Dashboard</a>
             <span class="hero-link-sep">/</span>
-            <span class="hero-link-current">Logs</span>
+            <span class="hero-link-current">Tailscale</span>
           </div>
           <div class="placeholder-toolbar">
-            <div class="eyebrow">Logs</div>
+            <div class="eyebrow">Tailscale</div>
             <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
               <span class="theme-toggle-copy">
                 <span class="theme-toggle-title">Theme</span>
@@ -44,14 +44,14 @@
               </span>
             </button>
           </div>
-          <h1>完整日志页占位</h1>
+          <h1>Tailscale 工作区占位</h1>
           <p>
-            这一页下一阶段会聚合 `Jellyfin`、`qBittorrent`、`AutoBangumi`、`postprocessor`
-            的服务日志，并补充筛选、时间范围和关键字检索。当前先把入口和路径固定下来。
+            这一页后面会接本地 tailnet 状态详情、peer 列表、最近活跃连接和诊断信息。
+            它只使用本机状态，不会去调用官方云 API。
           </p>
           <div class="placeholder-actions">
-            <a class="service-link" href="/" target="_blank" rel="noopener noreferrer">Open Dashboard</a>
-            <a class="ghost-link" href="http://sunzhuofan.local:3000/api/overview" target="_blank" rel="noopener noreferrer">Open Overview JSON</a>
+            <a class="service-link" href="/">Back to Dashboard</a>
+            <a class="ghost-link" href="/logs">Open Logs</a>
           </div>
         </section>
       </main>

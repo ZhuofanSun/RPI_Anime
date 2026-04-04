@@ -9,6 +9,7 @@ const reviewSearch = document.getElementById("review-search");
 const reviewBucketChips = document.getElementById("review-bucket-chips");
 const reviewList = document.getElementById("review-list");
 const reviewListMeta = document.getElementById("review-list-meta");
+const REVIEW_CACHE_KEY = "anime-ops-ui-manual-review-cache-v1";
 
 let reviewRefreshMs = 15000;
 let reviewTimerId = null;
@@ -87,8 +88,35 @@ function reviewItemTemplate(item) {
           <code>${item.relative_path}</code>
         </div>
       </div>
+      <div class="review-item-actions">
+        <a class="ghost-link" href="/ops-review/item?id=${encodeURIComponent(item.id)}">查看详情</a>
+      </div>
     </article>
   `;
+}
+
+function loadReviewCache() {
+  try {
+    const raw = window.sessionStorage.getItem(REVIEW_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.payload) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveReviewCache(payload) {
+  try {
+    window.sessionStorage.setItem(
+      REVIEW_CACHE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        payload,
+      })
+    );
+  } catch {}
 }
 
 function applyFilters() {
@@ -107,10 +135,16 @@ function applyFilters() {
   reviewListMeta.textContent = `${filteredItems.length} / ${(reviewPayload.items || []).length} files`;
 
   if (!filteredItems.length) {
+    const emptyTitle = (reviewPayload.items || []).length
+      ? "当前筛选条件下没有匹配文件。"
+      : "当前没有待处理文件。";
+    const emptyDetail = (reviewPayload.items || []).length
+      ? "调整 bucket 或关键字后会重新显示列表。"
+      : "下载链路运行正常时，这里会在出现异常文件后自动补进队列。";
     reviewList.innerHTML = `
       <div class="review-empty">
-        <strong>No files match the current filter.</strong>
-        <span>调整 bucket 或关键字后会重新显示列表。</span>
+        <strong>${emptyTitle}</strong>
+        <span>${emptyDetail}</span>
       </div>
     `;
   } else {
@@ -124,6 +158,26 @@ function applyFilters() {
       applyFilters();
     });
   });
+}
+
+function renderReview(payload, { cachedAt } = {}) {
+  const currentBucket = reviewBucketFilter.value;
+  reviewPayload = payload;
+  reviewTitle.textContent = payload.title || "Ops Review";
+  reviewSubtitle.textContent = payload.subtitle || "";
+  reviewRoot.textContent = payload.root || "-";
+  reviewUpdated.textContent = new Date(cachedAt || Date.now()).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  reviewRefreshMs = (payload.refresh_interval_seconds || 15) * 1000;
+  reviewRefresh.textContent = `${Math.round(reviewRefreshMs / 1000)}s`;
+  reviewSummary.innerHTML = (payload.summary_cards || []).map(metricTemplate).join("");
+  reviewBucketFilter.innerHTML = bucketOptionsTemplate(payload.buckets || []);
+  if (currentBucket && Array.from(reviewBucketFilter.options).some((option) => option.value === currentBucket)) {
+    reviewBucketFilter.value = currentBucket;
+  }
+  applyFilters();
 }
 
 function scheduleReviewRefresh() {
@@ -147,16 +201,8 @@ async function refreshReview() {
     }
 
     const payload = await response.json();
-    reviewPayload = payload;
-    reviewTitle.textContent = payload.title || "Ops Review";
-    reviewSubtitle.textContent = payload.subtitle || "";
-    reviewRoot.textContent = payload.root || "-";
-    reviewUpdated.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    reviewRefreshMs = (payload.refresh_interval_seconds || 15) * 1000;
-    reviewRefresh.textContent = `${Math.round(reviewRefreshMs / 1000)}s`;
-    reviewSummary.innerHTML = (payload.summary_cards || []).map(metricTemplate).join("");
-    reviewBucketFilter.innerHTML = bucketOptionsTemplate(payload.buckets || []);
-    applyFilters();
+    renderReview(payload);
+    saveReviewCache(payload);
   } catch (error) {
     reviewList.innerHTML = `
       <div class="review-empty review-empty-error">
@@ -173,5 +219,10 @@ async function refreshReview() {
 
 reviewBucketFilter.addEventListener("change", applyFilters);
 reviewSearch.addEventListener("input", applyFilters);
+
+const cachedReview = loadReviewCache();
+if (cachedReview) {
+  renderReview(cachedReview.payload, { cachedAt: cachedReview.cachedAt });
+}
 
 refreshReview();

@@ -14,7 +14,7 @@ import time
 from typing import Any
 
 import requests
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -538,11 +538,12 @@ def _build_services(
         },
         {
             "name": "Postprocessor",
-            "href": None,
+            "href": f"{ops_ui_base}/postprocessor",
             "description": "下载完成后的选优、发布和 NFO 生成",
             "status": containers.get("anime-postprocessor", {}).get("status", "unknown"),
             "meta": "Background worker",
             "uptime": container_uptime("anime-postprocessor"),
+            "internal": True,
         },
         {
             "name": "Ops Review",
@@ -551,6 +552,7 @@ def _build_services(
             "status": "online",
             "meta": f"{manual_review_count} files",
             "uptime": "Read only",
+            "internal": True,
         },
         {
             "name": "Logs",
@@ -559,14 +561,16 @@ def _build_services(
             "status": "coming-soon",
             "meta": "Logs route",
             "uptime": "Next phase",
+            "internal": True,
         },
         {
             "name": "Tailscale",
-            "href": None,
+            "href": f"{ops_ui_base}/tailscale",
             "description": "本地 tailnet 状态与远程访问链路",
             "status": tailscale_state,
             "meta": tailscale_self.get("TailscaleIPs", ["-"])[0] if tailscale_self else "-",
             "uptime": tailscale_self.get("DNSName", "-").rstrip(".") if tailscale_self else None,
+            "internal": True,
         },
     ]
 
@@ -582,6 +586,11 @@ def _disk_snapshot(anime_data_root: Path) -> dict[str, Any]:
         "total_bytes": usage.total,
         "percent": percent,
     }
+
+
+def _manual_review_root() -> Path:
+    anime_data_root = Path(_env("ANIME_DATA_ROOT", "/srv/anime-data"))
+    return anime_data_root / "processing" / "manual_review"
 
 
 def _format_timestamp(timestamp: float) -> str:
@@ -627,16 +636,20 @@ def _review_item_from_path(path: Path, review_root: Path) -> dict[str, Any]:
     }
 
 
-def build_manual_review_payload() -> dict[str, Any]:
-    anime_data_root = Path(_env("ANIME_DATA_ROOT", "/srv/anime-data"))
-    review_root = anime_data_root / "processing" / "manual_review"
+def _manual_review_items(review_root: Path) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
-    if review_root.exists():
-        for path in sorted(review_root.rglob("*")):
-            if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS:
-                items.append(_review_item_from_path(path, review_root))
-
+    if not review_root.exists():
+        return items
+    for path in sorted(review_root.rglob("*")):
+        if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS:
+            items.append(_review_item_from_path(path, review_root))
     items.sort(key=lambda item: item["modified_at"], reverse=True)
+    return items
+
+
+def build_manual_review_payload() -> dict[str, Any]:
+    review_root = _manual_review_root()
+    items = _manual_review_items(review_root)
     bucket_stats: dict[str, dict[str, Any]] = {}
     total_bytes = 0
     series_names: set[str] = set()
@@ -696,6 +709,62 @@ def build_manual_review_payload() -> dict[str, Any]:
         "total_files": len(items),
         "total_size_bytes": total_bytes,
         "total_size_label": _format_bytes(total_bytes),
+        "last_updated": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
+    review_root = _manual_review_root()
+    items = _manual_review_items(review_root)
+    item = next((entry for entry in items if entry["id"] == item_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="manual review item not found")
+
+    item_path = review_root / item["relative_path"]
+    parent_dir = item_path.parent
+    sibling_items: list[dict[str, Any]] = []
+    if parent_dir.exists():
+        for sibling in sorted(parent_dir.iterdir()):
+            if sibling.is_file() and sibling.suffix.lower() in MEDIA_EXTENSIONS:
+                sibling_item = _review_item_from_path(sibling, review_root)
+                sibling_items.append(
+                    {
+                        "id": sibling_item["id"],
+                        "filename": sibling_item["filename"],
+                        "size_label": sibling_item["size_label"],
+                        "modified_label": sibling_item["modified_label"],
+                        "is_current": sibling_item["id"] == item_id,
+                    }
+                )
+
+    suggested_actions = [
+        {
+            "title": "Retry Parse",
+            "description": "下一阶段会接入重试解析，把当前文件重新送回后处理规则。",
+        },
+        {
+            "title": "Publish To Seasonal",
+            "description": "下一阶段会允许人工确认目标剧名与季集后直接发布。",
+        },
+        {
+            "title": "Delete",
+            "description": "删除动作会放到受控按钮里，并增加确认提示，不会直接暴露在列表页。",
+        },
+    ]
+
+    return {
+        "title": "Review Item",
+        "subtitle": item["series_name"],
+        "refresh_interval_seconds": 15,
+        "root": str(review_root),
+        "item": item,
+        "siblings": sibling_items,
+        "suggested_actions": suggested_actions,
+        "breadcrumbs": [
+            {"label": "Dashboard", "href": "/"},
+            {"label": "Ops Review", "href": "/ops-review"},
+            {"label": item["filename"], "href": None},
+        ],
         "last_updated": datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -953,6 +1022,11 @@ def manual_review() -> JSONResponse:
     return JSONResponse(build_manual_review_payload())
 
 
+@app.get("/api/manual-review/item")
+def manual_review_item(id: str = Query(...)) -> JSONResponse:
+    return JSONResponse(build_manual_review_item_payload(id))
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -961,6 +1035,21 @@ def index() -> FileResponse:
 @app.get("/ops-review")
 def ops_review_placeholder() -> FileResponse:
     return FileResponse(STATIC_DIR / "ops-review.html")
+
+
+@app.get("/ops-review/item")
+def ops_review_item_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "ops-review-item.html")
+
+
+@app.get("/postprocessor")
+def postprocessor_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "postprocessor.html")
+
+
+@app.get("/tailscale")
+def tailscale_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "tailscale.html")
 
 
 @app.get("/logs")

@@ -25,6 +25,14 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
+          <div class="hero-nav">
+            <a class="ghost-link ghost-link-subtle" href="/">← 返回 Dashboard</a>
+            <div class="hero-links">
+              <a class="hero-link" href="/">Dashboard</a>
+              <span class="hero-link-sep">/</span>
+              <span class="hero-link-current">Ops Review</span>
+            </div>
+          </div>
           <div class="eyebrow">Ops Review</div>
           <h1 id="review-title">Ops Review</h1>
           <p id="review-subtitle">人工审核队列与未自动入库文件清单</p>
@@ -58,17 +66,44 @@
 
       <main class="content-grid">
         <section class="panel panel-wide">
-          <div class="panel-head">
-            <h2>队列概览</h2>
-            <p>这里只读展示 `manual_review` 当前积压，不执行删除或发布动作。</p>
+          <div class="panel-head panel-head-compact">
+            <div class="panel-heading">
+              <h2>队列概览</h2>
+              <p>当前 `manual_review` 的积压规模、体积和分桶分布。</p>
+            </div>
+            <span class="panel-badge">Read only</span>
           </div>
-          <div id="review-summary" class="metric-grid metric-grid-wide"></div>
+          <div class="panel-note">这里只读展示当前审核积压，动作区会在下一阶段接入。</div>
+          <div id="review-summary" class="metric-grid review-summary-grid">
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+            <article class="metric-card is-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </article>
+          </div>
         </section>
 
         <section class="panel panel-wide">
-          <div class="panel-head">
-            <h2>筛选</h2>
-            <p>先按 bucket 和关键字缩小范围，后面再接具体处理动作。</p>
+          <div class="panel-head panel-head-compact">
+            <div class="panel-heading">
+              <h2>筛选</h2>
+              <p>先缩小范围，再进入详情页确认上下文和后续动作。</p>
+            </div>
           </div>
           <div class="review-toolbar">
             <label class="review-control">
@@ -86,11 +121,59 @@
         </section>
 
         <section class="panel panel-wide">
-          <div class="panel-head">
-            <h2>待处理文件</h2>
-            <p id="review-list-meta">-</p>
+          <div class="panel-head panel-head-compact">
+            <div class="panel-heading">
+              <h2>待处理文件</h2>
+              <p>按系列、原因和路径查看当前待确认文件。</p>
+            </div>
+            <span id="review-list-meta" class="panel-badge panel-badge-muted">-</span>
           </div>
-          <div id="review-list" class="review-list"></div>
+          <div id="review-list" class="review-list">
+            <article class="review-item is-skeleton" aria-hidden="true">
+              <div class="review-item-top">
+                <div class="review-item-heading skeleton-stack">
+                  <span class="skeleton-line skeleton-line-badge"></span>
+                  <span class="skeleton-line skeleton-line-title"></span>
+                </div>
+                <div class="review-item-side skeleton-stack">
+                  <span class="skeleton-line skeleton-line-short"></span>
+                  <span class="skeleton-line skeleton-line-short"></span>
+                </div>
+              </div>
+              <div class="review-item-grid">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+              </div>
+              <div class="review-item-paths">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line skeleton-line-wide"></span>
+              </div>
+            </article>
+            <article class="review-item is-skeleton" aria-hidden="true">
+              <div class="review-item-top">
+                <div class="review-item-heading skeleton-stack">
+                  <span class="skeleton-line skeleton-line-badge"></span>
+                  <span class="skeleton-line skeleton-line-title"></span>
+                </div>
+                <div class="review-item-side skeleton-stack">
+                  <span class="skeleton-line skeleton-line-short"></span>
+                  <span class="skeleton-line skeleton-line-short"></span>
+                </div>
+              </div>
+              <div class="review-item-grid">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+              </div>
+              <div class="review-item-paths">
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line skeleton-line-wide"></span>
+              </div>
+            </article>
+          </div>
         </section>
       </main>
     </div>

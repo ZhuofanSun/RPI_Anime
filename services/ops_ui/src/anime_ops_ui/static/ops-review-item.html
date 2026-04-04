@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Review Item</title>
+    <script>
+      (() => {
+        try {
+          const key = "anime-ops-ui-theme";
+          const stored = localStorage.getItem(key);
+          const theme =
+            stored ||
+            (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light");
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <div class="hero-nav">
+            <a class="ghost-link ghost-link-subtle" href="/ops-review">← 返回 Ops Review</a>
+            <div class="hero-links" id="review-item-breadcrumbs"></div>
+          </div>
+          <div class="eyebrow">Review Item</div>
+          <h1 id="review-item-title">Review Item</h1>
+          <p id="review-item-subtitle">正在加载文件详情</p>
+        </div>
+        <div class="hero-meta">
+          <div class="meta-pill">
+            <span class="meta-label">Bucket</span>
+            <span class="meta-value" id="review-item-bucket">-</span>
+          </div>
+          <div class="meta-pill">
+            <span class="meta-label">Updated</span>
+            <span class="meta-value" id="review-item-updated">-</span>
+          </div>
+          <div class="meta-pill meta-pill-subtle">
+            <span class="meta-label">Auto Refresh</span>
+            <span class="meta-value" id="review-item-refresh">15s</span>
+          </div>
+          <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
+            <span class="theme-toggle-copy">
+              <span class="theme-toggle-title">Theme</span>
+              <span class="theme-toggle-state" data-theme-label>Light</span>
+            </span>
+            <span class="theme-toggle-track" aria-hidden="true">
+              <span class="theme-toggle-icon">☀</span>
+              <span class="theme-toggle-icon">☾</span>
+              <span class="theme-toggle-thumb"></span>
+            </span>
+          </button>
+        </div>
+      </header>
+
+      <main class="content-grid">
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <h2>文件详情</h2>
+            <p>第二版先把上下文做完整，危险动作后接。</p>
+          </div>
+          <div id="review-item-summary" class="metric-grid metric-grid-wide"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>路径与原因</h2>
+            <p>当前文件的来源位置和留在人工审核区的原因。</p>
+          </div>
+          <div id="review-item-meta" class="review-detail-stack"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>同目录文件</h2>
+            <p>用于确认这一集是不是还有别的版本或分片。</p>
+          </div>
+          <div id="review-item-siblings" class="review-sibling-list"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <h2>后续动作</h2>
+            <p>当前只展示即将接入的动作，不直接改文件。</p>
+          </div>
+          <div id="review-item-actions" class="review-action-grid"></div>
+        </section>
+      </main>
+    </div>
+    <script src="/static/theme.js" defer></script>
+    <script src="/static/ops-review-item.js" defer></script>
+  </body>
+</html>
