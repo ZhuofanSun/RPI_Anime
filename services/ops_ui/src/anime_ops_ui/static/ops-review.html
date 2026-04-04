@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ops Review Placeholder</title>
+    <title>Ops Review</title>
     <script>
       (() => {
         try {
@@ -23,34 +23,78 @@
   </head>
   <body>
     <div class="page-shell">
-      <main class="placeholder-shell">
-        <section class="placeholder-panel">
-          <div class="placeholder-toolbar">
-            <div class="eyebrow">Ops Review</div>
-            <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
-              <span class="theme-toggle-copy">
-                <span class="theme-toggle-title">Theme</span>
-                <span class="theme-toggle-state" data-theme-label>Light</span>
-              </span>
-              <span class="theme-toggle-track" aria-hidden="true">
-                <span class="theme-toggle-icon">☀</span>
-                <span class="theme-toggle-icon">☾</span>
-                <span class="theme-toggle-thumb"></span>
-              </span>
-            </button>
+      <header class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow">Ops Review</div>
+          <h1 id="review-title">Ops Review</h1>
+          <p id="review-subtitle">人工审核队列与未自动入库文件清单</p>
+        </div>
+        <div class="hero-meta">
+          <div class="meta-pill">
+            <span class="meta-label">Root</span>
+            <span class="meta-value meta-value-compact" id="review-root">-</span>
           </div>
-          <h1>人工审核页占位</h1>
-          <p>
-            这一页下一阶段会接入 `manual_review` 列表、失败原因、重试解析和发布动作。
-            当前先保留入口和路径，方便把服务入口区块做成稳定的工具台结构。
-          </p>
-          <div class="placeholder-actions">
-            <a class="service-link" href="/" target="_blank" rel="noopener noreferrer">Open Dashboard</a>
-            <a class="ghost-link" href="http://sunzhuofan.local:3000/api/overview" target="_blank" rel="noopener noreferrer">Open Overview JSON</a>
+          <div class="meta-pill">
+            <span class="meta-label">Updated</span>
+            <span class="meta-value" id="review-updated">-</span>
           </div>
+          <div class="meta-pill meta-pill-subtle">
+            <span class="meta-label">Auto Refresh</span>
+            <span class="meta-value" id="review-refresh">15s</span>
+          </div>
+          <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
+            <span class="theme-toggle-copy">
+              <span class="theme-toggle-title">Theme</span>
+              <span class="theme-toggle-state" data-theme-label>Light</span>
+            </span>
+            <span class="theme-toggle-track" aria-hidden="true">
+              <span class="theme-toggle-icon">☀</span>
+              <span class="theme-toggle-icon">☾</span>
+              <span class="theme-toggle-thumb"></span>
+            </span>
+          </button>
+        </div>
+      </header>
+
+      <main class="content-grid">
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <h2>队列概览</h2>
+            <p>这里只读展示 `manual_review` 当前积压，不执行删除或发布动作。</p>
+          </div>
+          <div id="review-summary" class="metric-grid metric-grid-wide"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <h2>筛选</h2>
+            <p>先按 bucket 和关键字缩小范围，后面再接具体处理动作。</p>
+          </div>
+          <div class="review-toolbar">
+            <label class="review-control">
+              <span class="review-control-label">Bucket</span>
+              <select id="review-bucket-filter" class="review-select">
+                <option value="">All buckets</option>
+              </select>
+            </label>
+            <label class="review-control review-control-wide">
+              <span class="review-control-label">Search</span>
+              <input id="review-search" class="review-input" type="search" placeholder="搜索番名、文件名或路径" />
+            </label>
+          </div>
+          <div id="review-bucket-chips" class="review-bucket-chips"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <h2>待处理文件</h2>
+            <p id="review-list-meta">-</p>
+          </div>
+          <div id="review-list" class="review-list"></div>
         </section>
       </main>
     </div>
     <script src="/static/theme.js" defer></script>
+    <script src="/static/ops-review.js" defer></script>
   </body>
 </html>

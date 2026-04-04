@@ -488,7 +488,13 @@ def _qb_snapshot() -> tuple[dict[str, Any] | None, str | None]:
         return None, str(exc)
 
 
-def _build_services(base_host: str, containers: dict[str, dict[str, Any]], tailscale: dict[str, Any] | None) -> list[dict[str, Any]]:
+def _build_services(
+    base_host: str,
+    containers: dict[str, dict[str, Any]],
+    tailscale: dict[str, Any] | None,
+    *,
+    manual_review_count: int,
+) -> list[dict[str, Any]]:
     tailscale_self = (tailscale or {}).get("Self", {})
     tailscale_state = "online" if (tailscale or {}).get("BackendState") == "Running" else "offline"
     ops_ui_base = _service_link(base_host, int(_env("HOMEPAGE_PORT", "3000")))
@@ -541,10 +547,10 @@ def _build_services(base_host: str, containers: dict[str, dict[str, Any]], tails
         {
             "name": "Ops Review",
             "href": f"{ops_ui_base}/ops-review",
-            "description": "人工审核页占位，下一阶段会从这里接入",
-            "status": "coming-soon",
-            "meta": "Preview route",
-            "uptime": "Next phase",
+            "description": "人工审核队列与只读文件清单",
+            "status": "online",
+            "meta": f"{manual_review_count} files",
+            "uptime": "Read only",
         },
         {
             "name": "Logs",
@@ -575,6 +581,122 @@ def _disk_snapshot(anime_data_root: Path) -> dict[str, Any]:
         "free_bytes": usage.free,
         "total_bytes": usage.total,
         "percent": percent,
+    }
+
+
+def _format_timestamp(timestamp: float) -> str:
+    return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+
+
+def _review_bucket_reason(bucket: str) -> str:
+    reason_map = {
+        "unparsed": "无法稳定解析标题或季集信息",
+        "duplicates": "重复版本等待人工处理",
+        "failed": "自动处理过程中出现异常",
+    }
+    return reason_map.get(bucket, "等待人工审核")
+
+
+def _review_item_from_path(path: Path, review_root: Path) -> dict[str, Any]:
+    relative = path.relative_to(review_root)
+    parts = list(relative.parts)
+    bucket = parts[0] if parts else "root"
+    logical_parts = parts[1:] if len(parts) > 1 else []
+    series_name = logical_parts[0] if logical_parts else path.stem
+    season_label = None
+    nested_parts = logical_parts[1:-1] if len(logical_parts) > 2 else []
+    if len(logical_parts) >= 2 and logical_parts[1].lower().startswith("season"):
+        season_label = logical_parts[1]
+    folder_hint = " / ".join(nested_parts) if nested_parts else "-"
+    stat = path.stat()
+    return {
+        "id": str(relative).replace("/", "__"),
+        "bucket": bucket,
+        "reason": _review_bucket_reason(bucket),
+        "relative_path": str(relative),
+        "filename": path.name,
+        "stem": path.stem,
+        "extension": path.suffix.lower() or "-",
+        "series_name": series_name,
+        "season_label": season_label or "-",
+        "folder_hint": folder_hint,
+        "size_bytes": stat.st_size,
+        "size_label": _format_bytes(stat.st_size),
+        "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+        "modified_label": _format_timestamp(stat.st_mtime),
+    }
+
+
+def build_manual_review_payload() -> dict[str, Any]:
+    anime_data_root = Path(_env("ANIME_DATA_ROOT", "/srv/anime-data"))
+    review_root = anime_data_root / "processing" / "manual_review"
+    items: list[dict[str, Any]] = []
+    if review_root.exists():
+        for path in sorted(review_root.rglob("*")):
+            if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS:
+                items.append(_review_item_from_path(path, review_root))
+
+    items.sort(key=lambda item: item["modified_at"], reverse=True)
+    bucket_stats: dict[str, dict[str, Any]] = {}
+    total_bytes = 0
+    series_names: set[str] = set()
+
+    for item in items:
+        total_bytes += int(item["size_bytes"])
+        series_names.add(item["series_name"])
+        stats = bucket_stats.setdefault(
+            item["bucket"],
+            {"bucket": item["bucket"], "count": 0, "size_bytes": 0},
+        )
+        stats["count"] += 1
+        stats["size_bytes"] += int(item["size_bytes"])
+
+    buckets = [
+        {
+            "bucket": bucket,
+            "label": bucket.replace("_", " ").title(),
+            "count": stats["count"],
+            "size_bytes": stats["size_bytes"],
+            "size_label": _format_bytes(stats["size_bytes"]),
+        }
+        for bucket, stats in sorted(bucket_stats.items(), key=lambda entry: (-entry[1]["count"], entry[0]))
+    ]
+
+    summary_cards = [
+        {
+            "label": "Review Files",
+            "value": str(len(items)),
+            "detail": "pending media files",
+        },
+        {
+            "label": "Total Size",
+            "value": _format_bytes(total_bytes),
+            "detail": str(review_root),
+        },
+        {
+            "label": "Series",
+            "value": str(len(series_names)),
+            "detail": "distinct folders",
+        },
+        {
+            "label": "Buckets",
+            "value": str(len(buckets)),
+            "detail": ", ".join(bucket["label"] for bucket in buckets[:3]) if buckets else "no review buckets",
+        },
+    ]
+
+    return {
+        "title": "Ops Review",
+        "subtitle": "人工审核队列与未自动入库文件清单",
+        "refresh_interval_seconds": 15,
+        "root": str(review_root),
+        "summary_cards": summary_cards,
+        "buckets": buckets,
+        "items": items,
+        "total_files": len(items),
+        "total_size_bytes": total_bytes,
+        "total_size_label": _format_bytes(total_bytes),
+        "last_updated": datetime.now().isoformat(timespec="seconds"),
     }
 
 
@@ -701,6 +823,7 @@ def build_overview() -> dict[str, Any]:
             "detail": "下载区剩余媒体文件",
         },
     ]
+    manual_review_count = _count_media_files(manual_review_root)
 
     network_cards = [
         {
@@ -778,7 +901,12 @@ def build_overview() -> dict[str, Any]:
         "subtitle": "树莓派私人影音库控制台",
         "host": base_host,
         "refresh_interval_seconds": _refresh_interval_seconds(),
-        "services": _build_services(base_host, containers, tailscale),
+        "services": _build_services(
+            base_host,
+            containers,
+            tailscale,
+            manual_review_count=manual_review_count,
+        ),
         "system_cards": system_cards,
         "queue_cards": queue_cards,
         "trend_cards": trend_cards,
@@ -818,6 +946,11 @@ def healthz() -> dict[str, bool]:
 @app.get("/api/overview")
 def overview() -> JSONResponse:
     return JSONResponse(build_overview())
+
+
+@app.get("/api/manual-review")
+def manual_review() -> JSONResponse:
+    return JSONResponse(build_manual_review_payload())
 
 
 @app.get("/")

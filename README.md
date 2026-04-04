@@ -26,6 +26,7 @@
 - `AniDB` 已在 Jellyfin 中加载，并已手动调整 metadata provider 优先级
 - 阶段一运维首页已切到自定义 `ops-ui + Glances`
 - `ops-ui` 已支持 light / dark 切换，并补了更强的卡片抬升和悬浮反馈
+- `Ops Review` 已进入只读列表版，可查看 `manual_review` 的文件清单、bucket、大小和路径
 
 当前服务访问地址：
 
