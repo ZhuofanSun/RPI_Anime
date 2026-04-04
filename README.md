@@ -29,6 +29,7 @@
 - `Ops Review` 已进入只读列表版，可查看 `manual_review` 的文件清单、bucket、大小和路径
 - `ops-ui` 采用混合导航：外部服务仍新标签页打开，内部工具页改为同站内多页面跳转
 - `ops-ui` 首页与 `Ops Review` 已补首屏骨架、会话缓存和返回按钮，减轻页面切换时的空白感
+- `Ops Review` 详情页已接入具体动作：`retry parse`、手动发布到 `Seasonal`、删除当前文件
 
 当前服务访问地址：
 
@@ -96,6 +97,7 @@
 - `3000` 端口现在跑的是自定义 `ops-ui`，不是第三方 Homepage 镜像。
 - `ops-ui` 的前端是静态 `HTML + CSS + JS`，后端是 `FastAPI`，运行时通过 `Glances`、`qBittorrent API` 和本地 `Tailscale` socket 汇总状态。
 - `ops-ui` 会把趋势采样数据写到 `${ANIME_APPDATA_ROOT}/ops-ui/history.json`，用于 24 小时折线、Jellyfin 播放流量趋势和 7 日下载柱状图，不会因为容器重启立刻清空。
+- `ops-ui` 现在对 `${ANIME_DATA_ROOT}` 具有写权限，仅用于 `Ops Review` 的受控文件动作；主页服务也固定按 `${PUID}:${PGID}` 运行，避免重新引入 `root:root` 文件。
 
 ## 直接在树莓派启动服务
 

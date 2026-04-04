@@ -6,9 +6,11 @@ from datetime import date, datetime, timedelta
 import http.client
 import json
 import os
+import re
 import shutil
 import socket
 from pathlib import Path
+import sys
 import threading
 import time
 from typing import Any
@@ -17,13 +19,30 @@ import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
+REPO_ROOT = APP_DIR.parents[3]
+POSTPROCESSOR_SRC = REPO_ROOT / "services" / "postprocessor" / "src"
+if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
+    sys.path.insert(0, str(POSTPROCESSOR_SRC))
+
+from anime_postprocessor.models import ParsedMedia, UnparsedMedia
+from anime_postprocessor.parser import normalize_title, parse_media_file
+from anime_postprocessor.publisher import build_target_path, publish_media
+from anime_postprocessor.selector import score_candidate
+
 MEDIA_EXTENSIONS = {".mkv", ".mp4", ".avi", ".m4v", ".ts"}
 HISTORY_LOCK = threading.Lock()
 HISTORY_SERIES = ("cpu_percent", "cpu_temp_c", "playback_tx_rate")
 HISTORY_STATE: dict[str, Any] | None = None
+
+
+class ManualPublishRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    season: int = Field(..., ge=1, le=99)
+    episode: int = Field(..., ge=1, le=999)
 
 
 def _env(name: str, default: str) -> str:
@@ -548,10 +567,10 @@ def _build_services(
         {
             "name": "Ops Review",
             "href": f"{ops_ui_base}/ops-review",
-            "description": "人工审核队列与只读文件清单",
+            "description": "人工审核队列、详情页和受控文件动作",
             "status": "online",
             "meta": f"{manual_review_count} files",
-            "uptime": "Read only",
+            "uptime": "Review workspace",
             "internal": True,
         },
         {
@@ -593,6 +612,11 @@ def _manual_review_root() -> Path:
     return anime_data_root / "processing" / "manual_review"
 
 
+def _library_root() -> Path:
+    anime_data_root = Path(_env("ANIME_DATA_ROOT", "/srv/anime-data"))
+    return anime_data_root / "library" / "seasonal"
+
+
 def _format_timestamp(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
 
@@ -604,6 +628,110 @@ def _review_bucket_reason(bucket: str) -> str:
         "failed": "自动处理过程中出现异常",
     }
     return reason_map.get(bucket, "等待人工审核")
+
+
+def _cleanup_empty_dirs(path: Path, stop_at: Path) -> None:
+    current = path
+    while current != stop_at and current.is_dir():
+        try:
+            current.rmdir()
+        except OSError:
+            break
+        current = current.parent
+
+
+def _season_number_from_label(season_label: str | None) -> int:
+    if not season_label:
+        return 1
+    digits = "".join(ch for ch in season_label if ch.isdigit())
+    if not digits:
+        return 1
+    try:
+        return max(1, int(digits))
+    except ValueError:
+        return 1
+
+
+def _guess_episode_number(name: str) -> int | None:
+    patterns = (
+        r"\bS\d{1,2}E(?P<episode>\d{1,3})\b",
+        r"第(?P<episode>\d{1,3})[话話集]",
+        r"\[(?P<episode>\d{1,3})(?:v\d+)?\]",
+        r"(?:^|[\s._-])(?P<episode>\d{1,3})(?:v\d+)?(?=[\s._-]|$)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, name, re.IGNORECASE)
+        if not match:
+            continue
+        try:
+            return int(match.group("episode"))
+        except (ValueError, IndexError):
+            continue
+    return None
+
+
+def _manual_review_item_or_404(item_id: str) -> tuple[dict[str, Any], Path, Path]:
+    review_root = _manual_review_root()
+    payload = build_manual_review_item_payload(item_id)
+    item = payload["item"]
+    item_path = review_root / item["relative_path"]
+    if not item_path.exists() or not item_path.is_file():
+        raise HTTPException(status_code=404, detail="manual review file not found")
+    return item, item_path, review_root
+
+
+def _build_auto_parse_payload(item_path: Path, review_root: Path) -> dict[str, Any]:
+    parsed = parse_media_file(review_root, item_path)
+    if isinstance(parsed, UnparsedMedia):
+        return {
+            "status": "unparsed",
+            "reason": parsed.reason,
+            "target_path": None,
+            "target_exists": False,
+            "score_summary": None,
+            "parsed": None,
+        }
+
+    target = build_target_path(_library_root(), parsed)
+    return {
+        "status": "parsed",
+        "reason": None,
+        "target_path": str(target),
+        "target_exists": target.exists(),
+        "score_summary": score_candidate(parsed).summary,
+        "parsed": {
+            "title": parsed.title,
+            "season": parsed.season,
+            "episode": parsed.episode,
+            "extension": parsed.extension,
+        },
+    }
+
+
+def _manual_publish_defaults(item: dict[str, Any], auto_parse: dict[str, Any]) -> dict[str, Any]:
+    parsed = auto_parse.get("parsed") if isinstance(auto_parse, dict) else None
+    default_title = (
+        parsed.get("title")
+        if isinstance(parsed, dict) and parsed.get("title")
+        else item.get("series_name")
+        or item.get("stem")
+        or item.get("filename")
+    )
+    season = (
+        parsed.get("season")
+        if isinstance(parsed, dict) and parsed.get("season") is not None
+        else _season_number_from_label(item.get("season_label"))
+    )
+    episode = (
+        parsed.get("episode")
+        if isinstance(parsed, dict) and parsed.get("episode") is not None
+        else _guess_episode_number(item.get("filename", "")) or 1
+    )
+    return {
+        "title": default_title,
+        "season": season,
+        "episode": episode,
+    }
 
 
 def _review_item_from_path(path: Path, review_root: Path) -> dict[str, Any]:
@@ -737,20 +865,8 @@ def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
                     }
                 )
 
-    suggested_actions = [
-        {
-            "title": "Retry Parse",
-            "description": "下一阶段会接入重试解析，把当前文件重新送回后处理规则。",
-        },
-        {
-            "title": "Publish To Seasonal",
-            "description": "下一阶段会允许人工确认目标剧名与季集后直接发布。",
-        },
-        {
-            "title": "Delete",
-            "description": "删除动作会放到受控按钮里，并增加确认提示，不会直接暴露在列表页。",
-        },
-    ]
+    auto_parse = _build_auto_parse_payload(item_path, review_root)
+    manual_defaults = _manual_publish_defaults(item, auto_parse)
 
     return {
         "title": "Review Item",
@@ -759,13 +875,60 @@ def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
         "root": str(review_root),
         "item": item,
         "siblings": sibling_items,
-        "suggested_actions": suggested_actions,
+        "auto_parse": auto_parse,
+        "manual_publish_defaults": manual_defaults,
         "breadcrumbs": [
             {"label": "Dashboard", "href": "/"},
             {"label": "Ops Review", "href": "/ops-review"},
             {"label": item["filename"], "href": None},
         ],
         "last_updated": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def _manual_parsed_media(
+    *,
+    item: dict[str, Any],
+    item_path: Path,
+    review_root: Path,
+    title: str,
+    season: int,
+    episode: int,
+) -> ParsedMedia:
+    parsed = parse_media_file(review_root, item_path)
+    release_group = parsed.release_group if isinstance(parsed, ParsedMedia) else None
+    return ParsedMedia(
+        path=item_path,
+        relative_path=item_path.relative_to(review_root),
+        title=title.strip(),
+        normalized_title=normalize_title(title),
+        season=season,
+        episode=episode,
+        extension=item_path.suffix.lower(),
+        release_group=release_group,
+    )
+
+
+def _publish_review_media(media: ParsedMedia, *, review_root: Path) -> dict[str, Any]:
+    try:
+        result = publish_media(
+            source_root=review_root,
+            library_root=_library_root(),
+            media=media,
+        )
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return result
+
+
+def _delete_review_file(item_path: Path, review_root: Path) -> dict[str, Any]:
+    size_bytes = item_path.stat().st_size if item_path.exists() else 0
+    item_path.unlink()
+    _cleanup_empty_dirs(item_path.parent, review_root)
+    return {
+        "deleted_path": str(item_path),
+        "deleted_size_bytes": size_bytes,
+        "deleted_size_label": _format_bytes(size_bytes),
     }
 
 
@@ -1025,6 +1188,79 @@ def manual_review() -> JSONResponse:
 @app.get("/api/manual-review/item")
 def manual_review_item(id: str = Query(...)) -> JSONResponse:
     return JSONResponse(build_manual_review_item_payload(id))
+
+
+@app.post("/api/manual-review/item/retry-parse")
+def manual_review_retry_parse(id: str = Query(...)) -> JSONResponse:
+    item, item_path, review_root = _manual_review_item_or_404(id)
+    auto_parse = _build_auto_parse_payload(item_path, review_root)
+    parsed = auto_parse.get("parsed")
+    if auto_parse.get("status") != "parsed" or not isinstance(parsed, dict):
+        raise HTTPException(
+            status_code=422,
+            detail=auto_parse.get("reason") or "file is still not parseable",
+        )
+
+    media = _manual_parsed_media(
+        item=item,
+        item_path=item_path,
+        review_root=review_root,
+        title=parsed["title"],
+        season=int(parsed["season"]),
+        episode=int(parsed["episode"]),
+    )
+    result = _publish_review_media(media, review_root=review_root)
+    return JSONResponse(
+        {
+            "ok": True,
+            "action": "retry-parse",
+            "message": f"已按自动解析结果发布到 Seasonal: {media.title} S{media.season:02d}E{media.episode:02d}",
+            "result": result,
+        }
+    )
+
+
+@app.post("/api/manual-review/item/publish")
+def manual_review_publish(
+    payload: ManualPublishRequest,
+    id: str = Query(...),
+) -> JSONResponse:
+    item, item_path, review_root = _manual_review_item_or_404(id)
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="title is required")
+
+    media = _manual_parsed_media(
+        item=item,
+        item_path=item_path,
+        review_root=review_root,
+        title=title,
+        season=payload.season,
+        episode=payload.episode,
+    )
+    result = _publish_review_media(media, review_root=review_root)
+    return JSONResponse(
+        {
+            "ok": True,
+            "action": "publish",
+            "message": f"已手动发布到 Seasonal: {title} S{payload.season:02d}E{payload.episode:02d}",
+            "result": result,
+        }
+    )
+
+
+@app.post("/api/manual-review/item/delete")
+def manual_review_delete(id: str = Query(...)) -> JSONResponse:
+    item, item_path, review_root = _manual_review_item_or_404(id)
+    result = _delete_review_file(item_path, review_root)
+    return JSONResponse(
+        {
+            "ok": True,
+            "action": "delete",
+            "message": f"已从人工审核队列删除: {item['filename']}",
+            "result": result,
+        }
+    )
 
 
 @app.get("/")

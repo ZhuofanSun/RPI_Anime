@@ -64,6 +64,8 @@
         </div>
       </header>
 
+      <div id="review-flash" class="flash-stack" aria-live="polite"></div>
+
       <main class="content-grid">
         <section class="panel panel-wide">
           <div class="panel-head panel-head-compact">
@@ -71,9 +73,9 @@
               <h2>队列概览</h2>
               <p>当前 `manual_review` 的积压规模、体积和分桶分布。</p>
             </div>
-            <span class="panel-badge">Read only</span>
+            <span class="panel-badge">Detail actions</span>
           </div>
-          <div class="panel-note">这里只读展示当前审核积压，动作区会在下一阶段接入。</div>
+          <div class="panel-note">列表页保持只读，具体的重试解析、手动发布和删除动作放在详情页里执行。</div>
           <div id="review-summary" class="metric-grid review-summary-grid">
             <article class="metric-card is-skeleton" aria-hidden="true">
               <span class="skeleton-line skeleton-line-meta"></span>

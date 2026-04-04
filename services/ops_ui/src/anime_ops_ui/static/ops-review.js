@@ -9,7 +9,9 @@ const reviewSearch = document.getElementById("review-search");
 const reviewBucketChips = document.getElementById("review-bucket-chips");
 const reviewList = document.getElementById("review-list");
 const reviewListMeta = document.getElementById("review-list-meta");
+const reviewFlash = document.getElementById("review-flash");
 const REVIEW_CACHE_KEY = "anime-ops-ui-manual-review-cache-v1";
+const REVIEW_FLASH_KEY = "anime-ops-ui-flash-v1";
 
 let reviewRefreshMs = 15000;
 let reviewTimerId = null;
@@ -119,6 +121,29 @@ function saveReviewCache(payload) {
   } catch {}
 }
 
+function consumeFlash() {
+  try {
+    const raw = window.sessionStorage.getItem(REVIEW_FLASH_KEY);
+    if (!raw) return null;
+    window.sessionStorage.removeItem(REVIEW_FLASH_KEY);
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function flashTemplate(flash) {
+  const tone = flash.tone === "error" ? "flash-error" : "flash-success";
+  return `
+    <div class="flash-banner ${tone}">
+      <strong>${flash.title || "Action completed"}</strong>
+      <span>${flash.message || ""}</span>
+    </div>
+  `;
+}
+
 function applyFilters() {
   const activeBucket = reviewBucketFilter.value;
   const keyword = (reviewSearch.value || "").trim().toLowerCase();
@@ -223,6 +248,11 @@ reviewSearch.addEventListener("input", applyFilters);
 const cachedReview = loadReviewCache();
 if (cachedReview) {
   renderReview(cachedReview.payload, { cachedAt: cachedReview.cachedAt });
+}
+
+const flash = consumeFlash();
+if (flash && reviewFlash) {
+  reviewFlash.innerHTML = flashTemplate(flash);
 }
 
 refreshReview();

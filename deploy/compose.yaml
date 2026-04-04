@@ -1,8 +1,10 @@
 services:
   homepage:
     build:
-      context: ../services/ops_ui
+      context: ..
+      dockerfile: services/ops_ui/Dockerfile
     container_name: homepage
+    user: "${PUID}:${PGID}"
     ports:
       - "${HOMEPAGE_PORT}:3000/tcp"
     environment:
@@ -25,7 +27,7 @@ services:
       OPS_UI_UPLOAD_WINDOW_DAYS: "${OPS_UI_UPLOAD_WINDOW_DAYS:-7}"
       OPS_UI_STATE_ROOT: "/data"
     volumes:
-      - "${ANIME_DATA_ROOT}:/srv/anime-data:ro"
+      - "${ANIME_DATA_ROOT}:/srv/anime-data"
       - "${ANIME_APPDATA_ROOT}/ops-ui:/data"
       - "/var/run/tailscale:/var/run/tailscale:ro"
     restart: unless-stopped

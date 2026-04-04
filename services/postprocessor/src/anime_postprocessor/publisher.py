@@ -210,3 +210,45 @@ def apply_publish_plan(
         "deleted": deleted,
         "reviewed": reviewed,
     }
+
+
+def publish_media(
+    *,
+    source_root: Path,
+    library_root: Path,
+    media: ParsedMedia,
+    resolver: TitleMapResolver | None = None,
+) -> dict:
+    active_resolver = resolver or load_title_map()
+    target = build_target_path(
+        library_root,
+        media,
+        resolver=active_resolver,
+    )
+    if target.exists():
+        raise FileExistsError(f"target already exists: {target}")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(media.path), str(target))
+    _cleanup_empty_dirs(media.path.parent, source_root)
+
+    series = resolve_series(media, resolver=active_resolver)
+    show_dir = build_series_folder_path(
+        library_root,
+        media,
+        resolver=active_resolver,
+    )
+    show_dir.mkdir(parents=True, exist_ok=True)
+    nfo_path = _write_tvshow_nfo(show_dir, series)
+    episode_nfo_path = _write_episode_nfo(
+        target,
+        series=series,
+        episode_title=media.path.stem,
+    )
+    return {
+        "source": str(media.relative_path),
+        "target": str(target),
+        "score": None,
+        "nfo": str(nfo_path),
+        "episode_nfo": str(episode_nfo_path),
+    }
