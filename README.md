@@ -91,6 +91,7 @@
 - 不要用 `sudo docker compose run ...` 跑 `postprocessor` 工具命令，否则新建目录和 `nfo` 容易变成 `root:root`。
 - `3000` 端口现在跑的是自定义 `ops-ui`，不是第三方 Homepage 镜像。
 - `ops-ui` 的前端是静态 `HTML + CSS + JS`，后端是 `FastAPI`，运行时通过 `Glances`、`qBittorrent API` 和本地 `Tailscale` socket 汇总状态。
+- `ops-ui` 会把趋势采样数据写到 `${ANIME_APPDATA_ROOT}/ops-ui/history.json`，用于 24 小时折线、Jellyfin 播放流量趋势和 7 日下载柱状图，不会因为容器重启立刻清空。
 
 ## 直接在树莓派启动服务
 
