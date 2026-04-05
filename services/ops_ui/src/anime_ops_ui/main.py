@@ -127,15 +127,29 @@ def _format_temperature(value: float | int | None) -> str:
     return f"{float(value):.1f}°C"
 
 
+def _fan_state_file() -> Path:
+    return Path(_env("FAN_CONTROL_STATE_FILE", "/host-fan/state.json"))
+
+
+def _fan_state_snapshot() -> tuple[dict[str, Any] | None, str | None]:
+    path = _fan_state_file()
+    if not path.exists():
+        return None, "fan state file not found"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return None, str(exc)
+    if not isinstance(payload, dict):
+        return None, "fan state payload was not valid JSON"
+    return payload, None
+
+
 def _format_uptime(value: str | None) -> str:
     if not value:
         return "-"
     parts = value.split(":")
     if len(parts) == 3 and all(part.isdigit() for part in parts):
         hours, minutes, _seconds = [int(part) for part in parts]
-        if hours >= 24:
-            days, rem_hours = divmod(hours, 24)
-            return f"{days}d {rem_hours}h {minutes}m"
         return f"{hours}h {minutes}m"
     return value
 
@@ -2003,12 +2017,16 @@ def build_overview() -> dict[str, Any]:
     tailscale_peer_values = list(tailscale_peers.values()) if isinstance(tailscale_peers, dict) else []
     tailnet_online_peers = sum(1 for peer in tailscale_peer_values if peer.get("Online"))
     running_services, total_services = _container_status_count(containers)
+    tailscaled_online = bool(isinstance(tailscale, dict) and not tailscale_error)
+    total_service_units = total_services + 1
+    online_service_units = running_services + (1 if tailscaled_online else 0)
     cpu_percent = (quicklook or {}).get("cpu") if isinstance(quicklook, dict) else None
     memory_percent = (mem or {}).get("percent") if isinstance(mem, dict) else None
     cpu_temp_c = _extract_temperature(sensors_raw)
     jellyfin_container = containers.get("jellyfin", {})
     jellyfin_network = jellyfin_container.get("network", {}) if isinstance(jellyfin_container, dict) else {}
     playback_tx_rate = jellyfin_container.get("network_tx") or jellyfin_network.get("tx")
+    fan_state, fan_state_error = _fan_state_snapshot()
     host_uptime = _format_uptime(uptime_raw if isinstance(uptime_raw, str) else None)
     load_min1 = (load_raw or {}).get("min1") if isinstance(load_raw, dict) else None
     load_min5 = (load_raw or {}).get("min5") if isinstance(load_raw, dict) else None
@@ -2024,6 +2042,21 @@ def build_overview() -> dict[str, Any]:
     playback_values, playback_points = _series_values("playback_tx_rate", window_hours=trend_window_hours)
     download_bars, download_values = _daily_volume_bars(days=upload_window_days, daily_key="download_daily")
 
+    fan_updated_ts = float((fan_state or {}).get("updated_ts") or 0.0) if fan_state else 0.0
+    fan_state_age_s = max(0.0, time.time() - fan_updated_ts) if fan_updated_ts else None
+    fan_is_fresh = fan_state_age_s is not None and fan_state_age_s <= max(_refresh_interval_seconds() * 3, 30)
+    fan_duty = (fan_state or {}).get("applied_duty_percent") if fan_state else None
+    fan_cpu_temp = (fan_state or {}).get("cpu_temp_c") if fan_state else None
+    fan_pin = (fan_state or {}).get("pin") if fan_state else None
+    fan_status_label = "Online" if fan_is_fresh else "Stale"
+    fan_detail = "Fan state unavailable"
+    if fan_state and fan_state_age_s is not None:
+        fan_detail = (
+            f"Fan {int(round(float(fan_duty)))}% · GPIO{fan_pin or '-'} · {int(fan_state_age_s)}s ago"
+            if fan_is_fresh
+            else f"last update {int(fan_state_age_s)}s ago"
+        )
+
     system_cards = [
         {
             "label": "CPU Usage",
@@ -2033,7 +2066,7 @@ def build_overview() -> dict[str, Any]:
         {
             "label": "CPU Temp",
             "value": _format_temperature(cpu_temp_c),
-            "detail": f"{trend_window_hours}h avg {_format_temperature(_mean(temp_values))}",
+            "detail": f"{trend_window_hours}h avg {_format_temperature(_mean(temp_values))} · {fan_detail}",
         },
         {
             "label": "Memory",
@@ -2047,8 +2080,8 @@ def build_overview() -> dict[str, Any]:
         },
         {
             "label": "Services",
-            "value": f"{running_services}/{total_services}",
-            "detail": "running containers",
+            "value": f"{online_service_units} online",
+            "detail": f"{total_service_units} total · Docker + tailscaled",
         },
         {
             "label": "Anime Data",
@@ -2159,9 +2192,17 @@ def build_overview() -> dict[str, Any]:
         ("glances/sensors", sensors_error),
         ("qBittorrent", qb_error),
         ("tailscale", tailscale_error),
+        ("fan-control", fan_state_error),
     ):
         if error:
             diagnostics.append({"source": label, "message": error})
+    if fan_state and not fan_is_fresh and fan_state_age_s is not None:
+        diagnostics.append(
+            {
+                "source": "fan-control",
+                "message": f"fan state is stale ({int(fan_state_age_s)}s since last update)",
+            }
+        )
 
     return {
         "title": "RPI Anime Ops",

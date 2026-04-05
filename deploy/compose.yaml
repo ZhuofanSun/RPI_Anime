@@ -27,9 +27,11 @@ services:
       OPS_UI_SERIES_WINDOW_HOURS: "${OPS_UI_SERIES_WINDOW_HOURS:-24}"
       OPS_UI_UPLOAD_WINDOW_DAYS: "${OPS_UI_UPLOAD_WINDOW_DAYS:-7}"
       OPS_UI_STATE_ROOT: "/data"
+      FAN_CONTROL_STATE_FILE: "/host-fan/state.json"
     volumes:
       - "${ANIME_DATA_ROOT}:/srv/anime-data"
       - "${ANIME_APPDATA_ROOT}/ops-ui:/data"
+      - "/usr/local/lib/rpi-anime-fan:/host-fan:ro"
       - "/var/run/tailscale:/var/run/tailscale:ro"
       - "/var/run/docker.sock:/var/run/docker.sock"
       - "../services/ops_ui/src:/app/services/ops_ui/src:ro"

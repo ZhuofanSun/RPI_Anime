@@ -1,0 +1,16 @@
+[Unit]
+Description=RPI Anime PWM Fan Control
+After=pigpiod.service
+Requires=pigpiod.service
+
+[Service]
+Type=simple
+User=root
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/usr/local/lib/rpi-anime-fan
+ExecStart=/usr/bin/python3 /usr/local/lib/rpi-anime-fan/fan_control.py --config /usr/local/lib/rpi-anime-fan/fan_control.toml
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

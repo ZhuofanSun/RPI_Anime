@@ -1,0 +1,50 @@
+[pwm]
+pin = 18
+frequency_hz = 25000
+
+[control]
+poll_seconds = 3.0
+boost_seconds = 3.0
+min_duty = 30
+max_duty = 100
+smoothing_alpha = 0.32
+ramp_up_step = 12
+ramp_down_step = 6
+emergency_temp_c = 75.0
+log_every_seconds = 60.0
+
+[[curve]]
+temp_c = 35.0
+duty = 30
+
+[[curve]]
+temp_c = 42.0
+duty = 30
+
+[[curve]]
+temp_c = 48.0
+duty = 38
+
+[[curve]]
+temp_c = 52.0
+duty = 48
+
+[[curve]]
+temp_c = 56.0
+duty = 60
+
+[[curve]]
+temp_c = 60.0
+duty = 72
+
+[[curve]]
+temp_c = 64.0
+duty = 84
+
+[[curve]]
+temp_c = 68.0
+duty = 92
+
+[[curve]]
+temp_c = 72.0
+duty = 100

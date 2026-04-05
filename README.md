@@ -35,6 +35,7 @@
 - `Postprocessor` 内页已接入运行概览、等待窗口快照、最近事件和手动命令入口
 - `ops-ui` 首页已接入单服务重启与整套服务重启动作，并带确认与结果提示
 - `ops-ui` 首页服务按钮已改成跟随当前访问地址，在 `.local`、`Tailscale IP`、`MagicDNS` 下都会跳到对应 host
+- `ops-ui` 首页主机状态已接入风扇当前占空比、GPIO 引脚和最近状态更新时间
 - 宿主机 `Tailscale` 已完成干净重建并重新授权，当前已回到 `Running` 在线状态
 
 当前服务访问地址：
@@ -64,9 +65,14 @@
 ├── deploy
 │   ├── .env.example
 │   ├── compose.yaml
+│   ├── fan_control.toml
+│   ├── systemd
 │   └── title_mappings.toml
 ├── scripts
 │   ├── bootstrap_pi.sh
+│   ├── fan_control.py
+│   ├── fan_pwm_test.py
+│   ├── install_fan_control_pi.sh
 │   ├── install_tailscale_pi.sh
 │   ├── remote_tailscale.sh
 │   ├── remote_up.sh
@@ -241,6 +247,100 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml restart autobangumi
 docker compose --env-file deploy/.env -f deploy/compose.yaml restart qbittorrent
 docker compose --env-file deploy/.env -f deploy/compose.yaml restart jellyfin
 ```
+
+## 风扇 PWM 测试
+
+如果机箱风扇的控制线接到了 `GPIO18`，可以先用这个脚本测试几个档位：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+python3 scripts/fan_pwm_test.py
+```
+
+默认行为：
+
+- 先以 `100%` 转 `3` 秒，帮助风扇起转
+- 然后在 `100,80,60,40,25` 这几个档位之间循环
+
+常用例子：
+
+```bash
+# 只跑一轮
+python3 scripts/fan_pwm_test.py --once
+
+# 自定义档位和停留时间
+python3 scripts/fan_pwm_test.py --duty 100,70,40 --hold 5
+```
+
+说明：
+
+- 脚本会优先尝试 `pigpio` 的硬件 PWM
+- 如果树莓派上没有 `pigpio`，会退回 `gpiozero` 做软件 PWM 验证
+- 如果蓝线一接上但没有输出 PWM，很多这类风扇会直接停转；先跑脚本再观察是否恢复
+
+## 风扇温控服务
+
+如果风扇的蓝线已经接到 `GPIO18`，并且 `fan_pwm_test.py` 验证过可以响应 PWM，可以把风扇控制装成宿主机 `systemd` 服务：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+./scripts/install_fan_control_pi.sh
+```
+
+默认配置文件在：
+
+- `deploy/fan_control.toml`
+
+安装后，脚本和配置会复制到宿主机系统盘：
+
+- `/usr/local/lib/rpi-anime-fan/fan_control.py`
+- `/usr/local/lib/rpi-anime-fan/fan_control.toml`
+
+这样即使外置媒体盘没挂上，风扇控制也不会跟着失效。
+
+默认策略：
+
+- 服务运行时风扇始终至少 `30%`
+- 启动时先 `100%` 转 `3` 秒，帮助低速风扇稳定起转
+- 每 `3` 秒采样一次 CPU 温度
+- 使用 `EMA` 平滑，`alpha=0.32`
+- 升速每次最多 `+12%`
+- 降速每次最多 `-6%`
+- `75°C` 以上直接拉到 `100%`
+
+默认温度曲线：
+
+- `35°C -> 30%`
+- `42°C -> 30%`
+- `48°C -> 38%`
+- `52°C -> 48%`
+- `56°C -> 60%`
+- `60°C -> 72%`
+- `64°C -> 84%`
+- `68°C -> 92%`
+- `72°C -> 100%`
+
+常用命令：
+
+```bash
+# 查看服务状态
+systemctl status anime-fan-control.service --no-pager
+
+# 看实时日志
+journalctl -u anime-fan-control.service -f
+
+# 如果你改的是仓库里的 deploy/fan_control.toml，先重新安装一遍
+./scripts/install_fan_control_pi.sh
+
+# 如果你直接改的是 /usr/local/lib/rpi-anime-fan/fan_control.toml，再重启服务
+sudo systemctl restart anime-fan-control.service
+```
+
+我这版默认策略偏保守：
+
+- 平时尽量低噪音
+- 中高温时拉升比较快
+- 降速故意慢一点，减少来回抽动
 
 ## 后处理模式
 

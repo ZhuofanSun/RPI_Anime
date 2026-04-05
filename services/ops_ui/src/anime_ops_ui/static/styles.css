@@ -645,6 +645,7 @@ html[data-theme="dark"] .theme-toggle-thumb {
   justify-content: flex-end;
   gap: 10px;
   align-items: center;
+  margin-left: auto;
 }
 
 .review-toolbar {
