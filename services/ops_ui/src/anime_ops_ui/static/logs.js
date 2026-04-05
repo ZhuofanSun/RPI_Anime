@@ -39,7 +39,7 @@ function metricTemplate(card) {
 
 function optionTemplate(values, label) {
   return [
-    `<option value="">All ${label}</option>`,
+    `<option value="">全部${label}</option>`,
     ...values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`),
   ].join("");
 }
@@ -87,7 +87,7 @@ function logItemTemplate(item) {
   const source = String(item.source || "unknown");
   const action = String(item.action || "event");
   const details = item.details && Object.keys(item.details).length
-    ? `<details class="log-details"><summary>details</summary><pre>${escapeHtml(JSON.stringify(item.details, null, 2))}</pre></details>`
+      ? `<details class="log-details"><summary>详细信息</summary><pre>${escapeHtml(JSON.stringify(item.details, null, 2))}</pre></details>`
     : "";
   return `
     <article class="log-entry ${levelTone(item.level)}">
@@ -115,13 +115,13 @@ function renderLogs(payload) {
   logsUpdated.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   logsRefreshMs = (payload.refresh_interval_seconds || 10) * 1000;
   logsRefresh.textContent = `${Math.round(logsRefreshMs / 1000)}s`;
-  logsRetentionBadge.textContent = `cap ${payload.retention_cap || "-"}`;
+  logsRetentionBadge.textContent = `上限 ${payload.retention_cap || "-"}`;
   logsSummary.innerHTML = (payload.summary_cards || []).map(metricTemplate).join("");
 
   const sourceValue = logsSourceFilter.value;
   const levelValue = logsLevelFilter.value;
-  logsSourceFilter.innerHTML = optionTemplate(payload.sources || [], "sources");
-  logsLevelFilter.innerHTML = optionTemplate(payload.levels || [], "levels");
+  logsSourceFilter.innerHTML = optionTemplate(payload.sources || [], "来源");
+  logsLevelFilter.innerHTML = optionTemplate(payload.levels || [], "等级");
   if (sourceValue && Array.from(logsSourceFilter.options).some((option) => option.value === sourceValue)) {
     logsSourceFilter.value = sourceValue;
   }
@@ -167,7 +167,7 @@ async function refreshLogs() {
     const payload = await response.json();
     renderLogs(payload);
   } catch (error) {
-    setFlash("error", "Logs unavailable", error.message || String(error));
+    setFlash("error", "日志页不可用", error.message || String(error));
   } finally {
     logsFetchInFlight = false;
     scheduleRefresh();
@@ -185,10 +185,10 @@ async function clearLogs() {
       throw new Error(`HTTP ${response.status}`);
     }
     const payload = await response.json();
-    setFlash("success", "Logs cleared", payload.message || "日志已清理。");
+    setFlash("success", "日志已清理", payload.message || "日志已清理。");
     await refreshLogs();
   } catch (error) {
-    setFlash("error", "Clear failed", error.message || String(error));
+    setFlash("error", "清理失败", error.message || String(error));
   }
 }
 

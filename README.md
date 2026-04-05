@@ -119,6 +119,9 @@
 - `ops-ui` 会把趋势采样数据写到 `${ANIME_APPDATA_ROOT}/ops-ui/history.json`，用于 24 小时折线、Jellyfin 播放流量趋势和 7 日下载柱状图，不会因为容器重启立刻清空。
 - `ops-ui` 会把结构化事件日志写到 `${ANIME_APPDATA_ROOT}/ops-ui/events.json`，默认保留最近 `1500` 条，超出后自动裁剪。
 - `ops-ui` 现在对 `${ANIME_DATA_ROOT}` 具有写权限，仅用于 `Ops Review` 的受控文件动作。
+- `ops-ui` 首页现在会额外检查 `${ANIME_DATA_ROOT}` 和 `${ANIME_COLLECTION_ROOT}` 是否真的挂在外置盘上：
+  - 如果盘没挂上，会在 `诊断` 区块直接报挂载异常
+  - 同时把首页里依赖媒体目录的计数卡降级成 `-`，避免误把系统盘目录当成真实媒体库
 - 为了调用本地 `Tailscale` LocalAPI 写接口和 Docker 本地 socket，`homepage` 服务当前以 `root` 运行；`ops-ui` 状态数据仍然只写到 `${ANIME_APPDATA_ROOT}/ops-ui`。
 - `ops-ui` 里的 `Tailscale` 按钮现在走真正的 `start / stop` 语义：
   - `start` 通过 LocalAPI 打开 backend，并在需要时进入登录态

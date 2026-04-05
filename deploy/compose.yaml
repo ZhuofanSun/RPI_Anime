@@ -10,6 +10,7 @@ services:
     environment:
       TZ: "${TZ}"
       ANIME_DATA_ROOT: "${ANIME_DATA_ROOT}"
+      ANIME_COLLECTION_ROOT: "${ANIME_COLLECTION_ROOT}"
       HOMEPAGE_BASE_HOST: "${HOMEPAGE_BASE_HOST}"
       GLANCES_API_URL: "http://glances:61208/api/4"
       TAILSCALE_SOCKET: "/var/run/tailscale/tailscaled.sock"
@@ -30,6 +31,7 @@ services:
       FAN_CONTROL_STATE_FILE: "/host-fan/state.json"
     volumes:
       - "${ANIME_DATA_ROOT}:/srv/anime-data"
+      - "${ANIME_COLLECTION_ROOT}:/srv/anime-collection:ro"
       - "${ANIME_APPDATA_ROOT}/ops-ui:/data"
       - "/usr/local/lib/rpi-anime-fan:/host-fan:ro"
       - "/var/run/tailscale:/var/run/tailscale:ro"

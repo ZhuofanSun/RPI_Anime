@@ -703,7 +703,7 @@ def _build_services(
     containers: dict[str, dict[str, Any]],
     tailscale: dict[str, Any] | None,
     *,
-    manual_review_count: int,
+    manual_review_count: int | None,
     log_count: int,
 ) -> list[dict[str, Any]]:
     tailscale_self = ((tailscale or {}).get("Self") or {}) if isinstance(tailscale, dict) else {}
@@ -742,7 +742,7 @@ def _build_services(
             "id": "autobangumi",
             "name": "AutoBangumi",
             "href": _service_link(base_host, int(_env("AUTOBANGUMI_PORT", "7892"))),
-            "description": "RSS 订阅、规则和自动投递",
+            "description": "RSS 订阅与自动下载规则",
             "status": containers.get("autobangumi", {}).get("status", "unknown"),
             "meta": "Subscription",
             "uptime": container_uptime("autobangumi"),
@@ -753,7 +753,7 @@ def _build_services(
             "id": "glances",
             "name": "Glances",
             "href": _service_link(base_host, int(_env("GLANCES_PORT", "61208"))),
-            "description": "更细的系统、容器和进程监控页",
+            "description": "系统、容器和进程监控",
             "status": containers.get("glances", {}).get("status", "unknown"),
             "meta": "System monitor",
             "uptime": container_uptime("glances"),
@@ -776,10 +776,10 @@ def _build_services(
             "id": "ops-review",
             "name": "Ops Review",
             "href": f"{ops_ui_base}/ops-review",
-            "description": "人工审核队列、详情页和受控文件动作",
+            "description": "人工审核队列与文件处理",
             "status": "online",
-            "meta": f"{manual_review_count} files",
-            "uptime": "Review workspace",
+            "meta": f"{manual_review_count} files" if manual_review_count is not None else "数据盘未挂载",
+            "uptime": "审核工作台",
             "internal": True,
             "restart_target": "homepage",
             "restart_label": "Restart UI",
@@ -790,10 +790,10 @@ def _build_services(
             "id": "logs",
             "name": "Logs",
             "href": f"{ops_ui_base}/logs",
-            "description": "结构化事件日志、来源筛选、等级着色与清理",
+            "description": "结构化日志、来源筛选和清理",
             "status": "online",
             "meta": f"{log_count} events",
-            "uptime": f"cap {event_log_cap()}",
+            "uptime": f"上限 {event_log_cap()} 条",
             "internal": True,
             "restart_target": "homepage",
             "restart_label": "Restart UI",
@@ -825,6 +825,43 @@ def _disk_snapshot(anime_data_root: Path) -> dict[str, Any]:
         "free_bytes": usage.free,
         "total_bytes": usage.total,
         "percent": percent,
+    }
+
+
+def _is_mounted_path(path: Path) -> bool:
+    target = str(path)
+    try:
+        with open("/proc/self/mountinfo", "r", encoding="utf-8") as handle:
+            for line in handle:
+                parts = line.split()
+                if len(parts) > 4 and parts[4] == target:
+                    return True
+    except OSError:
+        pass
+    return path.is_mount()
+
+
+def _mount_health(path: Path) -> dict[str, Any]:
+    mounted = _is_mounted_path(path)
+    exists = path.exists()
+    readable = False
+    probe_error: str | None = None
+
+    try:
+        if not exists:
+            raise FileNotFoundError(str(path))
+        with os.scandir(path) as iterator:
+            next(iterator, None)
+        readable = True
+    except Exception as exc:
+        probe_error = str(exc)
+
+    return {
+        "path": str(path),
+        "mounted": mounted,
+        "exists": exists,
+        "readable": readable,
+        "probe_error": probe_error,
     }
 
 
@@ -1051,7 +1088,7 @@ def build_manual_review_payload() -> dict[str, Any]:
         {
             "label": "Review Files",
             "value": str(len(items)),
-            "detail": "pending media files",
+            "detail": "待处理媒体文件",
         },
         {
             "label": "Total Size",
@@ -1061,12 +1098,12 @@ def build_manual_review_payload() -> dict[str, Any]:
         {
             "label": "Series",
             "value": str(len(series_names)),
-            "detail": "distinct folders",
+            "detail": "不同作品目录",
         },
         {
             "label": "Buckets",
             "value": str(len(buckets)),
-            "detail": ", ".join(bucket["label"] for bucket in buckets[:3]) if buckets else "no review buckets",
+            "detail": ", ".join(bucket["label"] for bucket in buckets[:3]) if buckets else "当前没有分组",
         },
     ]
 
@@ -1126,17 +1163,17 @@ def build_logs_payload(
         {
             "label": "Visible",
             "value": str(len(visible)),
-            "detail": f"{len(filtered)} matched / {len(raw_events)} total",
+            "detail": f"{len(filtered)} 条匹配 / 共 {len(raw_events)} 条",
         },
         {
             "label": "Sources",
             "value": str(len(sources)),
-            "detail": ", ".join(sources[:3]) if sources else "no sources yet",
+            "detail": ", ".join(sources[:3]) if sources else "暂无来源",
         },
         {
             "label": "Errors",
             "value": str(level_counts.get("error", 0)),
-            "detail": f"{level_counts.get('warning', 0)} warnings",
+            "detail": f"{level_counts.get('warning', 0)} 条 warning",
         },
         {
             "label": "Retention",
@@ -1358,22 +1395,22 @@ def build_postprocessor_payload() -> dict[str, Any]:
         {
             "label": "Worker",
             "value": str(worker_status).title(),
-            "detail": worker_uptime or "container uptime unavailable",
+            "detail": worker_uptime or "容器运行时长不可用",
         },
         {
             "label": "Episode Groups",
             "value": str(total_groups),
-            "detail": f"{len(ready_groups)} ready · {len(waiting_groups)} waiting",
+            "detail": f"{len(ready_groups)} 组待处理 · {len(waiting_groups)} 组等待中",
         },
         {
             "label": "Queue Tasks",
             "value": str((qb_snapshot or {}).get("task_count", "-")) if qb_snapshot else "-",
-            "detail": f"{(qb_snapshot or {}).get('active_downloads', 0)} downloading · {(qb_snapshot or {}).get('active_seeds', 0)} seeding" if qb_snapshot else "qB unavailable",
+            "detail": f"{(qb_snapshot or {}).get('active_downloads', 0)} 个下载中 · {(qb_snapshot or {}).get('active_seeds', 0)} 个做种中" if qb_snapshot else "qB 不可用",
         },
         {
             "label": "Manual Review",
             "value": str(_count_media_files(review_root)),
-            "detail": f"{len(unparsed_torrents)} completed-unparsed pending",
+            "detail": f"{len(unparsed_torrents)} 个已完成但未解析",
         },
     ]
 
@@ -1381,27 +1418,27 @@ def build_postprocessor_payload() -> dict[str, Any]:
         {
             "label": "Source Root",
             "value": str(source_root),
-            "detail": "download staging",
+            "detail": "下载暂存区",
         },
         {
             "label": "Target Root",
             "value": str(target_root),
-            "detail": "Jellyfin seasonal library",
+            "detail": "Jellyfin 季度库",
         },
         {
             "label": "Review Root",
             "value": str(review_root),
-            "detail": "manual review queue",
+            "detail": "人工审核队列",
         },
         {
             "label": "Policy",
             "value": category,
-            "detail": f"poll {poll_interval}s · wait {wait_timeout}s · delete losers {'on' if delete_losers else 'off'}",
+            "detail": f"轮询 {poll_interval}s · 等待 {wait_timeout}s · 删除落选 {'开启' if delete_losers else '关闭'}",
         },
         {
             "label": "Title Map",
             "value": str(title_map),
-            "detail": "series rename / season offset",
+            "detail": "作品名映射与季号偏移",
         },
     ]
 
@@ -1442,14 +1479,14 @@ def build_postprocessor_payload() -> dict[str, Any]:
             {
                 "id": "waiting",
                 "title": "Waiting Window",
-                "description": "已有完成候选，但还在给更高优先级版本留补完窗口。",
+                "description": "已有完成候选，但还在为更高优先级版本保留等待窗口。",
                 "meta": f"{len(waiting_groups)} groups",
                 "items": waiting_groups[:8],
             },
             {
                 "id": "active",
                 "title": "Active Downloads",
-                "description": "当前还没有任何完成候选，继续等待下载完成。",
+                "description": "当前还没有完成候选，继续等待下载完成。",
                 "meta": f"{len(active_groups)} groups",
                 "items": active_groups[:8],
             },
@@ -1510,17 +1547,17 @@ def build_tailscale_payload() -> dict[str, Any]:
         {
             "label": "Backend",
             "value": backend_state,
-            "detail": "local socket only",
+            "detail": "只读取本机 socket",
         },
         {
             "label": "Reachability",
             "value": reachability,
-            "detail": "coordination + peer connectivity",
+            "detail": "控制面与 Peer 连通性",
         },
         {
             "label": "Peers",
             "value": str(len(peer_values)),
-            "detail": f"{online_peer_count} online · {exit_node_candidates} exit-node capable",
+            "detail": f"{online_peer_count} 台在线 · {exit_node_candidates} 台可做出口节点",
         },
         {
             "label": "Tailnet IP",
@@ -1538,17 +1575,17 @@ def build_tailscale_payload() -> dict[str, Any]:
         {
             "label": "Reachability",
             "value": "Yes" if self_online else "No",
-            "detail": "tailnet reachable" if self_online else "currently unreachable from tailnet",
+            "detail": "可从 tailnet 访问" if self_online else "当前无法从 tailnet 访问",
         },
         {
             "label": "IPv4",
             "value": tail_ip,
-            "detail": "primary tailnet address",
+            "detail": "主 tailnet 地址",
         },
         {
             "label": "IPv6",
             "value": ipv6,
-            "detail": "secondary tailnet address",
+            "detail": "次要 tailnet 地址",
         },
         {
             "label": "Current Addr",
@@ -1884,7 +1921,7 @@ def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
     items = _manual_review_items(review_root)
     item = next((entry for entry in items if entry["id"] == item_id), None)
     if item is None:
-        raise HTTPException(status_code=404, detail="manual review item not found")
+        raise HTTPException(status_code=404, detail="未找到人工审核项")
 
     item_path = review_root / item["relative_path"]
     parent_dir = item_path.parent
@@ -1907,7 +1944,7 @@ def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
     manual_defaults = _manual_publish_defaults(item, auto_parse)
 
     return {
-        "title": "Review Item",
+        "title": "审核项详情",
         "subtitle": item["series_name"],
         "refresh_interval_seconds": 15,
         "root": str(review_root),
@@ -1916,7 +1953,7 @@ def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
         "auto_parse": auto_parse,
         "manual_publish_defaults": manual_defaults,
         "breadcrumbs": [
-            {"label": "Dashboard", "href": "/"},
+            {"label": "首页", "href": "/"},
             {"label": "Ops Review", "href": "/ops-review"},
             {"label": item["filename"], "href": None},
         ],
@@ -1987,9 +2024,30 @@ def build_overview() -> dict[str, Any]:
         pass
 
     anime_data_root = Path(_env("ANIME_DATA_ROOT", "/srv/anime-data"))
+    anime_collection_root = Path(_env("ANIME_COLLECTION_ROOT", "/srv/anime-collection"))
     base_host = _env("HOMEPAGE_BASE_HOST", socket.gethostname())
     glances_base = _glances_base_url()
-    disk = _disk_snapshot(anime_data_root)
+    anime_data_mount = _mount_health(anime_data_root)
+    anime_collection_mount = _mount_health(anime_collection_root)
+    if anime_data_mount["mounted"]:
+        try:
+            disk = _disk_snapshot(anime_data_root)
+        except Exception:
+            disk = {
+                "path": str(anime_data_root),
+                "used_bytes": None,
+                "free_bytes": None,
+                "total_bytes": None,
+                "percent": None,
+            }
+    else:
+        disk = {
+            "path": str(anime_data_root),
+            "used_bytes": None,
+            "free_bytes": None,
+            "total_bytes": None,
+            "percent": None,
+        }
 
     quicklook, quicklook_error = _safe_get_json(f"{glances_base}/quicklook")
     containers_raw, containers_error = _safe_get_json(f"{glances_base}/containers")
@@ -2011,6 +2069,7 @@ def build_overview() -> dict[str, Any]:
     manual_review_root = anime_data_root / "processing" / "manual_review"
     seasonal_root = anime_data_root / "library" / "seasonal"
     downloads_root = anime_data_root / "downloads" / "Bangumi"
+    data_storage_ready = bool(anime_data_mount["mounted"] and anime_data_mount["readable"] and not anime_data_mount["probe_error"])
 
     tailscale_self = ((tailscale or {}).get("Self") or {}) if isinstance(tailscale, dict) else {}
     tailscale_peers = ((tailscale or {}).get("Peer") or {}) if isinstance(tailscale, dict) else {}
@@ -2086,7 +2145,7 @@ def build_overview() -> dict[str, Any]:
         {
             "label": "Anime Data",
             "value": _format_percent(disk.get("percent")),
-            "detail": _format_bytes(disk.get("free_bytes")),
+            "detail": _format_bytes(disk.get("free_bytes")) if data_storage_ready else "数据盘未挂载或不可读",
         },
     ]
 
@@ -2094,7 +2153,7 @@ def build_overview() -> dict[str, Any]:
         {
             "label": "Bangumi Tasks",
             "value": str((qb or {}).get("task_count", "-")) if qb else "-",
-            "detail": (qb or {}).get("category", "Bangumi") if qb else "qB unavailable",
+            "detail": (qb or {}).get("category", "Bangumi") if qb else "qB 不可用",
         },
         {
             "label": "Downloading",
@@ -2108,21 +2167,21 @@ def build_overview() -> dict[str, Any]:
         },
         {
             "label": "Seasonal Episodes",
-            "value": str(_count_media_files(seasonal_root)),
-            "detail": f"{_count_series_dirs(seasonal_root)} 部作品",
+            "value": str(_count_media_files(seasonal_root)) if data_storage_ready else "-",
+            "detail": f"{_count_series_dirs(seasonal_root)} 部作品" if data_storage_ready else "数据盘未挂载",
         },
         {
             "label": "Manual Review",
-            "value": str(_count_media_files(manual_review_root)),
-            "detail": "待人工处理文件",
+            "value": str(_count_media_files(manual_review_root)) if data_storage_ready else "-",
+            "detail": "待人工处理文件" if data_storage_ready else "数据盘未挂载",
         },
         {
             "label": "Download Residue",
-            "value": str(_count_media_files(downloads_root)),
-            "detail": "下载区剩余媒体文件",
+            "value": str(_count_media_files(downloads_root)) if data_storage_ready else "-",
+            "detail": "下载区剩余媒体文件" if data_storage_ready else "数据盘未挂载",
         },
     ]
-    manual_review_count = _count_media_files(manual_review_root)
+    manual_review_count = _count_media_files(manual_review_root) if data_storage_ready else None
     log_count = len(read_events())
 
     network_cards = [
@@ -2139,7 +2198,7 @@ def build_overview() -> dict[str, Any]:
         {
             "label": "Peers",
             "value": str(len(tailscale_peer_values)) if tailscale else "-",
-            "detail": f"{tailnet_online_peers} online" if tailscale else "local api unavailable",
+            "detail": f"{tailnet_online_peers} 台在线" if tailscale else "本地 API 不可用",
         },
     ]
 
@@ -2165,7 +2224,7 @@ def build_overview() -> dict[str, Any]:
         {
             "label": "Playback Traffic",
             "value": _format_rate(playback_tx_rate),
-            "detail": f"{trend_window_hours}h avg {_format_rate(_mean(playback_values))} · all clients",
+            "detail": f"{trend_window_hours}h 平均 {_format_rate(_mean(playback_values))} · 全部客户端",
             "points": playback_points,
             "chart_kind": "line",
             "window_label": f"{trend_window_hours}H",
@@ -2174,7 +2233,7 @@ def build_overview() -> dict[str, Any]:
         {
             "label": "Download Volume",
             "value": _format_bytes(sum(download_values)),
-            "detail": f"{upload_window_days}d total · qBittorrent",
+            "detail": f"近 {upload_window_days} 天总量 · qBittorrent",
             "bars": download_bars,
             "chart_kind": "bars",
             "window_label": f"{upload_window_days}D",
@@ -2201,6 +2260,34 @@ def build_overview() -> dict[str, Any]:
             {
                 "source": "fan-control",
                 "message": f"fan state is stale ({int(fan_state_age_s)}s since last update)",
+            }
+        )
+    if not anime_data_mount["mounted"]:
+        diagnostics.append(
+            {
+                "source": "mount:/srv/anime-data",
+                "message": "未检测到数据盘挂载，下载、整理和媒体库目录可能已回落到系统盘。",
+            }
+        )
+    elif anime_data_mount["probe_error"]:
+        diagnostics.append(
+            {
+                "source": "mount:/srv/anime-data",
+                "message": f"数据盘访问异常：{anime_data_mount['probe_error']}",
+            }
+        )
+    if not anime_collection_mount["mounted"]:
+        diagnostics.append(
+            {
+                "source": "mount:/srv/anime-collection",
+                "message": "未检测到收藏盘挂载，收藏库当前不可用。",
+            }
+        )
+    elif anime_collection_mount["probe_error"]:
+        diagnostics.append(
+            {
+                "source": "mount:/srv/anime-collection",
+                "message": f"收藏盘访问异常：{anime_collection_mount['probe_error']}",
             }
         )
 

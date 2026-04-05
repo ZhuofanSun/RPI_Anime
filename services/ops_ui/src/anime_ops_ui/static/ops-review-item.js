@@ -63,32 +63,32 @@ function siblingTemplate(item) {
 }
 
 function detailMetaTemplate(item, autoParse) {
-  const autoLabel = autoParse.status === "parsed" ? "Ready" : "Needs input";
+  const autoLabel = autoParse.status === "parsed" ? "可直接发布" : "需要人工处理";
   const autoDetail =
     autoParse.status === "parsed"
       ? `${autoParse.parsed.title} · S${String(autoParse.parsed.season).padStart(2, "0")}E${String(autoParse.parsed.episode).padStart(2, "0")}`
       : autoParse.reason || "自动解析失败";
   return `
     <div class="review-detail-card">
-      <span class="review-item-label">Reason</span>
+      <span class="review-item-label">原因</span>
       <strong>${escapeHtml(item.reason)}</strong>
       <p>${escapeHtml(item.bucket)}</p>
     </div>
     <div class="review-detail-card">
-      <span class="review-item-label">Filename</span>
+      <span class="review-item-label">文件名</span>
       <code>${escapeHtml(item.filename)}</code>
     </div>
     <div class="review-detail-card">
-      <span class="review-item-label">Relative Path</span>
+      <span class="review-item-label">相对路径</span>
       <code>${escapeHtml(item.relative_path)}</code>
     </div>
     <div class="review-detail-card">
-      <span class="review-item-label">Series / Season</span>
+      <span class="review-item-label">作品 / Season</span>
       <strong>${escapeHtml(item.series_name)}</strong>
       <p>${escapeHtml(item.season_label)}</p>
     </div>
     <div class="review-detail-card">
-      <span class="review-item-label">Auto Parse</span>
+      <span class="review-item-label">自动解析</span>
       <strong>${escapeHtml(autoLabel)}</strong>
       <p>${escapeHtml(autoDetail)}</p>
     </div>
@@ -151,31 +151,31 @@ function actionsTemplate(payload) {
   return `
     <article class="review-action-card">
       <div class="review-action-head">
-        <h3>Retry Parse</h3>
-        <span class="panel-badge ${canRetry ? "" : "panel-badge-muted"}">${canRetry ? "Ready" : "Blocked"}</span>
+        <h3>重试解析</h3>
+        <span class="panel-badge ${canRetry ? "" : "panel-badge-muted"}">${canRetry ? "可执行" : "不可执行"}</span>
       </div>
       <p>${escapeHtml(retryDescription)}</p>
       ${
         autoParse.score_summary
-          ? `<div class="review-action-meta"><span>Score</span><code>${escapeHtml(autoParse.score_summary)}</code></div>`
+          ? `<div class="review-action-meta"><span>评分</span><code>${escapeHtml(autoParse.score_summary)}</code></div>`
           : ""
       }
       <div class="review-action-footer">
         <button class="action-button" type="button" data-review-action="retry-parse" ${canRetry ? "" : "disabled"}>
-          Retry Parse & Publish
+          重试解析并发布
         </button>
       </div>
     </article>
 
     <article class="review-action-card">
       <div class="review-action-head">
-        <h3>Manual Publish</h3>
-        <span class="panel-badge">Override</span>
+        <h3>手动发布</h3>
+        <span class="panel-badge">覆盖发布</span>
       </div>
-      <p>当自动解析不稳定时，手动确认剧名、季号和集号，再直接发布到 Seasonal。</p>
+      <p>当自动解析不稳定时，手动确认剧名、季号和集号，再直接发布到季度库。</p>
       <form id="manual-publish-form" class="review-form">
         <label class="review-control review-control-wide">
-          <span class="review-control-label">Series Title</span>
+          <span class="review-control-label">作品名</span>
           <input
             id="manual-title"
             class="review-input"
@@ -209,20 +209,20 @@ function actionsTemplate(payload) {
           </label>
         </div>
         <div class="review-action-footer">
-          <button class="action-button" type="submit">Publish To Seasonal</button>
+          <button class="action-button" type="submit">发布到季度库</button>
         </div>
       </form>
     </article>
 
     <article class="review-action-card review-action-card-danger">
       <div class="review-action-head">
-        <h3>Delete</h3>
-        <span class="panel-badge panel-badge-muted">Danger</span>
+        <h3>删除文件</h3>
+        <span class="panel-badge panel-badge-muted">危险操作</span>
       </div>
       <p>从人工审核队列中直接删除当前文件。这个动作不会移到媒体库，也不会保留副本。</p>
       <div class="review-action-footer">
         <button class="action-button action-button-danger" type="button" data-review-action="delete">
-          Delete File
+          删除当前文件
         </button>
       </div>
     </article>
@@ -251,7 +251,7 @@ function bindActionControls(payload) {
 
   retryButton?.addEventListener("click", async () => {
     await performAction("retry-parse", `/api/manual-review/item/retry-parse?id=${encodeURIComponent(reviewItemId)}`, {
-      title: "Retry Parse",
+      title: "重试解析",
       pendingMessage: "正在重新解析并发布当前文件。",
     });
   });
@@ -260,8 +260,8 @@ function bindActionControls(payload) {
     event.preventDefault();
     syncDraft();
     await performAction("publish", `/api/manual-review/item/publish?id=${encodeURIComponent(reviewItemId)}`, {
-      title: "Manual Publish",
-      pendingMessage: "正在按手动参数发布到 Seasonal。",
+      title: "手动发布",
+      pendingMessage: "正在按手动参数发布到季度库。",
       body: reviewItemManualDraft,
     });
   });
@@ -271,7 +271,7 @@ function bindActionControls(payload) {
       return;
     }
     await performAction("delete", `/api/manual-review/item/delete?id=${encodeURIComponent(reviewItemId)}`, {
-      title: "Delete File",
+      title: "删除文件",
       pendingMessage: "正在删除当前文件。",
     });
   });
@@ -292,7 +292,7 @@ async function performAction(action, url, { title, pendingMessage, body } = {}) 
     return;
   }
   reviewItemActionInFlight = true;
-  setActionStatus("info", title || "Working", pendingMessage || "正在执行动作。");
+  setActionStatus("info", title || "处理中", pendingMessage || "正在执行动作。");
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -303,10 +303,10 @@ async function performAction(action, url, { title, pendingMessage, body } = {}) 
       throw new Error(await parseActionError(response));
     }
     const payload = await response.json();
-    storeFlash("success", title || "Action completed", payload.message || "动作已完成。");
+    storeFlash("success", title || "操作已完成", payload.message || "动作已完成。");
     window.location.href = "/ops-review";
   } catch (error) {
-    setActionStatus("error", title || "Action failed", error.message || String(error));
+    setActionStatus("error", title || "操作失败", error.message || String(error));
   } finally {
     reviewItemActionInFlight = false;
   }
@@ -342,7 +342,7 @@ async function refreshReviewItem() {
       reviewItemManualDraft = { ...(payload.manual_publish_defaults || {}) };
     }
 
-    reviewItemTitle.textContent = payload.title || "Review Item";
+    reviewItemTitle.textContent = payload.title || "审核项详情";
     reviewItemSubtitle.textContent = item.filename;
     reviewItemBucket.textContent = item.bucket;
     reviewItemUpdated.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -350,23 +350,23 @@ async function refreshReviewItem() {
     reviewItemRefresh.textContent = `${Math.round(reviewItemRefreshMs / 1000)}s`;
     reviewItemBreadcrumbs.innerHTML = breadcrumbTemplate(payload.breadcrumbs || []);
     reviewItemSummary.innerHTML = [
-      { label: "Size", value: item.size_label, detail: item.extension },
-      { label: "Series", value: item.series_name, detail: item.season_label },
-      { label: "Folder Hint", value: item.folder_hint, detail: item.modified_label },
-      { label: "Siblings", value: String((payload.siblings || []).length), detail: "same parent folder" },
+      { label: "大小", value: item.size_label, detail: item.extension },
+      { label: "作品", value: item.series_name, detail: item.season_label },
+      { label: "目录提示", value: item.folder_hint, detail: item.modified_label },
+      { label: "同目录文件", value: String((payload.siblings || []).length), detail: "同一父目录" },
     ]
       .map(metricTemplate)
       .join("");
     reviewItemMeta.innerHTML = detailMetaTemplate(item, autoParse);
     reviewItemSiblings.innerHTML = (payload.siblings || []).length
       ? payload.siblings.map(siblingTemplate).join("")
-      : `<div class="review-empty"><strong>No sibling files.</strong><span>当前目录下只有这一个媒体文件。</span></div>`;
+      : `<div class="review-empty"><strong>当前没有同目录文件。</strong><span>当前目录下只有这一个媒体文件。</span></div>`;
     reviewItemActions.innerHTML = actionsTemplate(payload);
     bindActionControls(payload);
   } catch (error) {
     reviewItemMeta.innerHTML = `
       <div class="review-empty review-empty-error">
-        <strong>Failed to load item detail.</strong>
+        <strong>加载审核项详情失败。</strong>
         <span>${escapeHtml(error.message || String(error))}</span>
       </div>
     `;
@@ -379,7 +379,7 @@ async function refreshReviewItem() {
 if (!reviewItemId) {
   reviewItemMeta.innerHTML = `
     <div class="review-empty review-empty-error">
-      <strong>Missing review item id.</strong>
+      <strong>缺少审核项 ID。</strong>
       <span>请从 Ops Review 列表页进入详情页。</span>
     </div>
   `;

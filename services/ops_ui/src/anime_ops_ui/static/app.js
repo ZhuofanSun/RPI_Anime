@@ -12,7 +12,7 @@ const refreshIntervalLabel = document.getElementById("refresh-interval");
 const servicePanelFeedback = document.getElementById("service-panel-feedback");
 const restartStackButton = document.getElementById("restart-stack-button");
 const restartStackDetail = document.getElementById("restart-stack-detail");
-const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v2";
+const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v3";
 
 let refreshIntervalMs = 8000;
 let refreshInFlight = false;
@@ -76,7 +76,7 @@ function showServiceFeedback(kind, message) {
   }, 6000);
 }
 
-function setButtonBusy(button, busy, busyLabel = "Working…") {
+function setButtonBusy(button, busy, busyLabel = "处理中…") {
   if (!button) return;
   if (busy) {
     button.dataset.originalLabel = button.textContent;
@@ -250,7 +250,7 @@ function trendTemplate(card) {
 
 function diagnosticsTemplate(items) {
   if (!items.length) {
-    return `<div class="diagnostic-empty">All local data sources are responding.</div>`;
+    return `<div class="diagnostic-empty">本地数据源响应正常。</div>`;
   }
 
   return items

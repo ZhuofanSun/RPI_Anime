@@ -30,7 +30,7 @@ function metricTemplate(card) {
 
 function bucketOptionsTemplate(buckets) {
   return [
-    `<option value="">All buckets</option>`,
+    `<option value="">全部分组</option>`,
     ...buckets.map((bucket) => `<option value="${bucket.bucket}">${bucket.label} · ${bucket.count}</option>`),
   ].join("");
 }
@@ -138,7 +138,7 @@ function flashTemplate(flash) {
   const tone = flash.tone === "error" ? "flash-error" : "flash-success";
   return `
     <div class="flash-banner ${tone}">
-      <strong>${flash.title || "Action completed"}</strong>
+      <strong>${flash.title || "操作已完成"}</strong>
       <span>${flash.message || ""}</span>
     </div>
   `;
@@ -231,11 +231,11 @@ async function refreshReview() {
   } catch (error) {
     reviewList.innerHTML = `
       <div class="review-empty review-empty-error">
-        <strong>Failed to load manual review queue.</strong>
+        <strong>加载人工审核队列失败。</strong>
         <span>${error.message || String(error)}</span>
       </div>
     `;
-    reviewListMeta.textContent = "API unavailable";
+    reviewListMeta.textContent = "API 不可用";
   } finally {
     reviewFetchInFlight = false;
     scheduleReviewRefresh();
