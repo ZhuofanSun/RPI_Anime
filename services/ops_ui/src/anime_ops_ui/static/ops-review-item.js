@@ -9,6 +9,7 @@ const reviewItemSiblings = document.getElementById("review-item-siblings");
 const reviewItemActions = document.getElementById("review-item-actions");
 const reviewItemBreadcrumbs = document.getElementById("review-item-breadcrumbs");
 const reviewItemActionStatus = document.getElementById("review-item-action-status");
+const { escapeHtml, formHasFocus, formatUpdatedLabel, metricTemplate, renderEmptyState } = window.AnimeOpsCore;
 
 const REVIEW_FLASH_KEY = "anime-ops-ui-flash-v1";
 const reviewItemParams = new URLSearchParams(window.location.search);
@@ -19,25 +20,7 @@ let reviewItemTimerId = null;
 let reviewItemLoading = false;
 let reviewItemActionInFlight = false;
 let reviewItemManualDraft = null;
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function metricTemplate(card) {
-  return `
-    <article class="metric-card">
-      <span class="metric-label">${escapeHtml(card.label)}</span>
-      <span class="metric-value">${escapeHtml(card.value)}</span>
-      <span class="metric-detail">${escapeHtml(card.detail)}</span>
-    </article>
-  `;
-}
+let reviewItemSuspendRefreshUntil = 0;
 
 function breadcrumbTemplate(items) {
   return items
@@ -238,6 +221,7 @@ function bindActionControls(payload) {
   const deleteButton = document.querySelector('[data-review-action="delete"]');
 
   const syncDraft = () => {
+    reviewItemSuspendRefreshUntil = Date.now() + 60000;
     reviewItemManualDraft = {
       title: titleInput?.value ?? "",
       season: Number(seasonInput?.value || 1),
@@ -246,6 +230,9 @@ function bindActionControls(payload) {
   };
 
   [titleInput, seasonInput, episodeInput].forEach((input) => {
+    input?.addEventListener("focus", () => {
+      reviewItemSuspendRefreshUntil = Date.now() + 60000;
+    });
     input?.addEventListener("input", syncDraft);
   });
 
@@ -321,8 +308,17 @@ function scheduleRefresh() {
   }, reviewItemRefreshMs);
 }
 
+function shouldDeferRefresh() {
+  const manualForm = document.getElementById("manual-publish-form");
+  return reviewItemActionInFlight || formHasFocus(manualForm) || Date.now() < reviewItemSuspendRefreshUntil;
+}
+
 async function refreshReviewItem() {
-  if (!reviewItemId || reviewItemLoading || reviewItemActionInFlight) {
+  if (!reviewItemId || reviewItemLoading) {
+    return;
+  }
+  if (shouldDeferRefresh()) {
+    scheduleRefresh();
     return;
   }
   reviewItemLoading = true;
@@ -345,7 +341,7 @@ async function refreshReviewItem() {
     reviewItemTitle.textContent = payload.title || "审核项详情";
     reviewItemSubtitle.textContent = item.filename;
     reviewItemBucket.textContent = item.bucket;
-    reviewItemUpdated.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    reviewItemUpdated.textContent = formatUpdatedLabel();
     reviewItemRefreshMs = (payload.refresh_interval_seconds || 15) * 1000;
     reviewItemRefresh.textContent = `${Math.round(reviewItemRefreshMs / 1000)}s`;
     reviewItemBreadcrumbs.innerHTML = breadcrumbTemplate(payload.breadcrumbs || []);
@@ -360,16 +356,11 @@ async function refreshReviewItem() {
     reviewItemMeta.innerHTML = detailMetaTemplate(item, autoParse);
     reviewItemSiblings.innerHTML = (payload.siblings || []).length
       ? payload.siblings.map(siblingTemplate).join("")
-      : `<div class="review-empty"><strong>当前没有同目录文件。</strong><span>当前目录下只有这一个媒体文件。</span></div>`;
+      : renderEmptyState("当前没有同目录文件。", "当前目录下只有这一个媒体文件。");
     reviewItemActions.innerHTML = actionsTemplate(payload);
     bindActionControls(payload);
   } catch (error) {
-    reviewItemMeta.innerHTML = `
-      <div class="review-empty review-empty-error">
-        <strong>加载审核项详情失败。</strong>
-        <span>${escapeHtml(error.message || String(error))}</span>
-      </div>
-    `;
+    reviewItemMeta.innerHTML = renderEmptyState("加载审核项详情失败。", error.message || String(error), "review-empty-error");
   } finally {
     reviewItemLoading = false;
     scheduleRefresh();
@@ -377,12 +368,7 @@ async function refreshReviewItem() {
 }
 
 if (!reviewItemId) {
-  reviewItemMeta.innerHTML = `
-    <div class="review-empty review-empty-error">
-      <strong>缺少审核项 ID。</strong>
-      <span>请从 Ops Review 列表页进入详情页。</span>
-    </div>
-  `;
+  reviewItemMeta.innerHTML = renderEmptyState("缺少审核项 ID。", "请从 Ops Review 列表页进入详情页。", "review-empty-error");
 } else {
   clearActionStatus();
   refreshReviewItem();

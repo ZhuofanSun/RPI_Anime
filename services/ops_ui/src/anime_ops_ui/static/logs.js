@@ -12,61 +12,29 @@ const logsListMeta = document.getElementById("logs-list-meta");
 const logsList = document.getElementById("logs-list");
 const logsClear = document.getElementById("logs-clear");
 const logsFlash = document.getElementById("logs-flash");
+const {
+  clearFlash,
+  debounce,
+  escapeHtml,
+  formatUpdatedLabel,
+  getQueryState,
+  metricTemplate,
+  renderEmptyState,
+  setFlash,
+  setQueryState,
+} = window.AnimeOpsCore;
 
 let logsRefreshMs = 10000;
 let logsTimerId = null;
 let logsFetchInFlight = false;
 let logsPayload = { items: [], levels: [], sources: [] };
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function metricTemplate(card) {
-  return `
-    <article class="metric-card">
-      <span class="metric-label">${escapeHtml(card.label)}</span>
-      <span class="metric-value">${escapeHtml(card.value)}</span>
-      <span class="metric-detail">${escapeHtml(card.detail)}</span>
-    </article>
-  `;
-}
+const initialLogsState = getQueryState(["source", "level", "q"]);
 
 function optionTemplate(values, label) {
   return [
     `<option value="">全部${label}</option>`,
     ...values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`),
   ].join("");
-}
-
-function flashTemplate(tone, title, message) {
-  const cls =
-    tone === "error"
-      ? "flash-error"
-      : tone === "warning"
-        ? "flash-warning"
-        : tone === "info"
-          ? "flash-info"
-          : "flash-success";
-  return `
-    <div class="flash-banner ${cls}">
-      <strong>${escapeHtml(title)}</strong>
-      <span>${escapeHtml(message)}</span>
-    </div>
-  `;
-}
-
-function setFlash(tone, title, message) {
-  logsFlash.innerHTML = flashTemplate(tone, title, message);
-}
-
-function clearFlash() {
-  logsFlash.innerHTML = "";
 }
 
 function levelTone(level) {
@@ -112,14 +80,14 @@ function renderLogs(payload) {
   logsTitle.textContent = payload.title || "Logs";
   logsSubtitle.textContent = payload.subtitle || "";
   logsStorage.textContent = payload.storage_path || "-";
-  logsUpdated.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  logsUpdated.textContent = formatUpdatedLabel();
   logsRefreshMs = (payload.refresh_interval_seconds || 10) * 1000;
   logsRefresh.textContent = `${Math.round(logsRefreshMs / 1000)}s`;
   logsRetentionBadge.textContent = `上限 ${payload.retention_cap || "-"}`;
   logsSummary.innerHTML = (payload.summary_cards || []).map(metricTemplate).join("");
 
-  const sourceValue = logsSourceFilter.value;
-  const levelValue = logsLevelFilter.value;
+  const sourceValue = logsSourceFilter.value || initialLogsState.source;
+  const levelValue = logsLevelFilter.value || initialLogsState.level;
   logsSourceFilter.innerHTML = optionTemplate(payload.sources || [], "来源");
   logsLevelFilter.innerHTML = optionTemplate(payload.levels || [], "等级");
   if (sourceValue && Array.from(logsSourceFilter.options).some((option) => option.value === sourceValue)) {
@@ -129,17 +97,23 @@ function renderLogs(payload) {
     logsLevelFilter.value = levelValue;
   }
 
-  logsListMeta.textContent = `${payload.items.length} visible / ${payload.total_count} total`;
+  logsListMeta.textContent = `可见 ${payload.items.length} / 总计 ${payload.total_count}`;
   if (!payload.items.length) {
-    logsList.innerHTML = `
-      <div class="review-empty">
-        <strong>当前没有匹配的日志。</strong>
-        <span>可以调整筛选条件，或者等待后台动作写入新的结构化事件。</span>
-      </div>
-    `;
+    logsList.innerHTML = renderEmptyState("当前没有匹配的日志。", "可以调整筛选条件，或者等待后台动作写入新的结构化事件。");
   } else {
     logsList.innerHTML = payload.items.map(logItemTemplate).join("");
   }
+}
+
+function syncUrlFromFilters() {
+  setQueryState(
+    {
+      source: logsSourceFilter.value,
+      level: logsLevelFilter.value,
+      q: logsSearch.value.trim(),
+    },
+    ["source", "level", "q"]
+  );
 }
 
 function scheduleRefresh() {
@@ -192,12 +166,27 @@ async function clearLogs() {
   }
 }
 
-logsSourceFilter.addEventListener("change", refreshLogs);
-logsLevelFilter.addEventListener("change", refreshLogs);
-logsSearch.addEventListener("input", () => {
-  clearFlash();
+const debouncedLogsRefresh = debounce(() => {
+  syncUrlFromFilters();
+  refreshLogs();
+}, 220);
+
+logsSourceFilter.addEventListener("change", () => {
+  syncUrlFromFilters();
   refreshLogs();
 });
+logsLevelFilter.addEventListener("change", () => {
+  syncUrlFromFilters();
+  refreshLogs();
+});
+logsSearch.addEventListener("input", () => {
+  clearFlash();
+  debouncedLogsRefresh();
+});
 logsClear.addEventListener("click", clearLogs);
+
+if (initialLogsState.source) logsSourceFilter.value = initialLogsState.source;
+if (initialLogsState.level) logsLevelFilter.value = initialLogsState.level;
+if (initialLogsState.q) logsSearch.value = initialLogsState.q;
 
 refreshLogs();

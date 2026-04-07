@@ -13,6 +13,7 @@ const servicePanelFeedback = document.getElementById("service-panel-feedback");
 const restartStackButton = document.getElementById("restart-stack-button");
 const restartStackDetail = document.getElementById("restart-stack-detail");
 const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v3";
+const { formatUpdatedLabel, metricTemplate, readSessionCache, writeSessionCache } = window.AnimeOpsCore;
 
 let refreshIntervalMs = 8000;
 let refreshInFlight = false;
@@ -107,16 +108,6 @@ async function postJson(url, body) {
   return payload || {};
 }
 
-function metricTemplate(card) {
-  return `
-    <article class="metric-card">
-      <span class="metric-label">${card.label}</span>
-      <span class="metric-value">${card.value}</span>
-      <span class="metric-detail">${card.detail}</span>
-    </article>
-  `;
-}
-
 function serviceTemplate(service) {
   const href = resolveServiceHref(service);
   const disabled = service.href ? "" : "disabled";
@@ -159,7 +150,7 @@ function serviceTemplate(service) {
       </div>
       <div class="service-actions">
         <a class="service-link ${disabled}" href="${href}" ${linkAttrs}>
-          ${service.href ? (internal ? "Open Workspace" : "Open Service") : "Coming Next"}
+          ${service.href ? (internal ? "Open Workspace" : "Open Service") : "暂不可用"}
         </a>
         ${restartButton}
       </div>
@@ -265,34 +256,6 @@ function diagnosticsTemplate(items) {
     .join("");
 }
 
-function loadOverviewCache() {
-  try {
-    const raw = window.sessionStorage.getItem(OVERVIEW_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || !parsed.data) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function saveOverviewCache(data) {
-  try {
-    window.sessionStorage.setItem(
-      OVERVIEW_CACHE_KEY,
-      JSON.stringify({
-        cachedAt: Date.now(),
-        data,
-      })
-    );
-  } catch {}
-}
-
-function formatUpdatedLabel(cachedAt) {
-  return new Date(cachedAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
 function renderOverview(data, { cachedAt } = {}) {
   pageTitle.textContent = data.title;
   pageSubtitle.textContent = data.subtitle;
@@ -389,7 +352,7 @@ async function refreshOverview() {
 
     const data = await response.json();
     renderOverview(data);
-    saveOverviewCache(data);
+    writeSessionCache(OVERVIEW_CACHE_KEY, data);
   } catch (error) {
     diagnostics.innerHTML = diagnosticsTemplate([
       { source: "frontend", message: error.message || String(error) },
@@ -400,9 +363,9 @@ async function refreshOverview() {
   }
 }
 
-const cachedOverview = loadOverviewCache();
-if (cachedOverview) {
-  renderOverview(cachedOverview.data, { cachedAt: cachedOverview.cachedAt });
+const cachedOverview = readSessionCache(OVERVIEW_CACHE_KEY);
+if (cachedOverview?.payload) {
+  renderOverview(cachedOverview.payload, { cachedAt: cachedOverview.cachedAt });
 }
 
 servicesGrid?.addEventListener("click", (event) => {

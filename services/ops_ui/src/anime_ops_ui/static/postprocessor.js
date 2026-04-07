@@ -10,29 +10,11 @@ const postSections = document.getElementById("post-sections");
 const postEvents = document.getElementById("post-events");
 const postFlash = document.getElementById("post-flash");
 const POSTPROCESSOR_CACHE_KEY = "anime-ops-ui-postprocessor-cache-v1";
+const { escapeHtml, formatUpdatedLabel, metricTemplate, readSessionCache, renderEmptyState, writeSessionCache } = window.AnimeOpsCore;
 
 let postRefreshMs = 15000;
 let postTimerId = null;
 let postFetchInFlight = false;
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function metricTemplate(card) {
-  return `
-    <article class="metric-card">
-      <span class="metric-label">${escapeHtml(card.label)}</span>
-      <span class="metric-value">${escapeHtml(card.value)}</span>
-      <span class="metric-detail">${escapeHtml(card.detail)}</span>
-    </article>
-  `;
-}
 
 function flashTemplate(title, message) {
   return `
@@ -187,34 +169,10 @@ function sectionTemplate(section) {
   `;
 }
 
-function loadCache() {
-  try {
-    const raw = window.sessionStorage.getItem(POSTPROCESSOR_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || !parsed.payload) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function saveCache(payload) {
-  try {
-    window.sessionStorage.setItem(
-      POSTPROCESSOR_CACHE_KEY,
-      JSON.stringify({
-        cachedAt: Date.now(),
-        payload,
-      })
-    );
-  } catch {}
-}
-
 function render(payload, { cachedAt } = {}) {
   postTitle.textContent = payload.title || "Postprocessor";
   postSubtitle.textContent = payload.subtitle || "";
-  postUpdated.textContent = new Date(cachedAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  postUpdated.textContent = formatUpdatedLabel(cachedAt);
   postRefreshMs = (payload.refresh_interval_seconds || 15) * 1000;
   postRefresh.textContent = `${Math.round(postRefreshMs / 1000)}s`;
   const workerCard = (payload.summary_cards || []).find((item) => item.label === "Worker");
@@ -226,12 +184,7 @@ function render(payload, { cachedAt } = {}) {
   postSections.innerHTML = (payload.sections || []).map(sectionTemplate).join("");
 
   if (!payload.recent_events || !payload.recent_events.length) {
-    postEvents.innerHTML = `
-      <div class="review-empty">
-        <strong>还没有 postprocessor 事件。</strong>
-        <span>等下一轮 watch 处理下载或人工重跑后，这里会出现结构化记录。</span>
-      </div>
-    `;
+    postEvents.innerHTML = renderEmptyState("还没有 postprocessor 事件。", "等下一轮 watch 处理下载或人工重跑后，这里会出现结构化记录。");
   } else {
     postEvents.innerHTML = payload.recent_events.map(logItemTemplate).join("");
   }
@@ -253,7 +206,7 @@ async function refreshPostprocessor() {
     const response = await fetch("/api/postprocessor", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
-    saveCache(payload);
+    writeSessionCache(POSTPROCESSOR_CACHE_KEY, payload);
     render(payload);
   } catch (error) {
     postFlash.innerHTML = flashTemplate("Postprocessor unavailable", error.message || String(error));
@@ -263,7 +216,7 @@ async function refreshPostprocessor() {
   }
 }
 
-const cached = loadCache();
+const cached = readSessionCache(POSTPROCESSOR_CACHE_KEY);
 if (cached?.payload) {
   render(cached.payload, { cachedAt: cached.cachedAt });
 }

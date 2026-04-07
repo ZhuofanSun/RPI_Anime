@@ -12,21 +12,22 @@ const reviewListMeta = document.getElementById("review-list-meta");
 const reviewFlash = document.getElementById("review-flash");
 const REVIEW_CACHE_KEY = "anime-ops-ui-manual-review-cache-v1";
 const REVIEW_FLASH_KEY = "anime-ops-ui-flash-v1";
+const {
+  debounce,
+  formatUpdatedLabel,
+  getQueryState,
+  metricTemplate,
+  readSessionCache,
+  renderEmptyState,
+  setQueryState,
+  writeSessionCache,
+} = window.AnimeOpsCore;
 
 let reviewRefreshMs = 15000;
 let reviewTimerId = null;
 let reviewFetchInFlight = false;
 let reviewPayload = { buckets: [], items: [], summary_cards: [] };
-
-function metricTemplate(card) {
-  return `
-    <article class="metric-card">
-      <span class="metric-label">${card.label}</span>
-      <span class="metric-value">${card.value}</span>
-      <span class="metric-detail">${card.detail}</span>
-    </article>
-  `;
-}
+const initialReviewState = getQueryState(["bucket", "q"]);
 
 function bucketOptionsTemplate(buckets) {
   return [
@@ -97,30 +98,6 @@ function reviewItemTemplate(item) {
   `;
 }
 
-function loadReviewCache() {
-  try {
-    const raw = window.sessionStorage.getItem(REVIEW_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || !parsed.payload) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function saveReviewCache(payload) {
-  try {
-    window.sessionStorage.setItem(
-      REVIEW_CACHE_KEY,
-      JSON.stringify({
-        cachedAt: Date.now(),
-        payload,
-      })
-    );
-  } catch {}
-}
-
 function consumeFlash() {
   try {
     const raw = window.sessionStorage.getItem(REVIEW_FLASH_KEY);
@@ -166,12 +143,7 @@ function applyFilters() {
     const emptyDetail = (reviewPayload.items || []).length
       ? "调整 bucket 或关键字后会重新显示列表。"
       : "下载链路运行正常时，这里会在出现异常文件后自动补进队列。";
-    reviewList.innerHTML = `
-      <div class="review-empty">
-        <strong>${emptyTitle}</strong>
-        <span>${emptyDetail}</span>
-      </div>
-    `;
+    reviewList.innerHTML = renderEmptyState(emptyTitle, emptyDetail);
   } else {
     reviewList.innerHTML = filteredItems.map(reviewItemTemplate).join("");
   }
@@ -183,18 +155,23 @@ function applyFilters() {
       applyFilters();
     });
   });
+
+  setQueryState(
+    {
+      bucket: activeBucket,
+      q: reviewSearch.value.trim(),
+    },
+    ["bucket", "q"]
+  );
 }
 
 function renderReview(payload, { cachedAt } = {}) {
-  const currentBucket = reviewBucketFilter.value;
+  const currentBucket = reviewBucketFilter.value || initialReviewState.bucket;
   reviewPayload = payload;
   reviewTitle.textContent = payload.title || "Ops Review";
   reviewSubtitle.textContent = payload.subtitle || "";
   reviewRoot.textContent = payload.root || "-";
-  reviewUpdated.textContent = new Date(cachedAt || Date.now()).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  reviewUpdated.textContent = formatUpdatedLabel(cachedAt);
   reviewRefreshMs = (payload.refresh_interval_seconds || 15) * 1000;
   reviewRefresh.textContent = `${Math.round(reviewRefreshMs / 1000)}s`;
   reviewSummary.innerHTML = (payload.summary_cards || []).map(metricTemplate).join("");
@@ -227,14 +204,9 @@ async function refreshReview() {
 
     const payload = await response.json();
     renderReview(payload);
-    saveReviewCache(payload);
+    writeSessionCache(REVIEW_CACHE_KEY, payload);
   } catch (error) {
-    reviewList.innerHTML = `
-      <div class="review-empty review-empty-error">
-        <strong>加载人工审核队列失败。</strong>
-        <span>${error.message || String(error)}</span>
-      </div>
-    `;
+    reviewList.innerHTML = renderEmptyState("加载人工审核队列失败。", error.message || String(error), "review-empty-error");
     reviewListMeta.textContent = "API 不可用";
   } finally {
     reviewFetchInFlight = false;
@@ -242,10 +214,15 @@ async function refreshReview() {
   }
 }
 
-reviewBucketFilter.addEventListener("change", applyFilters);
-reviewSearch.addEventListener("input", applyFilters);
+const debouncedApplyFilters = debounce(applyFilters, 180);
 
-const cachedReview = loadReviewCache();
+reviewBucketFilter.addEventListener("change", applyFilters);
+reviewSearch.addEventListener("input", debouncedApplyFilters);
+
+if (initialReviewState.bucket) reviewBucketFilter.value = initialReviewState.bucket;
+if (initialReviewState.q) reviewSearch.value = initialReviewState.q;
+
+const cachedReview = readSessionCache(REVIEW_CACHE_KEY);
 if (cachedReview) {
   renderReview(cachedReview.payload, { cachedAt: cachedReview.cachedAt });
 }

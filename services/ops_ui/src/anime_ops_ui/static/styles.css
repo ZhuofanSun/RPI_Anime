@@ -68,6 +68,14 @@ body {
   transition: background 220ms ease, color 220ms ease;
 }
 
+a,
+button,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
 body::before {
   content: "";
   position: fixed;
@@ -166,6 +174,14 @@ body::before {
   color: var(--teal);
 }
 
+.hero-link:focus-visible,
+.hero-link-current:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--teal) 68%, white 12%);
+  outline-offset: 4px;
+  border-radius: 8px;
+  color: var(--teal);
+}
+
 .hero-link-current {
   color: var(--ink);
   font-weight: 700;
@@ -195,6 +211,7 @@ body::before {
   font-size: clamp(1.1rem, 2vw, 1.35rem);
   line-height: 1.05;
   letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
 }
 
 .meta-value-compact {
@@ -202,6 +219,7 @@ body::before {
   line-height: 1.4;
   max-width: 28ch;
   overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
 .refresh-interval {
@@ -236,6 +254,13 @@ body::before {
   transform: translateY(-2px);
   box-shadow: var(--shadow-strong);
   border-color: color-mix(in srgb, var(--teal) 30%, var(--line));
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--teal) 68%, white 12%);
+  outline-offset: 4px;
+  box-shadow: var(--shadow-strong);
+  border-color: color-mix(in srgb, var(--teal) 36%, var(--line));
 }
 
 .theme-toggle-copy {
@@ -516,6 +541,7 @@ html[data-theme="dark"] .theme-toggle-thumb {
   color: var(--ink);
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   box-shadow: inset 0 1px 0 var(--surface-lip);
+  font-variant-numeric: tabular-nums;
 }
 
 .status-pill .status-dot {
@@ -579,6 +605,7 @@ html[data-theme="dark"] .theme-toggle-thumb {
 .service-uptime {
   color: var(--muted);
   font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .service-actions {
@@ -609,6 +636,13 @@ html[data-theme="dark"] .theme-toggle-thumb {
   transform: translateY(-2px) scale(1.01);
   box-shadow: 0 18px 32px rgba(21, 94, 117, 0.22);
   filter: saturate(1.05);
+}
+
+.service-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--teal) 68%, white 12%);
+  outline-offset: 4px;
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 18px 32px rgba(21, 94, 117, 0.22);
 }
 
 .service-link.disabled {
@@ -683,7 +717,6 @@ html[data-theme="dark"] .theme-toggle-thumb {
   color: var(--ink);
   font: inherit;
   box-shadow: var(--shadow-soft);
-  outline: none;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
@@ -691,6 +724,12 @@ html[data-theme="dark"] .theme-toggle-thumb {
 .review-input:focus {
   border-color: color-mix(in srgb, var(--teal) 36%, var(--line));
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--teal) 14%, transparent), var(--shadow-soft);
+}
+
+.review-select:focus-visible,
+.review-input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--teal) 68%, white 12%);
+  outline-offset: 2px;
 }
 
 .review-bucket-chips {
@@ -723,6 +762,14 @@ html[data-theme="dark"] .theme-toggle-thumb {
 
 .review-chip:hover,
 .review-chip.active {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+  border-color: color-mix(in srgb, var(--teal) 28%, var(--line));
+}
+
+.review-chip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--teal) 68%, white 12%);
+  outline-offset: 4px;
   transform: translateY(-1px);
   box-shadow: var(--shadow);
   border-color: color-mix(in srgb, var(--teal) 28%, var(--line));
@@ -839,6 +886,7 @@ html[data-theme="dark"] .theme-toggle-thumb {
 .review-item-value {
   display: block;
   min-height: 1.4em;
+  font-variant-numeric: tabular-nums;
 }
 
 .review-item-paths {
@@ -1107,6 +1155,12 @@ html[data-theme="dark"] .theme-toggle-thumb {
   transform: translateY(-2px);
   box-shadow: 0 18px 32px rgba(21, 94, 117, 0.22);
   filter: saturate(1.05);
+}
+
+.action-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--teal) 68%, white 12%);
+  outline-offset: 4px;
+  transform: translateY(-2px);
 }
 
 .action-button:disabled {
@@ -1902,6 +1956,51 @@ html[data-theme="dark"] .skeleton-chart::after {
   transform: translateY(-2px);
   box-shadow: var(--shadow-soft);
   border-color: color-mix(in srgb, var(--teal) 18%, var(--line));
+}
+
+.ghost-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--teal) 68%, white 12%);
+  outline-offset: 4px;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-soft);
+  border-color: color-mix(in srgb, var(--teal) 18%, var(--line));
+}
+
+.trend-value,
+.trend-detail,
+.trend-window,
+.metric-value,
+.metric-detail,
+.panel-badge,
+.review-item-value,
+.log-entry-time,
+.service-uptime {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .hero,
+  .service-card,
+  .review-item,
+  .metric-card,
+  .trend-card,
+  .workspace-link-card,
+  .theme-toggle,
+  .service-link,
+  .action-button,
+  .ghost-link,
+  .review-chip {
+    transform: none !important;
+  }
 }
 
 @media (max-width: 1120px) {

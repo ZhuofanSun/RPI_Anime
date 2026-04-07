@@ -4,6 +4,8 @@
 
 这个项目把番剧订阅、下载、选优入库、播放、异地访问和运维界面串成了一条完整链路。核心思路是：外部服务尽量复用成熟组件，真正和“自用追番”强相关的部分自己写，比如下载后选优、重命名、NFO 生成、人工审核和统一运维入口。
 
+前端和运维界面的结构说明见：[Ops UI Frontend Refactor](/Users/sunzhuofan/RPI_Anime/docs/frontend-refactor.md)。
+
 ## 这套项目解决什么问题
 
 - 聚合 RSS 订阅后，自动把新番送进下载器。
@@ -21,6 +23,18 @@
 - 自定义 `ops-ui` 提供统一入口、趋势图、日志、人工审核页、Tailscale 页面和 Postprocessor 页面
 - 宿主机通过 [Tailscale](https://tailscale.com/) 负责跨网络访问，通过 [Glances](https://github.com/nicolargo/glances) 提供系统指标
 - 风扇通过宿主机 `systemd + pigpiod` 做 PWM 控速
+
+## 前端结构
+
+`ops-ui` 当前采用轻量多页面结构：
+
+- 静态 HTML 提供页面骨架和首屏骨架屏
+- `core.js` 负责共享缓存、空状态、查询参数和提示条
+- `theme.js` 负责明暗主题
+- 各页面单独的 `page.js` 只处理自己的数据请求和交互
+- `styles.css` 维护统一视觉系统
+
+更完整的前端设计说明见：[Ops UI Frontend Refactor](/Users/sunzhuofan/RPI_Anime/docs/frontend-refactor.md)。
 
 ## 界面预览
 
@@ -98,7 +112,8 @@ flowchart LR
 │   └── title_mappings.toml
 ├── docs
 │   ├── dash1.png
-│   └── dash2.png
+│   ├── dash2.png
+│   └── frontend-refactor.md
 ├── scripts
 │   ├── bootstrap_pi.sh
 │   ├── install_tailscale_pi.sh
@@ -112,6 +127,10 @@ flowchart LR
 │   └── fan_pwm_test.py
 └── services
     ├── ops_ui
+    │   └── static
+    │       ├── core.js
+    │       ├── theme.js
+    │       └── styles.css
     └── postprocessor
 ```
 
@@ -349,4 +368,3 @@ python3 scripts/fan_pwm_test.py
 - 默认目标是自用番剧库，不是多用户公网服务
 - 默认目标是尽量 `Direct Play`，不是重度实时转码
 - `postprocessor` 负责把下载区整理成播放器可用的媒体库，但不会替代所有元数据插件
-

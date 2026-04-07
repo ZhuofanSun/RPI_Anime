@@ -14,21 +14,13 @@ const tailscalePeerMeta = document.getElementById("tailscale-peer-meta");
 const tailscalePeerList = document.getElementById("tailscale-peer-list");
 const tailscaleFlash = document.getElementById("tailscale-flash");
 const TAILSCALE_CACHE_KEY = "anime-ops-ui-tailscale-cache-v1";
+const { escapeHtml, formatUpdatedLabel, metricTemplate, readSessionCache, renderEmptyState, writeSessionCache } = window.AnimeOpsCore;
 
 let tailscaleRefreshMs = 15000;
 let tailscaleTimerId = null;
 let tailscaleFetchInFlight = false;
 let tailscaleActionInFlight = false;
 let tailscaleCurrentControl = { action: "start", label: "开启 Tailscale" };
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 function statusClass(status) {
   const normalized = (status || "unknown").replace(/\s+/g, "").toLowerCase();
@@ -41,16 +33,6 @@ function statusClass(status) {
 function statusLabel(status) {
   const normalized = (status || "unknown").replace(/-/g, " ");
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-function metricTemplate(card) {
-  return `
-    <article class="metric-card">
-      <span class="metric-label">${escapeHtml(card.label)}</span>
-      <span class="metric-value">${escapeHtml(card.value)}</span>
-      <span class="metric-detail">${escapeHtml(card.detail)}</span>
-    </article>
-  `;
 }
 
 function flashTemplate(title, message) {
@@ -144,38 +126,11 @@ function diagnosticsTemplate(items) {
     .join("");
 }
 
-function loadTailscaleCache() {
-  try {
-    const raw = window.sessionStorage.getItem(TAILSCALE_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || !parsed.payload) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function saveTailscaleCache(payload) {
-  try {
-    window.sessionStorage.setItem(
-      TAILSCALE_CACHE_KEY,
-      JSON.stringify({
-        cachedAt: Date.now(),
-        payload,
-      })
-    );
-  } catch {}
-}
-
 function renderTailscale(payload, { cachedAt } = {}) {
   tailscaleTitle.textContent = payload.title || "Tailscale";
   tailscaleSubtitle.textContent = payload.subtitle || "";
   tailscaleSocket.textContent = payload.socket_path || "-";
-  tailscaleUpdated.textContent = new Date(cachedAt || Date.now()).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  tailscaleUpdated.textContent = formatUpdatedLabel(cachedAt);
   tailscaleRefreshMs = (payload.refresh_interval_seconds || 15) * 1000;
   tailscaleRefresh.textContent = `${Math.round(tailscaleRefreshMs / 1000)}s`;
   tailscaleBackendBadge.textContent = `${payload.backend_state || "unknown"} · ${payload.reachability || "unknown"}`;
@@ -191,15 +146,10 @@ function renderTailscale(payload, { cachedAt } = {}) {
   tailscaleToggleButton.className = `action-button action-button-compact ${
     tailscaleCurrentControl.action === "stop" ? "action-button-danger" : ""
   }`;
-  tailscalePeerMeta.textContent = `${payload.peer_online || 0} online / ${payload.peer_total || 0} peers`;
+  tailscalePeerMeta.textContent = `在线 ${payload.peer_online || 0} / 共 ${payload.peer_total || 0} 台`;
 
   if (!payload.peers || !payload.peers.length) {
-    tailscalePeerList.innerHTML = `
-      <div class="review-empty">
-        <strong>当前没有 peer。</strong>
-        <span>当其他设备加入 tailnet 后，这里会自动显示在线状态和尾网地址。</span>
-      </div>
-    `;
+    tailscalePeerList.innerHTML = renderEmptyState("当前没有 peer。", "当其他设备加入 tailnet 后，这里会自动显示在线状态和尾网地址。");
   } else {
     tailscalePeerList.innerHTML = payload.peers.map(peerTemplate).join("");
   }
@@ -260,7 +210,7 @@ async function refreshTailscale() {
     }
     const payload = await response.json();
     renderTailscale(payload);
-    saveTailscaleCache(payload);
+    writeSessionCache(TAILSCALE_CACHE_KEY, payload);
   } catch (error) {
     tailscaleFlash.innerHTML = flashTemplate("Tailscale unavailable", error.message || String(error));
   } finally {
@@ -269,7 +219,7 @@ async function refreshTailscale() {
   }
 }
 
-const cachedTailscale = loadTailscaleCache();
+const cachedTailscale = readSessionCache(TAILSCALE_CACHE_KEY);
 if (cachedTailscale) {
   renderTailscale(cachedTailscale.payload, { cachedAt: cachedTailscale.cachedAt });
 }

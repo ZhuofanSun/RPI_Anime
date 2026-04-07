@@ -19,7 +19,7 @@
         } catch {}
       })();
     </script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260404d" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260407b" />
   </head>
   <body>
     <div class="page-shell">
@@ -73,7 +73,7 @@
               <h2>队列概览</h2>
               <p>当前 `manual_review` 的积压规模、体积和分桶分布。</p>
             </div>
-            <span class="panel-badge">Detail actions</span>
+            <span class="panel-badge">详情动作</span>
           </div>
           <div class="panel-note">列表页保持只读，具体的重试解析、手动发布和删除动作放在详情页里执行。</div>
           <div id="review-summary" class="metric-grid review-summary-grid">
@@ -110,13 +110,13 @@
           <div class="review-toolbar">
             <label class="review-control">
               <span class="review-control-label">Bucket</span>
-              <select id="review-bucket-filter" class="review-select">
+              <select id="review-bucket-filter" class="review-select" name="bucket">
                 <option value="">All buckets</option>
               </select>
             </label>
             <label class="review-control review-control-wide">
               <span class="review-control-label">Search</span>
-              <input id="review-search" class="review-input" type="search" placeholder="搜索番名、文件名或路径" />
+              <input id="review-search" class="review-input" type="search" name="q" autocomplete="off" placeholder="搜索番名、文件名或路径…" />
             </label>
           </div>
           <div id="review-bucket-chips" class="review-bucket-chips"></div>
@@ -179,7 +179,8 @@
         </section>
       </main>
     </div>
-    <script src="/static/theme.js?v=20260404d" defer></script>
-    <script src="/static/ops-review.js?v=20260404d" defer></script>
+    <script src="/static/theme.js?v=20260407b" defer></script>
+    <script src="/static/core.js?v=20260407b" defer></script>
+    <script src="/static/ops-review.js?v=20260407b" defer></script>
   </body>
 </html>
