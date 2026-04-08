@@ -16,7 +16,7 @@ const hostName = document.getElementById("host-name");
 const lastUpdated = document.getElementById("last-updated");
 const refreshIntervalLabel = document.getElementById("refresh-interval");
 const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v3";
-const UNKNOWN_VISIBLE_LIMIT = 6;
+const UNKNOWN_VISIBLE_LIMIT = 4;
 const {
   createPageBootstrap,
   escapeHtml,

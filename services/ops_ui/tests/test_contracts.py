@@ -66,6 +66,10 @@ def _script_text(name: str) -> str:
     return (main_module.APP_DIR / "static" / name).read_text(encoding="utf-8")
 
 
+def _style_text(name: str) -> str:
+    return (main_module.APP_DIR / "static" / "styles" / name).read_text(encoding="utf-8")
+
+
 def _contract_paths(name: str, *, root_var: str = "payload") -> set[str]:
     normalized_paths = set()
     ignored_suffixes = {"length", "map"}
@@ -499,6 +503,18 @@ def test_overview_app_script_schedule_contract_reads_nested_fields_and_caps_unkn
     assert ".slice(UNKNOWN_VISIBLE_LIMIT)" in script
     assert "item?.badges" not in script
     assert "ID ${item.id}" not in script
+
+
+def test_overview_schedule_styles_keep_unknown_row_compact_and_library_highlight_strong():
+    script = _script_text("app.js")
+    css = _style_text("components.css")
+
+    assert "const UNKNOWN_VISIBLE_LIMIT = 4;" in script
+    assert ".schedule-poster-grid-unknown" in css
+    assert "grid-template-columns: repeat(auto-fill, minmax(108px, 132px));" in css
+    assert "justify-content: start;" in css
+    assert ".schedule-poster-card.is-library-ready .schedule-poster-media::before" in css
+    assert "opacity: 1;" in css
 
 
 def test_overview_payload_logs_count_uses_uncapped_events_while_phase4_uses_limited_events(monkeypatch):
