@@ -70,6 +70,10 @@ def _style_text(name: str) -> str:
     return (main_module.APP_DIR / "static" / "styles" / name).read_text(encoding="utf-8")
 
 
+def _template_text(name: str) -> str:
+    return (main_module.APP_DIR / "templates" / name).read_text(encoding="utf-8")
+
+
 def _contract_paths(name: str, *, root_var: str = "payload") -> set[str]:
     normalized_paths = set()
     ignored_suffixes = {"length", "map"}
@@ -591,6 +595,211 @@ def test_shell_script_contains_left_rail_service_action_handlers():
     assert "/api/services/restart-all" in script
 
 
+def test_shell_and_theme_scripts_use_bootstrapped_client_copy():
+    shell_script = _script_text("shell.js")
+    theme_script = _script_text("theme.js")
+
+    assert "__OPS_UI_COPY__" in shell_script
+    assert "__OPS_UI_COPY__" in theme_script
+    assert "将重启" not in shell_script
+    assert "整套服务重启" not in shell_script
+    assert 'theme === "dark" ? "Dark" : "Light"' not in theme_script
+
+
+def test_theme_and_shell_scripts_can_load_together_as_classic_scripts():
+    if shutil.which("node") is None:
+        pytest.skip("node is required for runtime contract coverage")
+
+    theme_script = _script_text("theme.js")
+    shell_script = _script_text("shell.js")
+    runner = """
+const vm = require("node:vm");
+const themeScript = process.env.THEME_SCRIPT;
+const shellScript = process.env.SHELL_SCRIPT;
+
+const context = {
+  console,
+  localStorage: {
+    getItem() {
+      return null;
+    },
+    setItem() {},
+  },
+  document: {
+    documentElement: {
+      dataset: {},
+      style: {},
+    },
+    body: {
+      dataset: {
+        navigationApiPath: "/api/navigation",
+        page: "dashboard",
+      },
+    },
+    querySelectorAll() {
+      return [];
+    },
+    querySelector() {
+      return null;
+    },
+    getElementById() {
+      return null;
+    },
+    addEventListener() {},
+  },
+  fetch: async () => ({ ok: true, json: async () => ({ internal: [], external: [] }) }),
+  URL,
+  setTimeout,
+  clearTimeout,
+  window: {
+    __OPS_UI_COPY__: {
+      theme: { label: "Theme", light: "Light", dark: "Dark" },
+      services: {},
+    },
+    matchMedia() {
+      return { matches: false };
+    },
+    location: { href: "http://localhost:3000/" },
+    setTimeout,
+    clearTimeout,
+    confirm: () => true,
+  },
+};
+
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(themeScript, context);
+vm.runInContext(shellScript, context);
+process.stdout.write("ok");
+"""
+    env = os.environ.copy()
+    env["THEME_SCRIPT"] = theme_script
+    env["SHELL_SCRIPT"] = shell_script
+
+    result = subprocess.run(
+        ["node", "-e", runner],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.stdout == "ok"
+
+
+def test_workspace_templates_reuse_shared_preferences_include():
+    template_names = [
+        "dashboard.html",
+        "ops_review.html",
+        "ops_review_item.html",
+        "logs.html",
+        "postprocessor.html",
+        "tailscale.html",
+    ]
+
+    for template_name in template_names:
+        template = _template_text(template_name)
+        assert '_preferences_controls.html' in template
+        assert "theme-toggle-track" not in template
+        assert "theme-toggle-icon" not in template
+
+
+def test_language_script_writes_cookie_and_reloads():
+    if shutil.which("node") is None:
+        pytest.skip("node is required for language.js runtime contract coverage")
+
+    script = _script_text("language.js")
+    runner = """
+const vm = require("node:vm");
+const script = process.env.LANGUAGE_SCRIPT;
+
+function makeButton(locale) {
+  return {
+    dataset: { languageOption: locale },
+    _listeners: {},
+    addEventListener(type, callback) {
+      this._listeners[type] = callback;
+    },
+    click() {
+      if (this._listeners.click) {
+        this._listeners.click({ currentTarget: this, preventDefault() {} });
+      }
+    },
+  };
+}
+
+const buttons = [makeButton("zh-Hans"), makeButton("en")];
+let domReady = null;
+let cookieValue = "";
+let reloadCount = 0;
+
+const document = {
+  body: {
+    dataset: {
+      languageCookieName: "anime-ops-ui-lang",
+      locale: "zh-Hans",
+    },
+  },
+  querySelectorAll(selector) {
+    if (selector === "[data-language-option]") {
+      return buttons;
+    }
+    return [];
+  },
+  addEventListener(type, callback) {
+    if (type === "DOMContentLoaded") {
+      domReady = callback;
+    }
+  },
+};
+
+Object.defineProperty(document, "cookie", {
+  get() {
+    return cookieValue;
+  },
+  set(value) {
+    cookieValue = String(value);
+  },
+});
+
+const context = {
+  console,
+  document,
+  window: {
+    location: {
+      reload() {
+        reloadCount += 1;
+      },
+    },
+  },
+};
+
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(script, context);
+domReady();
+buttons[1].click();
+process.stdout.write(JSON.stringify({ cookieValue, reloadCount }));
+"""
+    env = os.environ.copy()
+    env["LANGUAGE_SCRIPT"] = script
+
+    result = subprocess.run(
+        ["node", "-e", runner],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    payload = json.loads(result.stdout)
+    assert "anime-ops-ui-lang=en" in payload["cookieValue"]
+    assert "Max-Age=31536000" in payload["cookieValue"]
+    assert "Path=/" in payload["cookieValue"]
+    assert "SameSite=Lax" in payload["cookieValue"]
+    assert payload["reloadCount"] == 1
+
+
 def test_shell_script_restores_action_button_markup_after_busy_state():
     if shutil.which("node") is None:
         pytest.skip("node is required for shell.js runtime contract coverage")
@@ -738,6 +947,334 @@ process.stdout.write(JSON.stringify({ cleared, className: flash.className, textC
     assert payload["cleared"] == [1]
     assert payload["className"] == "inline-feedback inline-feedback-error"
     assert payload["textContent"] == "two"
+
+
+def test_shell_script_prefers_localized_success_feedback_over_api_message():
+    if shutil.which("node") is None:
+        pytest.skip("node is required for shell.js runtime contract coverage")
+
+    script = _script_text("shell.js")
+    runner = """
+const vm = require("node:vm");
+const script = process.env.SHELL_SCRIPT;
+
+const flash = {
+  textContent: "",
+  className: "inline-feedback is-hidden",
+};
+
+function makeButton() {
+  return {
+    dataset: {
+      serviceAction: "jellyfin",
+      serviceName: "Jellyfin",
+      serviceReload: "false",
+    },
+    disabled: false,
+    innerHTML: '<span class="nav-action-title">Restart Jellyfin</span>',
+    textContent: "Restart Jellyfin",
+  };
+}
+
+const context = {
+  console,
+  document: {
+    body: {
+      dataset: {
+        navigationApiPath: "/api/navigation",
+        page: "dashboard",
+      },
+    },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+    getElementById(id) {
+      if (id === "shell-service-feedback") {
+        return flash;
+      }
+      return null;
+    },
+  },
+  fetch: async (url, options) => {
+    if (url === "/api/services/restart") {
+      return {
+        ok: true,
+        json: async () => ({ message: "Jellyfin 已发送重启指令。" }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({ internal: [], external: [] }),
+    };
+  },
+  setTimeout,
+  clearTimeout,
+  URL,
+  window: {
+    __OPS_UI_COPY__: {
+      services: {
+        restartBusy: "Restarting…",
+        success: "Restart requested for {name}.",
+        error: "Failed to restart {name}.",
+        confirm: "This will restart {name}. Continue?",
+      },
+    },
+    location: { href: "http://localhost:3000/" },
+    setTimeout,
+    clearTimeout,
+    confirm: () => true,
+  },
+};
+
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(script, context);
+
+const button = makeButton();
+context.handleServiceAction(button).then(() => {
+  process.stdout.write(JSON.stringify({ textContent: flash.textContent, className: flash.className }));
+});
+"""
+    env = os.environ.copy()
+    env["SHELL_SCRIPT"] = script
+
+    result = subprocess.run(
+        ["node", "-e", runner],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload["textContent"] == "Restart requested for Jellyfin."
+    assert payload["className"] == "inline-feedback inline-feedback-success"
+
+
+def test_shell_script_shows_localized_auth_url_feedback_when_restart_requires_browser_auth():
+    if shutil.which("node") is None:
+        pytest.skip("node is required for shell.js runtime contract coverage")
+
+    script = _script_text("shell.js")
+    runner = """
+const vm = require("node:vm");
+const script = process.env.SHELL_SCRIPT;
+
+const flash = {
+  textContent: "",
+  className: "inline-feedback is-hidden",
+};
+
+function makeButton() {
+  return {
+    dataset: {
+      serviceAction: "tailscale",
+      serviceName: "Tailscale",
+      serviceReload: "false",
+    },
+    disabled: false,
+    innerHTML: '<span class="nav-action-title">Restart Tailscale</span>',
+    textContent: "Restart Tailscale",
+  };
+}
+
+const authUrl = "https://login.tailscale.example/auth";
+const context = {
+  console,
+  document: {
+    body: {
+      dataset: {
+        navigationApiPath: "/api/navigation",
+        page: "dashboard",
+      },
+    },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+    getElementById(id) {
+      if (id === "shell-service-feedback") {
+        return flash;
+      }
+      return null;
+    },
+  },
+  fetch: async (url) => {
+    if (url === "/api/services/restart") {
+      return {
+        ok: true,
+        json: async () => ({
+          message: "Tailscale 已生成登录链接，请在浏览器里完成授权。",
+          auth_required: true,
+          auth_mode: "browser",
+          auth_url: authUrl,
+        }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({ internal: [], external: [] }),
+    };
+  },
+  setTimeout,
+  clearTimeout,
+  URL,
+  window: {
+    __OPS_UI_COPY__: {
+      services: {
+        restartBusy: "Restarting…",
+        success: "Restart requested for {name}.",
+        authRequired: "Finish {name} sign-in in your browser: {auth_url}",
+        error: "Failed to restart {name}.",
+        confirm: "This will restart {name}. Continue?",
+      },
+    },
+    location: { href: "http://localhost:3000/" },
+    setTimeout,
+    clearTimeout,
+    confirm: () => true,
+  },
+};
+
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(script, context);
+
+const button = makeButton();
+context.handleServiceAction(button).then(() => {
+  process.stdout.write(JSON.stringify({ textContent: flash.textContent, className: flash.className }));
+});
+"""
+    env = os.environ.copy()
+    env["SHELL_SCRIPT"] = script
+
+    result = subprocess.run(
+        ["node", "-e", runner],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload["textContent"] == "Finish Tailscale sign-in in your browser: https://login.tailscale.example/auth"
+    assert payload["className"] == "inline-feedback inline-feedback-success"
+
+
+def test_shell_script_shows_localized_manual_auth_feedback_when_restart_requires_terminal_follow_up():
+    if shutil.which("node") is None:
+        pytest.skip("node is required for shell.js runtime contract coverage")
+
+    script = _script_text("shell.js")
+    runner = """
+const vm = require("node:vm");
+const script = process.env.SHELL_SCRIPT;
+
+const flash = {
+  textContent: "",
+  className: "inline-feedback is-hidden",
+};
+
+function makeButton() {
+  return {
+    dataset: {
+      serviceAction: "tailscale",
+      serviceName: "Tailscale",
+      serviceReload: "false",
+    },
+    disabled: false,
+    innerHTML: '<span class="nav-action-title">Restart Tailscale</span>',
+    textContent: "Restart Tailscale",
+  };
+}
+
+const context = {
+  console,
+  document: {
+    body: {
+      dataset: {
+        navigationApiPath: "/api/navigation",
+        page: "dashboard",
+      },
+    },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+    getElementById(id) {
+      if (id === "shell-service-feedback") {
+        return flash;
+      }
+      return null;
+    },
+  },
+  fetch: async (url) => {
+    if (url === "/api/services/restart") {
+      return {
+        ok: true,
+        json: async () => ({
+          message: "Tailscale backend 已开启，但当前版本没有回传登录链接。请在树莓派终端执行 sudo tailscale login 或 sudo tailscale up 完成授权。",
+          auth_required: true,
+          auth_mode: "manual",
+        }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({ internal: [], external: [] }),
+    };
+  },
+  setTimeout,
+  clearTimeout,
+  URL,
+  window: {
+    __OPS_UI_COPY__: {
+      services: {
+        restartBusy: "Restarting…",
+        success: "Restart requested for {name}.",
+        authRequired: "Finish {name} sign-in in your browser: {auth_url}",
+        manualAuthRequired: "Finish {name} sign-in from the terminal with sudo tailscale login or sudo tailscale up.",
+        error: "Failed to restart {name}.",
+        confirm: "This will restart {name}. Continue?",
+      },
+    },
+    location: { href: "http://localhost:3000/" },
+    setTimeout,
+    clearTimeout,
+    confirm: () => true,
+  },
+};
+
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(script, context);
+
+const button = makeButton();
+context.handleServiceAction(button).then(() => {
+  process.stdout.write(JSON.stringify({ textContent: flash.textContent, className: flash.className }));
+});
+"""
+    env = os.environ.copy()
+    env["SHELL_SCRIPT"] = script
+
+    result = subprocess.run(
+        ["node", "-e", runner],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload["textContent"] == "Finish Tailscale sign-in from the terminal with sudo tailscale login or sudo tailscale up."
+    assert payload["className"] == "inline-feedback inline-feedback-success"
 
 
 def test_shell_script_normalizes_external_links_to_browser_origin():
@@ -933,7 +1470,7 @@ def test_navigation_state_payload_matches_shell_contract(monkeypatch, tmp_path):
     _assert_payload_matches_page_contract(
         payload=payload,
         script_name="shell.js",
-        ignored_paths={"detail", "message", "reload_after_seconds"},
+        ignored_paths={"auth_mode", "auth_required", "auth_url", "detail", "message", "reload_after_seconds"},
     )
 
     assert payload["internal"]

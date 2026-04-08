@@ -1,5 +1,22 @@
 const THEME_STORAGE_KEY = "anime-ops-ui-theme";
 
+function themeCopy() {
+  return (((typeof window !== "undefined" && window.__OPS_UI_COPY__) || {}).theme || {});
+}
+
+function setButtonState(button, active, label) {
+  if (!button) return;
+  if (typeof button.setAttribute === "function") {
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+    if (label) {
+      button.setAttribute("aria-label", `${themeCopy().label || "Theme"}: ${label}`);
+    }
+  }
+  if (button.classList && typeof button.classList.toggle === "function") {
+    button.classList.toggle("is-active", active);
+  }
+}
+
 function getPreferredTheme() {
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
@@ -25,18 +42,13 @@ function applyTheme(theme, { persist = true } = {}) {
     }
   }
 
-  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
-    button.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
-    const label = button.querySelector("[data-theme-label]");
-    if (label) {
-      label.textContent = theme === "dark" ? "Dark" : "Light";
-    }
+  const copy = themeCopy();
+  document.querySelectorAll("[data-theme-option]").forEach((button) => {
+    const option = button.dataset.themeOption;
+    const isActive = option === theme;
+    const label = option === "dark" ? copy.dark || "Dark" : copy.light || "Light";
+    setButtonState(button, isActive, label);
   });
-}
-
-function toggleTheme() {
-  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  applyTheme(nextTheme);
 }
 
 applyTheme(getPreferredTheme(), { persist: false });
@@ -44,7 +56,12 @@ applyTheme(getPreferredTheme(), { persist: false });
 document.addEventListener("DOMContentLoaded", () => {
   applyTheme(getPreferredTheme(), { persist: false });
 
-  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
-    button.addEventListener("click", toggleTheme);
+  document.querySelectorAll("[data-theme-option]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextTheme = button.dataset.themeOption;
+      if (nextTheme === "light" || nextTheme === "dark") {
+        applyTheme(nextTheme);
+      }
+    });
   });
 });

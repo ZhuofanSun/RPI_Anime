@@ -28,6 +28,11 @@ def test_overview_includes_page_context_fields(client, monkeypatch):
     assert payload["site_subtitle"] == "树莓派私人影音库控制台"
     assert "ops-review" in payload["internal_pages"]
     assert payload["external_services"]["jellyfin"]["target"] == "external"
+    assert "locale" not in payload
+    assert "shell_copy" not in payload
+    assert "client_copy" not in payload
+    assert "client_copy_json" not in payload
+    assert "language_cookie_name" not in payload
 
 
 def test_navigation_state_service_rolls_up_badges(monkeypatch, tmp_path):
@@ -80,7 +85,7 @@ def test_navigation_state_service_rolls_up_badges(monkeypatch, tmp_path):
     assert internal["logs"]["tone"] == "danger"
     assert internal["postprocessor"]["badge"] == "3"
     assert internal["postprocessor"]["tone"] == "info"
-    assert internal["tailscale"]["badge"] == "Online"
+    assert internal["tailscale"]["badge"] == "在线"
     assert internal["tailscale"]["tone"] == "success"
     assert external["jellyfin"]["href"] == "http://ops.local:8096"
     assert external["jellyfin"]["tone"] == "neutral"

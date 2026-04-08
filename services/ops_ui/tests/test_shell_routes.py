@@ -3,6 +3,7 @@ import re
 from fastapi.testclient import TestClient
 
 from anime_ops_ui import main as main_module
+from anime_ops_ui.i18n import LANGUAGE_COOKIE_NAME
 from anime_ops_ui.main import create_app
 
 
@@ -11,8 +12,55 @@ def test_dashboard_uses_shared_shell(client):
     body = response.text
     assert "app-shell" in body
     assert "Dashboard" in body
-    assert "Ops Review" in body
+    assert "审核队列" in body
     assert "Jellyfin" in body
+
+
+def test_shared_shell_localizes_english_shell_markup_and_bootstrap_copy(client):
+    response = client.get("/", headers={"accept-language": "en-US,en;q=0.9"})
+
+    assert response.status_code == 200
+    body = response.text
+    assert '<html lang="en">' in body
+    assert 'data-locale="en"' in body
+    assert 'data-language-cookie-name="anime-ops-ui-lang"' in body
+    assert 'id="ops-ui-client-copy"' in body
+    assert '/static/language.js' in body
+    assert "Navigation" in body
+    assert "Workspace" in body
+    assert "Services" in body
+    assert "Controls" in body
+    assert "Preferences" in body
+    assert 'data-preferences-controls' in body
+    assert 'data-theme-option="light"' in body
+    assert 'data-theme-option="dark"' in body
+    assert 'data-language-option="zh-Hans"' in body
+    assert 'data-language-option="en"' in body
+    assert "theme-toggle-track" not in body
+    assert "theme-toggle-icon" not in body
+    assert "☀" not in body
+    assert "☾" not in body
+
+
+def test_shared_shell_prefers_cookie_locale_over_accept_language(client):
+    client.cookies.set(LANGUAGE_COOKIE_NAME, "en")
+    response = client.get("/", headers={"accept-language": "zh-Hans,zh;q=0.9"})
+
+    assert response.status_code == 200
+    assert '<html lang="en">' in response.text
+    client.cookies.clear()
+
+
+def test_all_shell_pages_render_shared_preferences_once(client):
+    for path in ["/", "/ops-review", "/ops-review/item", "/logs", "/postprocessor", "/tailscale"]:
+        response = client.get(path)
+        body = response.text
+        assert response.status_code == 200
+        assert body.count("data-preferences-controls") == 1
+        assert "theme-toggle-track" not in body
+        assert "theme-toggle-icon" not in body
+        assert "☀" not in body
+        assert "☾" not in body
 
 
 def test_dashboard_shell_contains_bootstrap_roots(client):

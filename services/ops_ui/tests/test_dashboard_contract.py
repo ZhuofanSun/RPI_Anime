@@ -66,6 +66,92 @@ def test_navigation_api_contract_returns_internal_external_and_actions(client, m
     assert payload["stack_action"] == STACK_ACTION
 
 
+def test_navigation_api_localizes_navigation_and_actions_for_english(client, monkeypatch, tmp_path):
+    review_root = tmp_path / "manual_review"
+    review_root.mkdir(parents=True)
+
+    monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
+    monkeypatch.setattr(main_module, "_count_media_files", lambda root: 2 if root == review_root else 0)
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    monkeypatch.setattr(main_module, "_latest_sampled_metric", lambda name: 1.0 if name == "tailscale_online" else None)
+    monkeypatch.setattr(
+        main_module,
+        "_env",
+        lambda name, default: {
+            "HOMEPAGE_BASE_HOST": "ops.local",
+            "JELLYFIN_PORT": "8096",
+            "QBITTORRENT_WEBUI_PORT": "8080",
+            "AUTOBANGUMI_PORT": "7892",
+            "GLANCES_PORT": "61208",
+        }.get(name, default),
+    )
+
+    response = client.get("/api/navigation", headers={"accept-language": "en-US,en;q=0.9"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    dashboard = next(item for item in payload["internal"] if item["id"] == "dashboard")
+    logs = next(item for item in payload["internal"] if item["id"] == "logs")
+    tailscale = next(item for item in payload["internal"] if item["id"] == "tailscale")
+    jellyfin = next(item for item in payload["external"] if item["id"] == "jellyfin")
+    homepage = next(item for item in payload["service_actions"] if item["id"] == "homepage")
+
+    assert dashboard["label"] == "Dashboard"
+    assert logs["label"] == "Logs"
+    assert tailscale["badge"] == "Online"
+    assert jellyfin["label"] == "Jellyfin"
+    assert homepage["label"] == "Restart Ops UI"
+    assert payload["stack_action"] == {
+        "label": "Service Actions",
+        "hint": "single + stack restart",
+        "stack_label": "Restart Stack",
+        "stack_detail": "compose only · homepage last",
+    }
+
+
+def test_navigation_api_prefers_cookie_locale_for_zh_hans(client, monkeypatch, tmp_path):
+    review_root = tmp_path / "manual_review"
+    review_root.mkdir(parents=True)
+
+    monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
+    monkeypatch.setattr(main_module, "_count_media_files", lambda root: 2 if root == review_root else 0)
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    monkeypatch.setattr(main_module, "_latest_sampled_metric", lambda name: 1.0 if name == "tailscale_online" else None)
+    monkeypatch.setattr(
+        main_module,
+        "_env",
+        lambda name, default: {
+            "HOMEPAGE_BASE_HOST": "ops.local",
+            "JELLYFIN_PORT": "8096",
+            "QBITTORRENT_WEBUI_PORT": "8080",
+            "AUTOBANGUMI_PORT": "7892",
+            "GLANCES_PORT": "61208",
+        }.get(name, default),
+    )
+
+    client.cookies.set("anime-ops-ui-lang", "zh-Hans")
+    response = client.get("/api/navigation", headers={"accept-language": "en-US,en;q=0.9"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    dashboard = next(item for item in payload["internal"] if item["id"] == "dashboard")
+    ops_review = next(item for item in payload["internal"] if item["id"] == "ops-review")
+    tailscale = next(item for item in payload["internal"] if item["id"] == "tailscale")
+    homepage = next(item for item in payload["service_actions"] if item["id"] == "homepage")
+
+    assert dashboard["label"] == "总览"
+    assert ops_review["label"] == "审核队列"
+    assert tailscale["badge"] == "在线"
+    assert homepage["label"] == "重启 Ops UI"
+    assert payload["stack_action"] == {
+        "label": "服务动作",
+        "hint": "单服务 + 整栈重启",
+        "stack_label": "重启服务栈",
+        "stack_detail": "仅 compose · 最后重启 Ops UI",
+    }
+    client.cookies.clear()
+
+
 def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
     monkeypatch.setattr(main_module, "_safe_get_json", lambda *args, **kwargs: ({}, None))
     monkeypatch.setattr(main_module, "_tailscale_status", lambda *args, **kwargs: ({}, None))

@@ -165,6 +165,29 @@ def test_build_tailscale_payload_uses_socket_state(monkeypatch):
     assert payload["current_node"]["control_action"] == "stop"
 
 
+def test_restart_service_now_returns_structured_manual_auth_signal_for_tailscale(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "_tailscale_restart_action",
+        lambda socket_path: {
+            "ok": True,
+            "action": "start",
+            "message": "Tailscale backend 已开启，但当前版本没有回传登录链接。请在树莓派终端执行 sudo tailscale login 或 sudo tailscale up 完成授权。",
+            "auth_required": True,
+            "auth_mode": "manual",
+        },
+    )
+    monkeypatch.setattr(main_module, "_env", lambda name, default: "/var/run/tailscale/tailscaled.sock" if name == "TAILSCALE_SOCKET" else default)
+
+    payload = main_module._restart_service_now("tailscale")
+
+    assert payload["target"] == "tailscale"
+    assert payload["label"] == "Tailscale"
+    assert payload["auth_required"] is True
+    assert payload["auth_mode"] == "manual"
+    assert payload.get("auth_url") is None
+
+
 def test_build_overview_payload_reports_service_summary(monkeypatch, tmp_path):
     data_root = tmp_path / "anime-data"
     collection_root = tmp_path / "anime-collection"

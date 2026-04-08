@@ -1,45 +1,22 @@
-.theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  min-width: 180px;
-  min-height: 56px;
-  padding: 10px 12px 10px 14px;
-  border-radius: 999px;
+.preferences-controls {
+  display: grid;
+  gap: 10px;
+  min-width: min(100%, 320px);
+  padding: 12px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   background: linear-gradient(180deg, var(--panel-strong), var(--panel-soft));
-  color: var(--ink);
   box-shadow: var(--shadow-soft);
-  cursor: pointer;
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 220ms ease;
 }
 
-.theme-toggle:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-strong);
-  border-color: color-mix(in srgb, var(--teal) 30%, var(--line));
-}
-
-.theme-toggle:focus-visible,
-.service-link:focus-visible,
-.action-button:focus-visible,
-.ghost-link:focus-visible,
-.review-chip:focus-visible,
-.review-select:focus-visible,
-.review-input:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--teal) 68%, white 12%);
-  outline-offset: 4px;
-}
-
-.theme-toggle-copy {
+.preferences-header {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.theme-toggle-title,
+.preferences-title,
+.preferences-label,
 .review-control-label,
 .metric-label,
 .review-item-label,
@@ -51,7 +28,8 @@
   text-transform: uppercase;
 }
 
-.theme-toggle-title,
+.preferences-title,
+.preferences-label,
 .review-control-label,
 .metric-label,
 .review-item-label,
@@ -60,45 +38,63 @@
   color: var(--muted);
 }
 
-.theme-toggle-state {
-  font-size: 0.98rem;
-  font-weight: 700;
-}
-
-.theme-toggle-track {
-  position: relative;
-  display: inline-flex;
+.preferences-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
-  justify-content: space-between;
-  width: 78px;
-  height: 34px;
-  padding: 0 11px;
+}
+
+.segmented-control {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  padding: 4px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  box-shadow: inset 0 1px 0 var(--surface-lip);
+}
+
+.segmented-button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
   color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
-.theme-toggle-icon {
-  position: relative;
-  z-index: 2;
-  font-size: 0.9rem;
+.segmented-button:hover {
+  color: var(--ink);
 }
 
-.theme-toggle-thumb {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(240, 234, 225, 0.92));
-  box-shadow: 0 8px 18px rgba(21, 32, 43, 0.16);
-  transition: transform 200ms ease, background 200ms ease;
+.segmented-button.is-active,
+.segmented-button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--teal) 18%, var(--panel-strong));
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 36%, var(--line));
 }
 
-html[data-theme="dark"] .theme-toggle-thumb {
-  transform: translateX(44px);
-  background: linear-gradient(180deg, rgba(98, 110, 128, 0.96), rgba(67, 81, 99, 0.96));
+.segmented-button:active {
+  transform: translateY(1px);
+}
+
+.segmented-button:focus-visible,
+.service-link:focus-visible,
+.action-button:focus-visible,
+.ghost-link:focus-visible,
+.review-chip:focus-visible,
+.review-select:focus-visible,
+.review-input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--teal) 68%, white 12%);
+  outline-offset: 4px;
 }
 
 .panel-badge {

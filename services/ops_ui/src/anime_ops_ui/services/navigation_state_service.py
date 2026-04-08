@@ -5,13 +5,15 @@ from dataclasses import dataclass, field
 import threading
 from typing import Any
 
-from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES, SERVICE_ACTIONS, STACK_ACTION
+from anime_ops_ui.i18n import DEFAULT_LOCALE, normalize_locale
+from anime_ops_ui.navigation import build_external_services, build_internal_pages, build_service_actions, build_stack_action
 
 _NAVIGATION_STATE_FLIGHT_LOCK = threading.Lock()
 
 
 @dataclass
 class _NavigationStateFlight:
+    locale: str = DEFAULT_LOCALE
     done: threading.Event = field(default_factory=threading.Event)
     payload: dict[str, list[dict[str, Any]]] | None = None
     error: Exception | None = None
@@ -27,9 +29,10 @@ def _safe_port(raw: str, fallback: int) -> int:
         return fallback
 
 
-def _build_navigation_state_uncached() -> dict[str, Any]:
+def _build_navigation_state_uncached(locale: str | None = None) -> dict[str, Any]:
     from anime_ops_ui import main as main_module
 
+    normalized_locale = normalize_locale(locale or DEFAULT_LOCALE)
     review_root = main_module._manual_review_root()
     review_count = main_module._count_media_files(review_root)
     events = main_module.read_events(limit=300)
@@ -47,7 +50,10 @@ def _build_navigation_state_uncached() -> dict[str, Any]:
     tailscale_tone = "neutral"
     if sampled_tailscale_online is not None:
         tailscale_online = sampled_tailscale_online >= 0.5
-        tailscale_badge = "Online" if tailscale_online else "Offline"
+        if normalized_locale == "zh-Hans":
+            tailscale_badge = "在线" if tailscale_online else "离线"
+        else:
+            tailscale_badge = "Online" if tailscale_online else "Offline"
         tailscale_tone = "success" if tailscale_online else "danger"
 
     badge_by_page = {
@@ -66,7 +72,7 @@ def _build_navigation_state_uncached() -> dict[str, Any]:
     }
 
     internal_entries: list[dict[str, Any]] = []
-    for page_id, item in INTERNAL_PAGES.items():
+    for page_id, item in build_internal_pages(normalized_locale).items():
         internal_entries.append(
             {
                 "id": page_id,
@@ -82,7 +88,7 @@ def _build_navigation_state_uncached() -> dict[str, Any]:
 
     base_host = main_module._env("HOMEPAGE_BASE_HOST", main_module.socket.gethostname())
     external_entries: list[dict[str, Any]] = []
-    for service_id, item in EXTERNAL_SERVICES.items():
+    for service_id, item in build_external_services(normalized_locale).items():
         fallback_port = int(item.get("default_port", 80))
         port = _safe_port(main_module._env(item["port_env"], str(fallback_port)), fallback_port)
         external_entries.append(
@@ -100,18 +106,19 @@ def _build_navigation_state_uncached() -> dict[str, Any]:
     return {
         "internal": internal_entries,
         "external": external_entries,
-        "service_actions": copy.deepcopy(SERVICE_ACTIONS),
-        "stack_action": copy.deepcopy(STACK_ACTION),
+        "service_actions": build_service_actions(normalized_locale),
+        "stack_action": build_stack_action(normalized_locale),
     }
 
 
-def build_navigation_state() -> dict[str, Any]:
+def build_navigation_state(locale: str | None = None) -> dict[str, Any]:
     global _NAVIGATION_STATE_FLIGHT
 
+    normalized_locale = normalize_locale(locale or DEFAULT_LOCALE)
     with _NAVIGATION_STATE_FLIGHT_LOCK:
         flight = _NAVIGATION_STATE_FLIGHT
-        if flight is None:
-            flight = _NavigationStateFlight()
+        if flight is None or flight.locale != normalized_locale:
+            flight = _NavigationStateFlight(locale=normalized_locale)
             _NAVIGATION_STATE_FLIGHT = flight
             is_builder = True
         else:
@@ -119,7 +126,10 @@ def build_navigation_state() -> dict[str, Any]:
 
     if is_builder:
         try:
-            payload = _build_navigation_state_uncached()
+            if normalized_locale == DEFAULT_LOCALE:
+                payload = _build_navigation_state_uncached()
+            else:
+                payload = _build_navigation_state_uncached(normalized_locale)
             flight.payload = payload
         except Exception as exc:  # pragma: no cover - defensive pass-through
             flight.error = exc

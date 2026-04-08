@@ -31,6 +31,7 @@ if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
     sys.path.insert(0, str(POSTPROCESSOR_SRC))
 
 from anime_ops_ui.copy import text
+from anime_ops_ui.i18n import resolve_locale
 from anime_ops_ui.page_context import build_page_context
 from anime_ops_ui.services.log_service import build_logs_payload as build_logs_payload_service
 from anime_ops_ui.services.navigation_state_service import build_navigation_state as build_navigation_state_service
@@ -81,7 +82,7 @@ class ServiceRestartRequest(BaseModel):
 
 
 def render_page(request: Request, template_name: str, page_key: str, title: str):
-    context = build_page_context(page_key, title)
+    context = build_page_context(page_key, title, locale=resolve_locale(request))
     return TEMPLATES.TemplateResponse(
         request,
         template_name,
@@ -1262,6 +1263,8 @@ def _tailscale_start_action(socket_path: str) -> dict[str, Any]:
             "ok": True,
             "action": "start",
             "message": "Tailscale 已生成登录链接，请在浏览器里完成授权。",
+            "auth_required": True,
+            "auth_mode": "browser",
             "auth_url": auth_url,
         }
 
@@ -1278,6 +1281,8 @@ def _tailscale_start_action(socket_path: str) -> dict[str, Any]:
         "ok": True,
         "action": "start",
         "message": "Tailscale backend 已开启，但当前版本没有回传登录链接。请在树莓派终端执行 sudo tailscale login 或 sudo tailscale up 完成授权。",
+        "auth_required": True,
+        "auth_mode": "manual",
     }
 
 
@@ -1317,6 +1322,8 @@ def _restart_service_now(target: str) -> dict[str, Any]:
             "target": target,
             "label": label,
             "message": result.get("message") or f"{label} 已重启。",
+            "auth_required": bool(result.get("auth_required")),
+            "auth_mode": result.get("auth_mode"),
             "auth_url": result.get("auth_url"),
         }
 
@@ -1535,8 +1542,8 @@ def overview() -> JSONResponse:
 
 
 @router.get("/api/navigation")
-def navigation_api() -> JSONResponse:
-    return JSONResponse(build_navigation_state_service())
+def navigation_api(request: Request) -> JSONResponse:
+    return JSONResponse(build_navigation_state_service(locale=resolve_locale(request)))
 
 
 @router.get("/api/manual-review")

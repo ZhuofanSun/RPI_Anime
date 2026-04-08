@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hans">
+<html lang="{{ locale }}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -20,17 +20,38 @@
       })();
     </script>
     <link rel="stylesheet" href="/static/styles.css?v=phase2" />
-    <script defer src="/static/theme.js?v=phase2"></script>
-    <script defer src="/static/shell.js?v=phase3"></script>
+    <script id="ops-ui-client-copy" type="application/json">{{ client_copy_json | safe }}</script>
+    <script>
+      (() => {
+        const node = document.getElementById("ops-ui-client-copy");
+        if (!node) {
+          window.__OPS_UI_COPY__ = {};
+          return;
+        }
+        try {
+          window.__OPS_UI_COPY__ = JSON.parse(node.textContent || "{}");
+        } catch {
+          window.__OPS_UI_COPY__ = {};
+        }
+      })();
+    </script>
+    <script defer src="/static/theme.js?v=phase5"></script>
+    <script defer src="/static/language.js?v=phase5"></script>
+    <script defer src="/static/shell.js?v=phase5"></script>
     {% block head %}{% endblock %}
   </head>
-  <body data-page="{{ page_key }}" data-navigation-api-path="{{ navigation_api_path }}">
+  <body
+    data-page="{{ page_key }}"
+    data-navigation-api-path="{{ navigation_api_path }}"
+    data-locale="{{ locale }}"
+    data-language-cookie-name="{{ language_cookie_name }}"
+  >
     <div class="app-shell">
       <aside class="app-nav">
-        <button type="button" class="nav-link" data-nav-toggle aria-expanded="true" aria-controls="shell-nav-sections">Navigation</button>
-        <nav id="shell-nav-sections" aria-label="导航">
+        <button type="button" class="nav-link" data-nav-toggle aria-expanded="true" aria-controls="shell-nav-sections">{{ shell_copy.nav.toggle }}</button>
+        <nav id="shell-nav-sections" aria-label="{{ shell_copy.nav.aria_label }}">
           <section class="nav-group" data-shell-nav="internal">
-            <h2>工作页</h2>
+            <h2>{{ shell_copy.nav.internal }}</h2>
             {% for _key, item in internal_pages.items() %}
             <a
               class="nav-link{% if _key == page_key or item.path == request.url.path %} is-active{% endif %}"
@@ -45,7 +66,7 @@
             {% endfor %}
           </section>
           <section class="nav-group" data-shell-nav="external">
-            <h2>外部服务</h2>
+            <h2>{{ shell_copy.nav.external }}</h2>
             {% for _key, item in external_services.items() %}
             <a class="nav-link is-external" href="{{ item.href }}" data-nav-item="{{ _key }}" data-nav-tone="neutral" target="_blank" rel="noopener noreferrer">
               <span data-nav-icon>{{ item.icon }}</span>
@@ -55,7 +76,7 @@
             {% endfor %}
           </section>
           <section class="nav-group nav-group-actions">
-            <h2>Control</h2>
+            <h2>{{ shell_copy.nav.controls }}</h2>
             <details class="nav-actions" data-shell-actions>
               <summary class="nav-link nav-link-control">
                 <span data-nav-icon>⋯</span>

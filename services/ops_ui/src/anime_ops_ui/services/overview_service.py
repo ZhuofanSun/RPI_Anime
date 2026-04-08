@@ -461,9 +461,23 @@ def build_overview_payload() -> dict[str, Any]:
     service_rows = build_service_rows(services=services)
     pipeline_cards = queue_cards
     page_context = build_page_context("dashboard", "Dashboard")
+    overview_page_context = {
+        key: page_context[key]
+        for key in (
+            "page_key",
+            "page_title",
+            "site_title",
+            "site_subtitle",
+            "navigation_api_path",
+            "internal_pages",
+            "external_services",
+            "service_actions",
+            "stack_action",
+        )
+    }
 
     return {
-        **page_context,
+        **overview_page_context,
         "title": text("site.title"),
         "subtitle": text("site.subtitle"),
         "host": base_host,

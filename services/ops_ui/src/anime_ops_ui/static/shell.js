@@ -1,3 +1,14 @@
+function shellServiceCopy() {
+  return (((typeof window !== "undefined" && window.__OPS_UI_COPY__) || {}).services || {});
+}
+
+function formatCopy(template, values) {
+  if (typeof template !== "string") {
+    return "";
+  }
+  return template.replace(/\{(\w+)\}/g, (_match, key) => String(values?.[key] ?? ""));
+}
+
 function clearToneClasses(link) {
   const stale = [];
   for (const className of link.classList) {
@@ -110,7 +121,7 @@ function setupNavToggle() {
   });
 }
 
-function setActionButtonBusy(button, busy, busyLabel = "Restarting…") {
+function setActionButtonBusy(button, busy, busyLabel = (shellServiceCopy().restartBusy || "Restarting…")) {
   if (!button) return;
   if (busy) {
     if (button._originalMarkup === undefined) {
@@ -164,17 +175,29 @@ async function handleServiceAction(button) {
   const target = button.dataset.serviceAction;
   const name = button.dataset.serviceName || target || "service";
   const requiresReload = button.dataset.serviceReload === "true";
+  const copy = shellServiceCopy();
   const confirmMessage = requiresReload
-    ? `将重启 ${name}，当前页面会短暂断开。继续吗？`
-    : `将重启 ${name}。继续吗？`;
+    ? formatCopy(copy.confirmReload || "This will restart {name}. This page will briefly disconnect. Continue?", { name })
+    : formatCopy(copy.confirm || "This will restart {name}. Continue?", { name });
   if (!window.confirm(confirmMessage)) {
     return;
   }
 
   try {
-    setActionButtonBusy(button, true);
+    setActionButtonBusy(button, true, copy.restartBusy || "Restarting…");
     const payload = await postJson("/api/services/restart", { target });
-    showShellFeedback("success", payload.message || `${name} 重启指令已发送。`);
+    const successMessage = payload.auth_required && payload.auth_mode === "manual"
+      ? formatCopy(
+          copy.manualAuthRequired || payload.message || "Finish {name} sign-in from the terminal with sudo tailscale login or sudo tailscale up.",
+          { name },
+        )
+      : payload.auth_required && payload.auth_url
+      ? formatCopy(copy.authRequired || payload.message || "Finish {name} sign-in in your browser: {auth_url}", {
+          name,
+          auth_url: payload.auth_url,
+        })
+      : formatCopy(copy.success || payload.message || "Restart requested for {name}.", { name });
+    showShellFeedback("success", successMessage);
     const reloadAfterSeconds = Number(payload.reload_after_seconds || 0);
     if (reloadAfterSeconds > 0 || requiresReload) {
       window.setTimeout(() => {
@@ -186,29 +209,31 @@ async function handleServiceAction(button) {
       void hydrateShellNavigation();
     }, 1600);
   } catch (error) {
-    showShellFeedback("error", error.message || `${name} 重启失败。`);
+    showShellFeedback("error", error.message || formatCopy(copy.error || "Failed to restart {name}.", { name }));
   } finally {
     setActionButtonBusy(button, false);
   }
 }
 
 async function handleStackAction(button) {
+  const copy = shellServiceCopy();
   const confirmMessage =
-    "将依次重启 Jellyfin、qBittorrent、AutoBangumi、Glances、Postprocessor 和 Ops UI，不包含 Tailscale。继续吗？";
+    copy.stackConfirm ||
+    "This will restart Jellyfin, qBittorrent, AutoBangumi, Glances, Postprocessor, and Ops UI in sequence. Tailscale is excluded. Continue?";
   if (!window.confirm(confirmMessage)) {
     return;
   }
 
   try {
-    setActionButtonBusy(button, true);
+    setActionButtonBusy(button, true, copy.stackBusy || "Restarting stack…");
     const payload = await postJson("/api/services/restart-all");
-    showShellFeedback("warning", payload.message || "整套服务重启已安排。");
+    showShellFeedback("warning", copy.stackSuccess || payload.message || "Stack restart scheduled.");
     const reloadAfterSeconds = Number(payload.reload_after_seconds || 8);
     window.setTimeout(() => {
       window.location.reload();
     }, Math.max(reloadAfterSeconds, 6) * 1000);
   } catch (error) {
-    showShellFeedback("error", error.message || "整套服务重启失败。");
+    showShellFeedback("error", error.message || copy.stackError || "Failed to restart the stack.");
   } finally {
     setActionButtonBusy(button, false);
   }
