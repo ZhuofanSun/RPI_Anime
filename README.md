@@ -24,12 +24,13 @@
 - 下载完成后自动选优、发布到 `Seasonal` 媒体库，并生成 `tvshow.nfo` 和分集 `.nfo`
 - 识别失败或不适合自动入库的内容进入 `manual_review`
 - 自定义 `ops-ui` 提供统一入口、趋势图、日志、人工审核页、Tailscale 页面和 Postprocessor 页面
+- 首页已接入 Phase 4A 周放送表：`Today Focus`、`Broadcast Wall`、未知分组以及 `DL / LIB / REVIEW` 叠加状态
 - 宿主机通过 [Tailscale](https://tailscale.com/) 负责跨网络访问，通过 [Glances](https://github.com/nicolargo/glances) 提供系统指标
 - 风扇通过宿主机 `systemd + pigpiod` 做 PWM 控速
 
 ## 前端结构
 
-`ops-ui` 当前按 Phase 3 拆成四层，shell 和各页面契约分离：
+`ops-ui` 当前按 Phase 4A 拆成五层，shell、聚合服务和各页面契约分离：
 
 - `FastAPI` 路由与页面装配（`main.py`）：
   负责 API 和页面路由；共享页面上下文由 `page_context.py` 生成
@@ -38,10 +39,12 @@
 - `services/*` 页面契约层：
   `navigation_state_service.py` 负责左侧导航 badge / tone / 外链目标；
   `overview_service.py` + `dashboard_sections.py` 负责首页 Control Surface；
+  `autobangumi_client.py` 负责 AutoBangumi 认证读取；
+  `weekly_schedule_service.py` 负责首页周放送聚合、`DL/LIB/REVIEW` 叠加和 Today Focus；
   `log_service.py` / `review_service.py` / `postprocessor_service.py` / `tailscale_service.py` 负责对应页面 payload
 - `templates/*` + `static/*` 前端层：
   `base.html` + `shell.js` 提供共享 shell 与左侧导航；
-  `dashboard.html` + `app.js` 负责首页；
+  `dashboard.html` + `app.js` 负责首页、Today Focus 和 Broadcast Wall；
   `logs.html`/`ops_review*.html`/`postprocessor.html`/`tailscale.html` 与对应页面脚本分别负责各工作页；
   样式拆分保持 `tokens / base / layout / components / pages`
 
@@ -149,6 +152,8 @@ flowchart LR
     │           │   ├── log_service.py
     │           │   ├── navigation_state_service.py
     │           │   ├── overview_service.py
+    │           │   ├── autobangumi_client.py
+    │           │   ├── weekly_schedule_service.py
     │           │   ├── postprocessor_service.py
     │           │   ├── review_service.py
     │           │   ├── tailscale_service.py
@@ -178,7 +183,9 @@ flowchart LR
 
 ## 访问入口
 
-首页 Service Console 卡片链接会按当前浏览器地址重写 host/协议，便于在 `.local`、Tailscale IP 或 MagicDNS 下直接复用当前访问链路。
+首页外部服务入口和左侧共享 shell 链接会按 `HOMEPAGE_BASE_HOST` 生成，便于在 `.local`、Tailscale IP 或 MagicDNS 下复用当前访问链路。
+
+首页 `Broadcast Wall` 直接读取 AutoBangumi 当前 bangumi 列表；`DL` 来自 AutoBangumi 本地 sqlite，`LIB` 来自本周发布事件，`REVIEW` 来自 bangumi 本身的 `needs_review` 与人工发布链路。
 
 左侧共享 shell 的外部服务链接由 `HOMEPAGE_BASE_HOST`（未配置时回退主机名）生成，不保证与当前地址逐字一致。
 
@@ -227,6 +234,8 @@ touch deploy/.env
 - `PI_REMOTE_ROOT`
 - `QBITTORRENT_USERNAME`
 - `QBITTORRENT_PASSWORD`
+- `AUTOBANGUMI_USERNAME`
+- `AUTOBANGUMI_PASSWORD`
 - `TZ`
 
 ### 3. 第一次同步项目到树莓派
@@ -394,7 +403,8 @@ python3 scripts/fan_pwm_test.py
 
 - 打开外部服务：`Jellyfin`、`qBittorrent`、`AutoBangumi`、`Glances`
 - 打开内部工作区：`Postprocessor`、`Ops Review`、`Logs`、`Tailscale`
-- 查看主机状态、下载链路、长时趋势和诊断
+- 查看主机状态、下载链路、长时趋势、诊断和周放送表
+- 在首页查看 `Today Focus`、本周 `Broadcast Wall`、未知分组，以及 `DL / LIB / REVIEW` 叠加状态
 - 重启单个服务或整套 Compose 栈
 
 ## 运行说明
