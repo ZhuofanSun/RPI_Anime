@@ -510,10 +510,12 @@ def test_overview_schedule_styles_keep_unknown_row_compact_and_library_highlight
     css = _style_text("components.css")
 
     assert "const UNKNOWN_VISIBLE_LIMIT = 4;" in script
+    assert 'unknown?.hint || "尚未设置放送日"' not in script
     assert ".schedule-poster-grid-unknown" in css
     assert "grid-template-columns: repeat(auto-fill, minmax(108px, 132px));" in css
     assert "justify-content: start;" in css
     assert ".schedule-poster-card.is-library-ready .schedule-poster-media::before" in css
+    assert "#22c55e" in css
     assert "opacity: 1;" in css
 
 

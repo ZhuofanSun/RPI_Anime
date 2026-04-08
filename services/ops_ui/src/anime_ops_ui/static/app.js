@@ -195,7 +195,6 @@ function unknownScheduleTemplate(unknown) {
     <div class="broadcast-unknown-head">
       <div class="broadcast-unknown-copy">
         <strong>${escapeHtml(unknown?.label || "未知")}</strong>
-        <span>${escapeHtml(unknown?.hint || "尚未设置放送日")}</span>
       </div>
       <span class="broadcast-day-count">${total}</span>
     </div>
