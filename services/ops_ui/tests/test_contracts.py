@@ -200,6 +200,20 @@ def test_logs_page_uses_flash_helpers_with_logs_container():
     assert re.search(r"clearFlash\(\s*logsFlash\s*\)", script)
 
 
+def test_shell_script_preserves_active_state_by_page_key():
+    script = _script_text("shell.js")
+
+    assert "body.dataset.page" in script
+    assert 'item.id === pageKey' in script
+
+
+def test_shell_script_nav_toggle_controls_real_region_visibility():
+    script = _script_text("shell.js")
+
+    assert "aria-controls" in script
+    assert ".hidden =" in script
+
+
 def test_navigation_state_payload_matches_shell_contract(monkeypatch, tmp_path):
     review_root = tmp_path / "manual_review"
     review_root.mkdir(parents=True)

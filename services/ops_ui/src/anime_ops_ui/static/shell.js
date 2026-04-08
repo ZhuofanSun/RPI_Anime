@@ -27,7 +27,7 @@ function applyBadge(link, badge) {
   badgeNode.hidden = false;
 }
 
-function applyItem(link, item, navType) {
+function applyItem(link, item, navType, pageKey) {
   if (!item || typeof item !== "object") return;
 
   if (typeof item.label === "string") {
@@ -49,14 +49,15 @@ function applyItem(link, item, navType) {
   } else {
     link.removeAttribute("target");
     link.removeAttribute("rel");
-    link.classList.toggle("is-active", window.location.pathname === item.path || window.location.pathname === item.href);
+    const isActive = pageKey ? item.id === pageKey : link.classList.contains("is-active");
+    link.classList.toggle("is-active", isActive);
   }
 
   applyTone(link, item.tone);
   applyBadge(link, item.badge);
 }
 
-function applyNavigationItems(navType, items) {
+function applyNavigationItems(navType, items, pageKey) {
   const group = document.querySelector(`[data-shell-nav="${navType}"]`);
   if (!group) return;
 
@@ -68,19 +69,27 @@ function applyNavigationItems(navType, items) {
   for (const item of items) {
     const row = rowById.get(item.id);
     if (!row) continue;
-    applyItem(row, item, navType);
+    applyItem(row, item, navType, pageKey);
   }
 }
 
 function setupNavToggle() {
   const toggle = document.querySelector("[data-nav-toggle]");
   if (!toggle) return;
+  const controlledId = toggle.getAttribute("aria-controls");
+  if (!controlledId) return;
+  const controlledRegion = document.getElementById(controlledId);
+  if (!controlledRegion) return;
+
+  const syncRegionState = () => {
+    controlledRegion.hidden = toggle.getAttribute("aria-expanded") === "false";
+  };
+  syncRegionState();
 
   toggle.addEventListener("click", () => {
-    const collapsed = document.body.dataset.navCollapsed === "true";
-    const next = !collapsed;
-    document.body.dataset.navCollapsed = next ? "true" : "false";
-    toggle.setAttribute("aria-expanded", next ? "false" : "true");
+    const expanded = toggle.getAttribute("aria-expanded") !== "false";
+    toggle.setAttribute("aria-expanded", expanded ? "false" : "true");
+    syncRegionState();
   });
 }
 
@@ -88,6 +97,7 @@ async function hydrateShellNavigation() {
   const body = document.body;
   if (!body) return;
   const apiPath = body.dataset.navigationApiPath || "/api/navigation";
+  const pageKey = body.dataset.page || "";
 
   try {
     const response = await fetch(apiPath, { cache: "no-store" });
@@ -96,8 +106,8 @@ async function hydrateShellNavigation() {
     if (!payload || typeof payload !== "object") return;
     const internalItems = Array.isArray(payload.internal) ? payload.internal : [];
     const externalItems = Array.isArray(payload.external) ? payload.external : [];
-    applyNavigationItems("internal", internalItems);
-    applyNavigationItems("external", externalItems);
+    applyNavigationItems("internal", internalItems, pageKey);
+    applyNavigationItems("external", externalItems, pageKey);
   } catch {}
 }
 
