@@ -21,6 +21,18 @@ def test_dashboard_shell_contains_bootstrap_roots(client):
     assert 'id="trend-grid"' in body
 
 
+def test_dashboard_shell_contains_navigation_hydration_hooks(client):
+    response = client.get("/")
+    body = response.text
+    assert 'data-navigation-api-path="/api/navigation"' in body
+    assert 'data-shell-nav="internal"' in body
+    assert 'data-shell-nav="external"' in body
+    assert "data-nav-item" in body
+    assert "data-nav-badge" in body
+    assert "data-nav-toggle" in body
+    assert '/static/shell.js' in body
+
+
 def test_internal_pages_render_successfully(client):
     for path in ["/", "/ops-review", "/ops-review/item", "/logs", "/postprocessor", "/tailscale"]:
         response = client.get(path)

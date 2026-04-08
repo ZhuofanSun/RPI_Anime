@@ -8,6 +8,7 @@ def build_page_context(page_key: str, title: str) -> dict:
         "page_title": title,
         "site_title": text("site.title"),
         "site_subtitle": text("site.subtitle"),
+        "navigation_api_path": "/api/navigation",
         "internal_pages": INTERNAL_PAGES,
         "external_services": EXTERNAL_SERVICES,
     }

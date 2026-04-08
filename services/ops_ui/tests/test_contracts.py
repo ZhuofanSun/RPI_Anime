@@ -5,6 +5,7 @@ import re
 
 from anime_ops_ui import main as main_module
 from anime_ops_ui.services.log_service import build_logs_payload
+from anime_ops_ui.services.navigation_state_service import build_navigation_state
 from anime_ops_ui.services.postprocessor_service import build_postprocessor_payload
 from anime_ops_ui.services.review_service import build_manual_review_payload
 from anime_ops_ui.services.review_service import build_manual_review_item_payload
@@ -196,3 +197,34 @@ def test_logs_page_uses_flash_helpers_with_logs_container():
 
     assert re.search(r"setFlash\(\s*logsFlash\s*,", script)
     assert re.search(r"clearFlash\(\s*logsFlash\s*\)", script)
+
+
+def test_navigation_state_payload_matches_shell_contract(monkeypatch, tmp_path):
+    review_root = tmp_path / "manual_review"
+    review_root.mkdir(parents=True)
+
+    monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
+    monkeypatch.setattr(main_module, "_count_media_files", lambda root: 3 if root == review_root else 0)
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [{"level": "error"}])
+    monkeypatch.setattr(
+        main_module,
+        "_latest_sampled_metric",
+        lambda name: {
+            "qb_active_downloads": 2.0,
+            "tailscale_online": 1.0,
+        }.get(name),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_env",
+        lambda name, default: {
+            "HOMEPAGE_BASE_HOST": "ops.local",
+            "JELLYFIN_PORT": "8096",
+            "QBITTORRENT_WEBUI_PORT": "8080",
+            "AUTOBANGUMI_PORT": "7892",
+            "GLANCES_PORT": "61208",
+        }.get(name, default),
+    )
+
+    payload = build_navigation_state()
+    _assert_payload_matches_page_contract(payload=payload, script_name="shell.js")

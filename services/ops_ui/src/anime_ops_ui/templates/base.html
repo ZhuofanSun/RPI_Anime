@@ -21,21 +21,36 @@
     </script>
     <link rel="stylesheet" href="/static/styles.css?v=phase2" />
     <script defer src="/static/theme.js?v=phase2"></script>
+    <script defer src="/static/shell.js?v=phase3"></script>
     {% block head %}{% endblock %}
   </head>
-  <body data-page="{{ page_key }}">
+  <body data-page="{{ page_key }}" data-navigation-api-path="{{ navigation_api_path }}">
     <div class="app-shell">
       <aside class="app-nav">
-        <section class="nav-group">
+        <button type="button" class="nav-link" data-nav-toggle aria-expanded="true">Navigation</button>
+        <section class="nav-group" data-shell-nav="internal">
           <h2>工作页</h2>
           {% for _key, item in internal_pages.items() %}
-          <a class="nav-link{% if _key == page_key or item.path == request.url.path %} is-active{% endif %}" href="{{ item.path }}">{{ item.label }}</a>
+          <a
+            class="nav-link{% if _key == page_key or item.path == request.url.path %} is-active{% endif %}"
+            href="{{ item.path }}"
+            data-nav-item="{{ _key }}"
+            data-nav-tone="neutral"
+          >
+            <span data-nav-icon>{{ item.icon }}</span>
+            <span data-nav-label>{{ item.label }}</span>
+            <span data-nav-badge hidden></span>
+          </a>
           {% endfor %}
         </section>
-        <section class="nav-group">
+        <section class="nav-group" data-shell-nav="external">
           <h2>外部服务</h2>
           {% for _key, item in external_services.items() %}
-          <span class="nav-link is-external">{{ item.label }}</span>
+          <a class="nav-link is-external" href="#" data-nav-item="{{ _key }}" data-nav-tone="neutral" target="_blank" rel="noopener noreferrer">
+            <span data-nav-icon>{{ item.icon }}</span>
+            <span data-nav-label>{{ item.label }}</span>
+            <span data-nav-badge hidden></span>
+          </a>
           {% endfor %}
         </section>
       </aside>
