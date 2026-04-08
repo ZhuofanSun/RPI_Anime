@@ -510,6 +510,8 @@ def test_overview_schedule_styles_keep_unknown_row_compact_and_library_highlight
     assert ".schedule-poster-card.is-library-ready .schedule-poster-media::before" in css
     assert "#22c55e" in css
     assert "opacity: 1;" in css
+    assert "0 0 26px color-mix(in srgb, #22c55e 44%, transparent)" not in css
+    assert "0 18px 34px color-mix(in srgb, #15803d 30%, transparent)" not in css
 
 
 def test_overview_payload_logs_count_uses_uncapped_events_while_phase4_uses_limited_events(monkeypatch):
