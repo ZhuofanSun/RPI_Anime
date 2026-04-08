@@ -15,7 +15,14 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("OPS_EVENT_LOG_PATH", str(event_log_path))
     main_module.HISTORY_STATE = None
 
-    with TestClient(create_app(enable_lifespan=False)) as test_client:
+    app = create_app(enable_lifespan=False)
+    app.state.test_paths = {
+        "data_root": data_root,
+        "state_root": state_root,
+        "event_log_path": event_log_path,
+    }
+
+    with TestClient(app) as test_client:
         yield test_client
 
     main_module.HISTORY_STATE = None
