@@ -28,6 +28,8 @@ POSTPROCESSOR_SRC = REPO_ROOT / "services" / "postprocessor" / "src"
 if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
     sys.path.insert(0, str(POSTPROCESSOR_SRC))
 
+from anime_ops_ui.copy import text
+from anime_ops_ui.page_context import build_page_context
 from anime_postprocessor.models import ParsedMedia, UnparsedMedia
 from anime_postprocessor.eventlog import append_event, clear_events, event_log_cap, event_log_path, read_events
 from anime_postprocessor.parser import normalize_title, parse_media_file
@@ -2291,9 +2293,12 @@ def build_overview() -> dict[str, Any]:
             }
         )
 
+    page_context = build_page_context("dashboard", "Dashboard")
+
     return {
-        "title": "RPI Anime Ops",
-        "subtitle": "树莓派私人影音库控制台",
+        **page_context,
+        "title": text("site.title"),
+        "subtitle": text("site.subtitle"),
         "host": base_host,
         "refresh_interval_seconds": _refresh_interval_seconds(),
         "services": _build_services(
