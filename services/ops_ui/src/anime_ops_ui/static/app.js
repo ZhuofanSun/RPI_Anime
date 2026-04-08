@@ -5,7 +5,6 @@ const heroSummary = document.getElementById("dashboard-hero-summary");
 const heroStatusPill = document.getElementById("dashboard-hero-status-pill");
 const heroStatusLabel = document.getElementById("dashboard-hero-status-label");
 const summaryStrip = document.getElementById("dashboard-summary-strip");
-const serviceRowsRoot = document.getElementById("dashboard-service-rows");
 const pipelineGrid = document.getElementById("dashboard-pipeline-grid");
 const statusGrid = document.getElementById("dashboard-status-grid");
 const trendGrid = document.getElementById("dashboard-trend-grid");
@@ -13,9 +12,6 @@ const diagnostics = document.getElementById("diagnostics");
 const hostName = document.getElementById("host-name");
 const lastUpdated = document.getElementById("last-updated");
 const refreshIntervalLabel = document.getElementById("refresh-interval");
-const servicePanelFeedback = document.getElementById("service-panel-feedback");
-const restartStackButton = document.getElementById("restart-stack-button");
-const restartStackDetail = document.getElementById("restart-stack-detail");
 const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v3";
 const {
   createPageBootstrap,
@@ -26,101 +22,12 @@ const {
 } = window.AnimeOpsCore;
 
 let refreshIntervalMs = 8000;
-let feedbackTimerId = null;
-
-function serviceInitials(name) {
-  return String(name || "")
-    .split(/\s+/)
-    .map((part) => part[0] || "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-function resolveServiceHref(service) {
-  if (!service?.href) {
-    return "#";
-  }
-
-  try {
-    const currentUrl = new URL(window.location.href);
-    const targetUrl = new URL(service.href, currentUrl);
-
-    if (service.internal) {
-      return `${currentUrl.origin}${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
-    }
-
-    targetUrl.protocol = currentUrl.protocol;
-    targetUrl.hostname = currentUrl.hostname;
-    targetUrl.port = targetUrl.port || currentUrl.port;
-    return targetUrl.toString();
-  } catch {
-    return service.href;
-  }
-}
-
-function statusClass(status) {
-  const normalized = (status || "unknown").replace(/\s+/g, "").toLowerCase();
-  if (["running", "healthy", "online"].includes(normalized)) return "status-running";
-  if (["starting", "restarting"].includes(normalized)) return "status-starting";
-  if (["offline", "exited", "dead"].includes(normalized)) return "status-offline";
-  return "status-unknown";
-}
-
-function statusLabel(status) {
-  const normalized = (status || "unknown").replace(/-/g, " ");
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
 
 function toneStatusClass(tone) {
   if (tone === "teal") return "status-running";
   if (tone === "amber") return "status-starting";
   if (tone === "rose") return "status-offline";
   return "status-unknown";
-}
-
-function showServiceFeedback(kind, message) {
-  if (!servicePanelFeedback) return;
-  if (feedbackTimerId) {
-    window.clearTimeout(feedbackTimerId);
-  }
-  servicePanelFeedback.textContent = message;
-  servicePanelFeedback.className = `inline-feedback inline-feedback-${kind || "info"}`;
-  feedbackTimerId = window.setTimeout(() => {
-    servicePanelFeedback.className = "inline-feedback is-hidden";
-    servicePanelFeedback.textContent = "";
-  }, 6000);
-}
-
-function setButtonBusy(button, busy, busyLabel = "处理中…") {
-  if (!button) return;
-  if (busy) {
-    button.dataset.originalLabel = button.textContent;
-    button.disabled = true;
-    button.textContent = busyLabel;
-    return;
-  }
-  button.disabled = false;
-  if (button.dataset.originalLabel) {
-    button.textContent = button.dataset.originalLabel;
-    delete button.dataset.originalLabel;
-  }
-}
-
-async function postJson(url, body) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {}
-  if (!response.ok) {
-    throw new Error(payload?.detail || payload?.message || `HTTP ${response.status}`);
-  }
-  return payload || {};
 }
 
 function summaryItemTemplate(item) {
@@ -130,56 +37,6 @@ function summaryItemTemplate(item) {
     <article class="summary-item ${toneClass}">
       <span class="summary-question">${escapeHtml(item?.question || "-")}</span>
       <strong class="summary-answer">${escapeHtml(item?.answer || "-")}</strong>
-    </article>
-  `;
-}
-
-function serviceRowTemplate(service) {
-  const href = resolveServiceHref(service);
-  const disabled = service?.href ? "" : "disabled";
-  const internal = Boolean(service?.internal);
-  const restartTarget = service?.restart_target || "";
-  const restartButton = restartTarget
-    ? `
-        <button
-          class="action-button action-button-compact action-button-secondary service-restart-button"
-          type="button"
-          data-service-restart="${escapeHtml(restartTarget)}"
-          data-service-name="${escapeHtml(service?.restart_name || service?.name || restartTarget)}"
-          data-service-reload="${service?.restart_requires_reload ? "true" : "false"}"
-        >
-          ${escapeHtml(service?.restart_label || "Restart")}
-        </button>
-      `
-    : "";
-  const linkAttrs = service?.href
-    ? internal
-      ? ""
-      : 'target="_blank" rel="noopener noreferrer"'
-    : 'aria-disabled="true"';
-
-  return `
-    <article class="service-row">
-      <div class="service-row-status">
-        <div class="service-mark">${escapeHtml(serviceInitials(service?.name || ""))}</div>
-        <div class="service-row-main">
-          <strong class="service-name">${escapeHtml(service?.name || "Unknown Service")}</strong>
-          <span class="service-meta">${escapeHtml(service?.meta || "-")}</span>
-        </div>
-      </div>
-      <div class="service-row-health">
-        <span class="status-pill ${statusClass(service?.status)}" title="${escapeHtml(service?.status || "unknown")}">
-          <span class="status-dot"></span>
-          <span>${escapeHtml(statusLabel(service?.status))}</span>
-        </span>
-        <span class="service-uptime">${escapeHtml(service?.uptime || "-")}</span>
-      </div>
-      <div class="service-row-actions">
-        <a class="service-link ${disabled}" href="${escapeHtml(href)}" ${linkAttrs}>
-          ${service?.href ? (internal ? "Open Workspace" : "Open Service") : "暂不可用"}
-        </a>
-        ${restartButton}
-      </div>
     </article>
   `;
 }
@@ -304,18 +161,8 @@ function renderOverview(data, { cachedAt } = {}) {
   refreshIntervalMs = (data.refresh_interval_seconds || 8) * 1000;
   refreshIntervalLabel.textContent = `Auto · ${Math.round(refreshIntervalMs / 1000)}s`;
 
-  if (restartStackButton && data.stack_control?.label) {
-    restartStackButton.textContent = data.stack_control.label;
-  }
-  if (restartStackDetail && data.stack_control?.detail) {
-    restartStackDetail.textContent = data.stack_control.detail;
-  }
-
   const summaryItems = Array.isArray(data.summary_strip) ? data.summary_strip : [];
   summaryStrip.innerHTML = summaryItems.map(summaryItemTemplate).join("");
-
-  const serviceRows = Array.isArray(data.service_rows) ? data.service_rows : [];
-  serviceRowsRoot.innerHTML = serviceRows.map(serviceRowTemplate).join("");
 
   const pipelineCards = Array.isArray(data.pipeline_cards) ? data.pipeline_cards : [];
   pipelineGrid.innerHTML = pipelineCards.map(metricTemplate).join("");
@@ -344,73 +191,6 @@ const overviewPage = createPageBootstrap({
       { source: "frontend", message: error.message || String(error) },
     ]);
   },
-});
-
-async function handleServiceRestart(button) {
-  const target = button.dataset.serviceRestart;
-  const name = button.dataset.serviceName || target;
-  const requiresReload = button.dataset.serviceReload === "true";
-  const confirmMessage = requiresReload
-    ? `将重启 ${name}，当前页面会短暂断开。继续吗？`
-    : `将重启 ${name}。继续吗？`;
-  if (!window.confirm(confirmMessage)) {
-    return;
-  }
-
-  try {
-    setButtonBusy(button, true, "Restarting…");
-    const payload = await postJson("/api/services/restart", { target });
-    showServiceFeedback("success", payload.message || `${name} 重启指令已发送。`);
-    const reloadAfterSeconds = Number(payload.reload_after_seconds || 0);
-    if (reloadAfterSeconds > 0 || requiresReload) {
-      window.setTimeout(() => {
-        window.location.reload();
-      }, Math.max(reloadAfterSeconds, 5) * 1000);
-      return;
-    }
-    window.setTimeout(() => {
-      void overviewPage.tick();
-    }, 1600);
-  } catch (error) {
-    showServiceFeedback("error", error.message || `${name} 重启失败。`);
-  } finally {
-    setButtonBusy(button, false);
-  }
-}
-
-async function handleRestartStack() {
-  if (!restartStackButton) return;
-  const confirmMessage =
-    "将依次重启 Jellyfin、qBittorrent、AutoBangumi、Glances、Postprocessor 和 Ops UI，不包含 Tailscale。继续吗？";
-  if (!window.confirm(confirmMessage)) {
-    return;
-  }
-
-  try {
-    setButtonBusy(restartStackButton, true, "Restarting…");
-    const payload = await postJson("/api/services/restart-all");
-    showServiceFeedback("warning", payload.message || "整套服务重启已安排。");
-    const reloadAfterSeconds = Number(payload.reload_after_seconds || 8);
-    window.setTimeout(() => {
-      window.location.reload();
-    }, Math.max(reloadAfterSeconds, 6) * 1000);
-  } catch (error) {
-    showServiceFeedback("error", error.message || "整套服务重启失败。");
-  } finally {
-    setButtonBusy(restartStackButton, false);
-  }
-}
-
-serviceRowsRoot?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-service-restart]");
-  if (!button) return;
-  event.preventDefault();
-  handleServiceRestart(button);
-});
-
-restartStackButton?.addEventListener("click", (event) => {
-  event.preventDefault();
-  handleRestartStack();
 });
 
 overviewPage.start();

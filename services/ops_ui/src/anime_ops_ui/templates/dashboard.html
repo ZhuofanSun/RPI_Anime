@@ -57,42 +57,6 @@
   </section>
 
   <div class="content-grid dashboard-content-grid">
-    <section class="panel panel-wide dashboard-services-panel">
-      <div class="panel-head panel-head-compact">
-        <div class="panel-heading">
-          <h2>Service Console</h2>
-          <p>统一查看状态并执行单服务或整栈重启动作。</p>
-        </div>
-        <div class="panel-head-actions">
-          <button id="restart-stack-button" class="action-button action-button-compact action-button-secondary" type="button">
-            Restart Stack
-          </button>
-          <span class="panel-action-hint" id="restart-stack-detail">compose only · homepage last</span>
-        </div>
-      </div>
-      <div id="service-panel-feedback" class="inline-feedback is-hidden" role="status" aria-live="polite"></div>
-      <div id="dashboard-service-rows" class="service-rows">
-        {% for _ in range(8) %}
-        <article class="service-row is-skeleton" aria-hidden="true">
-          <div class="service-row-status">
-            <div class="service-mark skeleton-box"></div>
-            <div class="skeleton-stack">
-              <span class="skeleton-line skeleton-line-title"></span>
-              <span class="skeleton-line skeleton-line-short"></span>
-            </div>
-          </div>
-          <div class="service-row-meta">
-            <span class="skeleton-line skeleton-line-meta"></span>
-            <span class="skeleton-line skeleton-line-short"></span>
-          </div>
-          <div class="service-row-actions">
-            <span class="service-link disabled skeleton-button">加载中</span>
-          </div>
-        </article>
-        {% endfor %}
-      </div>
-    </section>
-
     <section class="panel">
       <div class="panel-head">
         <h2>Pipeline</h2>

@@ -21,10 +21,12 @@ def test_dashboard_shell_contains_bootstrap_roots(client):
     assert 'data-page="dashboard"' in body
     assert 'id="dashboard-hero"' in body
     assert 'id="dashboard-summary-strip"' in body
-    assert 'id="dashboard-service-rows"' in body
     assert 'id="dashboard-pipeline-grid"' in body
     assert 'id="dashboard-status-grid"' in body
+    assert 'id="dashboard-trend-grid"' in body
     assert 'id="services-grid"' not in body
+    assert 'id="dashboard-service-rows"' not in body
+    assert 'id="restart-stack-button"' not in body
 
 
 def test_dashboard_shell_contains_navigation_hydration_hooks(client):
@@ -38,7 +40,21 @@ def test_dashboard_shell_contains_navigation_hydration_hooks(client):
     assert "data-nav-toggle" in body
     assert 'aria-controls="shell-nav-sections"' in body
     assert 'id="shell-nav-sections"' in body
+    assert "data-shell-actions" in body
+    assert 'data-service-action="jellyfin"' in body
+    assert 'data-service-action="homepage"' in body
+    assert "data-stack-action" in body
     assert '/static/shell.js' in body
+
+
+def test_dashboard_shell_removes_service_console_panel(client):
+    response = client.get("/")
+    body = response.text
+    assert "Service Console" not in body
+    assert "dashboard-services-panel" not in body
+    assert "service-panel-feedback" not in body
+    assert "dashboard-service-rows" not in body
+    assert "restart-stack-button" not in body
 
 
 def test_external_nav_links_have_server_rendered_fallback_hrefs(client):

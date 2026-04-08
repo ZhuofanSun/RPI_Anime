@@ -304,7 +304,6 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
         "hero.status_label",
         "hero.host",
         "summary_strip",
-        "service_rows",
         "pipeline_cards",
         "system_cards",
         "network_cards",
@@ -316,6 +315,8 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert "title" not in app_contract_paths
     assert "subtitle" not in app_contract_paths
     assert "host" not in app_contract_paths
+    assert "service_rows" not in app_contract_paths
+    assert "stack_control" not in app_contract_paths
 
     _assert_payload_matches_page_contract(
         payload=payload,
@@ -331,20 +332,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert isinstance(payload["trend_cards"], list) and payload["trend_cards"]
     assert {"label", "value", "detail", "chart_kind"}.issubset(payload["trend_cards"][0].keys())
     assert isinstance(payload["service_rows"], list) and payload["service_rows"]
-    service = payload["service_rows"][0]
-    assert {
-        "id",
-        "name",
-        "href",
-        "status",
-        "meta",
-        "uptime",
-        "internal",
-        "restart_target",
-        "restart_label",
-    }.issubset(service.keys())
-    internal_service = next(item for item in payload["service_rows"] if item["id"] == "ops-review")
-    assert {"restart_requires_reload", "restart_name"}.issubset(internal_service.keys())
+    assert isinstance(payload["stack_control"], dict)
 
 
 def test_logs_page_uses_flash_helpers_with_logs_container():
@@ -366,6 +354,165 @@ def test_shell_script_nav_toggle_controls_real_region_visibility():
 
     assert "aria-controls" in script
     assert ".hidden =" in script
+
+
+def test_shell_script_contains_left_rail_service_action_handlers():
+    script = _script_text("shell.js")
+
+    assert "data-shell-actions" in script
+    assert "data-service-action" in script
+    assert "data-stack-action" in script
+    assert "/api/services/restart" in script
+    assert "/api/services/restart-all" in script
+
+
+def test_shell_script_restores_action_button_markup_after_busy_state():
+    if shutil.which("node") is None:
+        pytest.skip("node is required for shell.js runtime contract coverage")
+
+    script = _script_text("shell.js")
+    runner = """
+const vm = require("node:vm");
+const script = process.env.SHELL_SCRIPT;
+
+function makeButton() {
+  let innerHTML = '<span class="nav-action-icon">J</span><span class="nav-action-copy"><span class="nav-action-title">Restart Jellyfin</span><span class="nav-action-detail">Jellyfin</span></span>';
+  let textValue = 'JRestart JellyfinJellyfin';
+  return {
+    dataset: {},
+    disabled: false,
+    get innerHTML() {
+      return innerHTML;
+    },
+    set innerHTML(value) {
+      innerHTML = String(value);
+      textValue = String(value).replace(/<[^>]+>/g, '');
+    },
+    get textContent() {
+      return textValue;
+    },
+    set textContent(value) {
+      innerHTML = String(value);
+      textValue = String(value);
+    },
+  };
+}
+
+const context = {
+  console,
+  document: {
+    querySelector() {
+      return null;
+    },
+    getElementById() {
+      return null;
+    },
+  },
+  fetch: async () => ({ ok: true, json: async () => ({}) }),
+  setTimeout,
+  clearTimeout,
+  URL,
+  window: {
+    location: { href: "http://localhost:3000/" },
+    setTimeout,
+    clearTimeout,
+    confirm: () => true,
+  },
+};
+
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(script, context);
+
+const button = makeButton();
+context.setActionButtonBusy(button, true, "Restarting…");
+context.setActionButtonBusy(button, false);
+process.stdout.write(button.innerHTML);
+"""
+    env = os.environ.copy()
+    env["SHELL_SCRIPT"] = script
+
+    result = subprocess.run(
+        ["node", "-e", runner],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert '<span class="nav-action-icon">J</span>' in result.stdout
+    assert "nav-action-detail" in result.stdout
+
+
+def test_shell_script_clears_previous_feedback_timeout():
+    if shutil.which("node") is None:
+        pytest.skip("node is required for shell.js runtime contract coverage")
+
+    script = _script_text("shell.js")
+    runner = """
+const vm = require("node:vm");
+const script = process.env.SHELL_SCRIPT;
+
+const cleared = [];
+let nextId = 1;
+const flash = {
+  textContent: "",
+  className: "inline-feedback is-hidden",
+};
+
+const context = {
+  console,
+  document: {
+    querySelector() {
+      return null;
+    },
+    getElementById(id) {
+      if (id === "shell-service-feedback") {
+        return flash;
+      }
+      return null;
+    },
+  },
+  fetch: async () => ({ ok: true, json: async () => ({}) }),
+  setTimeout,
+  clearTimeout,
+  URL,
+  window: {
+    location: { href: "http://localhost:3000/" },
+    confirm: () => true,
+    setTimeout(callback, delay) {
+      const id = nextId++;
+      return id;
+    },
+    clearTimeout(id) {
+      cleared.push(id);
+    },
+  },
+};
+
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(script, context);
+
+context.showShellFeedback("success", "one");
+context.showShellFeedback("error", "two");
+process.stdout.write(JSON.stringify({ cleared, className: flash.className, textContent: flash.textContent }));
+"""
+    env = os.environ.copy()
+    env["SHELL_SCRIPT"] = script
+
+    result = subprocess.run(
+        ["node", "-e", runner],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload["cleared"] == [1]
+    assert payload["className"] == "inline-feedback inline-feedback-error"
+    assert payload["textContent"] == "two"
 
 
 def test_shell_script_normalizes_external_links_to_browser_origin():
@@ -558,7 +705,11 @@ def test_navigation_state_payload_matches_shell_contract(monkeypatch, tmp_path):
     )
 
     payload = build_navigation_state()
-    _assert_payload_matches_page_contract(payload=payload, script_name="shell.js")
+    _assert_payload_matches_page_contract(
+        payload=payload,
+        script_name="shell.js",
+        ignored_paths={"detail", "message", "reload_after_seconds"},
+    )
 
     assert payload["internal"]
     assert payload["external"]

@@ -19,6 +19,23 @@ EXTERNAL_SERVICES = {
     "glances": {"label": "Glances", "icon": "G", "target": "external", "port_env": "GLANCES_PORT", "default_port": 61208},
 }
 
+SERVICE_ACTIONS = [
+    {"id": "jellyfin", "label": "Restart Jellyfin", "name": "Jellyfin", "target": "jellyfin", "icon": "J", "requires_reload": False},
+    {"id": "qbittorrent", "label": "Restart qBittorrent", "name": "qBittorrent", "target": "qbittorrent", "icon": "Q", "requires_reload": False},
+    {"id": "autobangumi", "label": "Restart AutoBangumi", "name": "AutoBangumi", "target": "autobangumi", "icon": "A", "requires_reload": False},
+    {"id": "glances", "label": "Restart Glances", "name": "Glances", "target": "glances", "icon": "G", "requires_reload": False},
+    {"id": "postprocessor", "label": "Restart Postprocessor", "name": "Postprocessor", "target": "postprocessor", "icon": "P", "requires_reload": False},
+    {"id": "homepage", "label": "Restart Ops UI", "name": "Ops UI", "target": "homepage", "icon": "OR", "requires_reload": True},
+    {"id": "tailscale", "label": "Restart Tailscale", "name": "Tailscale", "target": "tailscale", "icon": "T", "requires_reload": False},
+]
+
+STACK_ACTION = {
+    "label": "Service Actions",
+    "hint": "single + stack restart",
+    "stack_label": "Restart Stack",
+    "stack_detail": "compose only · homepage last",
+}
+
 
 def _safe_port(raw: str, fallback: int) -> int:
     try:

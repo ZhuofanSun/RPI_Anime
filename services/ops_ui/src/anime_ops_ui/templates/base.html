@@ -54,6 +54,44 @@
             </a>
             {% endfor %}
           </section>
+          <section class="nav-group nav-group-actions">
+            <h2>Control</h2>
+            <details class="nav-actions" data-shell-actions>
+              <summary class="nav-link nav-link-control">
+                <span data-nav-icon>⋯</span>
+                <span class="nav-link-control-copy">
+                  <span class="nav-link-control-title">{{ stack_action.label }}</span>
+                  <span class="nav-link-control-detail">{{ stack_action.hint }}</span>
+                </span>
+              </summary>
+              <div class="nav-action-menu">
+                {% for item in service_actions %}
+                <button
+                  class="nav-action-button"
+                  type="button"
+                  data-service-action="{{ item.target }}"
+                  data-service-name="{{ item.name }}"
+                  data-service-reload="{{ 'true' if item.requires_reload else 'false' }}"
+                >
+                  <span class="nav-action-icon">{{ item.icon }}</span>
+                  <span class="nav-action-copy">
+                    <span class="nav-action-title">{{ item.label }}</span>
+                    <span class="nav-action-detail">{{ item.name }}</span>
+                  </span>
+                </button>
+                {% endfor %}
+                <div class="nav-action-divider" aria-hidden="true"></div>
+                <button class="nav-action-button is-stack" type="button" data-stack-action>
+                  <span class="nav-action-icon">↻</span>
+                  <span class="nav-action-copy">
+                    <span class="nav-action-title">{{ stack_action.stack_label }}</span>
+                    <span class="nav-action-detail">{{ stack_action.stack_detail }}</span>
+                  </span>
+                </button>
+              </div>
+            </details>
+            <div id="shell-service-feedback" class="inline-feedback is-hidden" role="status" aria-live="polite"></div>
+          </section>
         </nav>
       </aside>
       <main class="app-main">{% block content %}{% endblock %}</main>

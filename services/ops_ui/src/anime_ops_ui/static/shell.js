@@ -110,6 +110,130 @@ function setupNavToggle() {
   });
 }
 
+function setActionButtonBusy(button, busy, busyLabel = "Restarting…") {
+  if (!button) return;
+  if (busy) {
+    if (button._originalMarkup === undefined) {
+      button._originalMarkup = button.innerHTML;
+    }
+    button.disabled = true;
+    button.textContent = busyLabel;
+    return;
+  }
+  button.disabled = false;
+  if (button._originalMarkup !== undefined) {
+    button.innerHTML = button._originalMarkup;
+    delete button._originalMarkup;
+  }
+}
+
+let shellFeedbackTimerId = null;
+
+function showShellFeedback(kind, message) {
+  const flash = document.getElementById("shell-service-feedback");
+  if (!flash) return;
+  if (shellFeedbackTimerId) {
+    window.clearTimeout(shellFeedbackTimerId);
+  }
+  flash.textContent = message;
+  flash.className = `inline-feedback inline-feedback-${kind || "info"}`;
+  shellFeedbackTimerId = window.setTimeout(() => {
+    flash.className = "inline-feedback is-hidden";
+    flash.textContent = "";
+    shellFeedbackTimerId = null;
+  }, 6000);
+}
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {}
+  if (!response.ok) {
+    throw new Error(payload?.detail || payload?.message || `HTTP ${response.status}`);
+  }
+  return payload || {};
+}
+
+async function handleServiceAction(button) {
+  const target = button.dataset.serviceAction;
+  const name = button.dataset.serviceName || target || "service";
+  const requiresReload = button.dataset.serviceReload === "true";
+  const confirmMessage = requiresReload
+    ? `将重启 ${name}，当前页面会短暂断开。继续吗？`
+    : `将重启 ${name}。继续吗？`;
+  if (!window.confirm(confirmMessage)) {
+    return;
+  }
+
+  try {
+    setActionButtonBusy(button, true);
+    const payload = await postJson("/api/services/restart", { target });
+    showShellFeedback("success", payload.message || `${name} 重启指令已发送。`);
+    const reloadAfterSeconds = Number(payload.reload_after_seconds || 0);
+    if (reloadAfterSeconds > 0 || requiresReload) {
+      window.setTimeout(() => {
+        window.location.reload();
+      }, Math.max(reloadAfterSeconds, 5) * 1000);
+      return;
+    }
+    window.setTimeout(() => {
+      void hydrateShellNavigation();
+    }, 1600);
+  } catch (error) {
+    showShellFeedback("error", error.message || `${name} 重启失败。`);
+  } finally {
+    setActionButtonBusy(button, false);
+  }
+}
+
+async function handleStackAction(button) {
+  const confirmMessage =
+    "将依次重启 Jellyfin、qBittorrent、AutoBangumi、Glances、Postprocessor 和 Ops UI，不包含 Tailscale。继续吗？";
+  if (!window.confirm(confirmMessage)) {
+    return;
+  }
+
+  try {
+    setActionButtonBusy(button, true);
+    const payload = await postJson("/api/services/restart-all");
+    showShellFeedback("warning", payload.message || "整套服务重启已安排。");
+    const reloadAfterSeconds = Number(payload.reload_after_seconds || 8);
+    window.setTimeout(() => {
+      window.location.reload();
+    }, Math.max(reloadAfterSeconds, 6) * 1000);
+  } catch (error) {
+    showShellFeedback("error", error.message || "整套服务重启失败。");
+  } finally {
+    setActionButtonBusy(button, false);
+  }
+}
+
+function setupServiceActions() {
+  const actionsRoot = document.querySelector("[data-shell-actions]");
+  if (!actionsRoot) return;
+
+  actionsRoot.addEventListener("click", (event) => {
+    const serviceButton = event.target.closest("[data-service-action]");
+    if (serviceButton) {
+      event.preventDefault();
+      void handleServiceAction(serviceButton);
+      return;
+    }
+
+    const stackButton = event.target.closest("[data-stack-action]");
+    if (stackButton) {
+      event.preventDefault();
+      void handleStackAction(stackButton);
+    }
+  });
+}
+
 async function hydrateShellNavigation() {
   const body = document.body;
   if (!body) return;
@@ -129,4 +253,5 @@ async function hydrateShellNavigation() {
 }
 
 setupNavToggle();
+setupServiceActions();
 hydrateShellNavigation();
