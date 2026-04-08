@@ -4,6 +4,21 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ page_title }} · {{ site_title }}</title>
+    <script>
+      (() => {
+        try {
+          const key = "anime-ops-ui-theme";
+          const stored = localStorage.getItem(key);
+          const theme =
+            stored ||
+            (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light");
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch {}
+      })();
+    </script>
     <link rel="stylesheet" href="/static/styles.css?v=phase2" />
     <script defer src="/static/theme.js?v=phase2"></script>
     {% block head %}{% endblock %}
