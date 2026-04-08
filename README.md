@@ -29,16 +29,18 @@
 
 ## 前端结构
 
-`ops-ui` 当前已经整理成四层：
+`ops-ui` 当前按 Phase 3 拆成四层，shell 和 dashboard 的责任边界已经分离：
 
-- `FastAPI` 路由与页面装配：
-  负责 API、页面路由和共享页面上下文
-- `services/*` 后端聚合层：
-  负责把 `Logs`、`Ops Review`、`Postprocessor`、`Tailscale` 和首页概览的聚合逻辑从路由层剥离出来
-- `Jinja` 共享 shell：
-  内部工作页共用一套页面骨架、导航和主题入口
-- `static/` 前端层：
-  `core.js` 提供共享 bootstrap、缓存和查询参数工具；页面脚本只处理自己的数据请求与渲染；样式拆成 `tokens / base / layout / components / pages`
+- `FastAPI` 路由与页面装配（`main.py`）：
+  负责 API 路由、页面路由和页面上下文拼装
+- `services/*` 后端契约层：
+  `navigation_state_service.py` 统一生成左侧导航的 badge / tone / 外链目标；
+  `overview_service.py` + `dashboard_sections.py` 生成首页 Control Surface 的聚合 payload
+- `Jinja` 模板层：
+  `templates/base.html` + `static/shell.js` 负责共享 shell 与左侧导航；
+  `templates/dashboard.html` + `static/app.js` 只负责首页渲染和操作交互
+- `static/styles/*` 样式层：
+  样式拆分保持 `tokens / base / layout / components / pages`
 
 后续大改方向以 spec 和 plan 为准。
 
@@ -137,13 +139,21 @@ flowchart LR
     ├── ops_ui
     │   └── src
     │       └── anime_ops_ui
+    │           ├── main.py
     │           ├── services
+    │           │   ├── navigation_state_service.py
+    │           │   ├── overview_service.py
+    │           │   └── dashboard_sections.py
     │           ├── static
     │           │   ├── core.js
+    │           │   ├── shell.js
+    │           │   ├── app.js
     │           │   ├── theme.js
     │           │   ├── styles.css
     │           │   └── styles
     │           └── templates
+    │               ├── base.html
+    │               └── dashboard.html
     └── postprocessor
 ```
 
