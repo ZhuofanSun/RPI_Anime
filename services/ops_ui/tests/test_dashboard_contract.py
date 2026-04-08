@@ -1,8 +1,8 @@
 from anime_ops_ui import main as main_module
-from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES
+from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES, SERVICE_ACTIONS, STACK_ACTION
 
 
-def test_navigation_api_contract_returns_internal_and_external(client, monkeypatch, tmp_path):
+def test_navigation_api_contract_returns_internal_external_and_actions(client, monkeypatch, tmp_path):
     review_root = tmp_path / "manual_review"
     review_root.mkdir(parents=True)
 
@@ -35,15 +35,19 @@ def test_navigation_api_contract_returns_internal_and_external(client, monkeypat
 
     assert response.status_code == 200
     payload = response.json()
-    assert set(payload.keys()) == {"internal", "external"}
+    assert set(payload.keys()) == {"internal", "external", "service_actions", "stack_action"}
     dashboard = next(item for item in payload["internal"] if item["id"] == "dashboard")
     jellyfin = next(item for item in payload["external"] if item["id"] == "jellyfin")
+    homepage = next(item for item in payload["service_actions"] if item["id"] == "homepage")
     assert dashboard["href"] == "/"
     assert jellyfin["href"] == "http://ops.local:8096"
     assert set(item["id"] for item in payload["internal"]) == set(INTERNAL_PAGES.keys())
     assert set(item["id"] for item in payload["external"]) == set(EXTERNAL_SERVICES.keys())
+    assert set(item["id"] for item in payload["service_actions"]) == {item["id"] for item in SERVICE_ACTIONS}
     assert set(dashboard.keys()) == {"id", "label", "icon", "target", "path", "href", "badge", "tone"}
     assert set(jellyfin.keys()) == {"id", "label", "icon", "target", "href", "badge", "tone"}
+    assert set(homepage.keys()) == {"id", "label", "name", "target", "icon", "requires_reload"}
+    assert payload["stack_action"] == STACK_ACTION
 
 
 def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):

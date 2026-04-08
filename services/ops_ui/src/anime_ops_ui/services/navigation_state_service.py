@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import threading
 from typing import Any
 
-from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES
+from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES, SERVICE_ACTIONS, STACK_ACTION
 
 _NAVIGATION_STATE_FLIGHT_LOCK = threading.Lock()
 
@@ -27,7 +27,7 @@ def _safe_port(raw: str, fallback: int) -> int:
         return fallback
 
 
-def _build_navigation_state_uncached() -> dict[str, list[dict[str, Any]]]:
+def _build_navigation_state_uncached() -> dict[str, Any]:
     from anime_ops_ui import main as main_module
 
     review_root = main_module._manual_review_root()
@@ -97,10 +97,15 @@ def _build_navigation_state_uncached() -> dict[str, list[dict[str, Any]]]:
             }
         )
 
-    return {"internal": internal_entries, "external": external_entries}
+    return {
+        "internal": internal_entries,
+        "external": external_entries,
+        "service_actions": copy.deepcopy(SERVICE_ACTIONS),
+        "stack_action": copy.deepcopy(STACK_ACTION),
+    }
 
 
-def build_navigation_state() -> dict[str, list[dict[str, Any]]]:
+def build_navigation_state() -> dict[str, Any]:
     global _NAVIGATION_STATE_FLIGHT
 
     with _NAVIGATION_STATE_FLIGHT_LOCK:

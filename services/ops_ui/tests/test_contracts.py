@@ -10,7 +10,7 @@ import re
 import pytest
 
 from anime_ops_ui import main as main_module
-from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES
+from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES, SERVICE_ACTIONS, STACK_ACTION
 from anime_ops_ui.services.log_service import build_logs_payload
 from anime_ops_ui.services.navigation_state_service import build_navigation_state
 from anime_ops_ui.services.overview_service import build_overview_payload
@@ -713,6 +713,8 @@ def test_navigation_state_payload_matches_shell_contract(monkeypatch, tmp_path):
 
     assert payload["internal"]
     assert payload["external"]
+    assert payload["service_actions"] == SERVICE_ACTIONS
+    assert payload["stack_action"] == STACK_ACTION
     assert {item["id"] for item in payload["internal"]} == set(INTERNAL_PAGES.keys())
     assert {item["id"] for item in payload["external"]} == set(EXTERNAL_SERVICES.keys())
 
