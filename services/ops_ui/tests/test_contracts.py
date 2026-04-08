@@ -13,6 +13,7 @@ from anime_ops_ui import main as main_module
 from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES, SERVICE_ACTIONS, STACK_ACTION
 from anime_ops_ui.services.log_service import build_logs_payload
 from anime_ops_ui.services.navigation_state_service import build_navigation_state
+from anime_ops_ui.services import overview_service
 from anime_ops_ui.services.overview_service import build_overview_payload
 from anime_ops_ui.services.postprocessor_service import build_postprocessor_payload
 from anime_ops_ui.services.review_service import build_manual_review_payload
@@ -293,6 +294,26 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     monkeypatch.setattr(main_module, "_count_series_dirs", lambda root: 0)
     monkeypatch.setattr(main_module, "_history_file", lambda: tmp_path / "history.json")
     monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    monkeypatch.setattr(
+        overview_service,
+        "build_phase4_schedule_snapshot",
+        lambda **kwargs: {
+            "today_focus": {"items": [{"id": 101, "title": "示例番剧", "poster_url": None, "badges": ["DL"]}]},
+            "weekly_schedule": {
+                "week_key": "2026-W15",
+                "today_weekday": 2,
+                "days": [],
+                "unknown": {
+                    "label": "未知",
+                    "hint": "拖拽以设置放送日",
+                    "items": [],
+                    "hidden_items": [],
+                    "has_hidden_items": False,
+                },
+            },
+        },
+        raising=False,
+    )
 
     payload = build_overview_payload()
     app_contract_paths = _contract_paths("app.js", root_var="data")
@@ -333,6 +354,8 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert {"label", "value", "detail", "chart_kind"}.issubset(payload["trend_cards"][0].keys())
     assert isinstance(payload["service_rows"], list) and payload["service_rows"]
     assert isinstance(payload["stack_control"], dict)
+    assert payload["today_focus"]["items"][0]["badges"] == ["DL"]
+    assert payload["weekly_schedule"]["unknown"]["label"] == "未知"
 
 
 def test_logs_page_uses_flash_helpers_with_logs_container():

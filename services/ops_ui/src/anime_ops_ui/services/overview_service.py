@@ -6,6 +6,7 @@ from typing import Any
 from anime_ops_ui.copy import text
 from anime_ops_ui.page_context import build_page_context
 from anime_ops_ui.services.dashboard_sections import build_dashboard_hero, build_service_rows, build_summary_strip
+from anime_ops_ui.services.weekly_schedule_service import build_phase4_schedule_snapshot
 
 
 def build_service_summary(*, containers: dict[str, dict[str, Any]], tailscale_running: bool) -> dict[str, Any]:
@@ -32,6 +33,37 @@ def build_overview_payload() -> dict[str, Any]:
     anime_data_root = main_module.Path(main_module._env("ANIME_DATA_ROOT", "/srv/anime-data"))
     anime_collection_root = main_module.Path(main_module._env("ANIME_COLLECTION_ROOT", "/srv/anime-collection"))
     base_host = main_module._env("HOMEPAGE_BASE_HOST", main_module.socket.gethostname())
+    autobangumi_port = int(main_module._env("AUTOBANGUMI_PORT", "7892"))
+    overview_now = datetime.now().astimezone()
+    events = main_module.read_events(limit=300)
+    try:
+        phase4 = build_phase4_schedule_snapshot(
+            anime_data_root=anime_data_root,
+            base_host=base_host,
+            autobangumi_port=autobangumi_port,
+            autobangumi_base_url=main_module._service_link(base_host, autobangumi_port),
+            autobangumi_username=main_module._env("AUTOBANGUMI_USERNAME", ""),
+            autobangumi_password=main_module._env("AUTOBANGUMI_PASSWORD", ""),
+            state_root=main_module.Path(main_module._env("OPS_UI_STATE_ROOT", "/data")),
+            now=overview_now,
+            events=events,
+        )
+    except Exception:
+        phase4 = {
+            "today_focus": {"items": []},
+            "weekly_schedule": {
+                "week_key": "",
+                "today_weekday": overview_now.weekday(),
+                "days": [],
+                "unknown": {
+                    "label": "未知",
+                    "hint": "拖拽以设置放送日",
+                    "items": [],
+                    "hidden_items": [],
+                    "has_hidden_items": False,
+                },
+            },
+        }
     glances_base = main_module._glances_base_url()
     anime_data_mount = main_module._mount_health(anime_data_root)
     anime_collection_mount = main_module._mount_health(anime_collection_root)
@@ -183,7 +215,7 @@ def build_overview_payload() -> dict[str, Any]:
         },
     ]
     manual_review_count = main_module._count_media_files(manual_review_root) if data_storage_ready else None
-    log_count = len(main_module.read_events())
+    log_count = len(events)
 
     network_cards = [
         {
@@ -422,6 +454,8 @@ def build_overview_payload() -> dict[str, Any]:
         "network_cards": network_cards,
         "trend_cards": trend_cards,
         "service_rows": service_rows,
+        "today_focus": phase4["today_focus"],
+        "weekly_schedule": phase4["weekly_schedule"],
         "stack_control": {
             "label": "Restart Stack",
             "detail": "compose only · homepage last",

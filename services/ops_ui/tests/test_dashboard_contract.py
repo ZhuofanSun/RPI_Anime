@@ -1,5 +1,6 @@
 from anime_ops_ui import main as main_module
 from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES, SERVICE_ACTIONS, STACK_ACTION
+from anime_ops_ui.services import overview_service
 
 
 def test_navigation_api_contract_returns_internal_external_and_actions(client, monkeypatch, tmp_path):
@@ -56,6 +57,26 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
     monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (None, None))
     monkeypatch.setattr(main_module, "_fan_state_snapshot", lambda: (None, None))
     monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    monkeypatch.setattr(
+        overview_service,
+        "build_phase4_schedule_snapshot",
+        lambda **kwargs: {
+            "today_focus": {"items": [{"id": 101, "title": "示例番剧", "poster_url": None, "badges": ["DL"]}]},
+            "weekly_schedule": {
+                "week_key": "2026-W15",
+                "today_weekday": 2,
+                "days": [],
+                "unknown": {
+                    "label": "未知",
+                    "hint": "拖拽以设置放送日",
+                    "items": [],
+                    "hidden_items": [],
+                    "has_hidden_items": False,
+                },
+            },
+        },
+        raising=False,
+    )
 
     response = client.get("/api/overview")
 
@@ -82,3 +103,6 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
     assert set(payload["summary_strip"][0].keys()) == {"question", "answer", "tone"}
     assert "services" in payload
     assert "queue_cards" in payload
+    assert "today_focus" in payload
+    assert "weekly_schedule" in payload
+    assert payload["weekly_schedule"]["unknown"]["label"] == "未知"
