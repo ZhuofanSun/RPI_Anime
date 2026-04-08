@@ -18,9 +18,7 @@ PI_REMOTE_ROOT="${PI_REMOTE_ROOT:-/srv/anime-data/appdata/rpi-anime}"
 
 ssh "${PI_HOST}" "
   cd '${PI_REMOTE_ROOT}'
-  if ! docker image inspect deploy-homepage:latest >/dev/null 2>&1; then
-    docker compose --env-file deploy/.env -f deploy/compose.yaml build homepage
-  fi
+  docker compose --env-file deploy/.env -f deploy/compose.yaml build homepage
   docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build postprocessor
   docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --no-build
   docker compose --env-file deploy/.env -f deploy/compose.yaml restart homepage

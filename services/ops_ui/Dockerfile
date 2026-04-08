@@ -8,6 +8,7 @@ COPY services/ops_ui/src /app/services/ops_ui/src
 COPY services/postprocessor/pyproject.toml /app/services/postprocessor/pyproject.toml
 COPY services/postprocessor/src /app/services/postprocessor/src
 
-RUN pip install --no-cache-dir --no-build-isolation /app/services/postprocessor /app/services/ops_ui
+RUN pip install --no-cache-dir --upgrade setuptools wheel \
+    && pip install --no-cache-dir --no-build-isolation /app/services/postprocessor /app/services/ops_ui
 
 CMD ["python", "-m", "anime_ops_ui.main"]
