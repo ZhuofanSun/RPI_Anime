@@ -36,6 +36,21 @@ def _empty_weekly_days(*, today_weekday: int) -> list[dict]:
     ]
 
 
+def _schedule_item(
+    *,
+    item_id: int,
+    title: str,
+    poster_url: str | None,
+    badges: list[str] | None = None,
+) -> dict:
+    return {
+        "id": item_id,
+        "title": title,
+        "poster_url": poster_url,
+        "badges": badges or [],
+    }
+
+
 def _script_text(name: str) -> str:
     return (main_module.APP_DIR / "static" / name).read_text(encoding="utf-8")
 
@@ -309,6 +324,15 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     monkeypatch.setattr(main_module, "_count_series_dirs", lambda root: 0)
     monkeypatch.setattr(main_module, "_history_file", lambda: tmp_path / "history.json")
     monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    weekly_days = _empty_weekly_days(today_weekday=2)
+    weekly_days[2] = {
+        "weekday": 2,
+        "label": "三",
+        "is_today": True,
+        "items": [_schedule_item(item_id=101, title="示例番剧", poster_url=None, badges=["DL"])],
+        "hidden_items": [_schedule_item(item_id=102, title="隐藏番剧", poster_url="http://ops.local:7892/posters/102.jpg", badges=["LIB"])],
+        "has_hidden_items": True,
+    }
     monkeypatch.setattr(
         overview_service,
         "build_phase4_schedule_snapshot",
@@ -317,13 +341,13 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
             "weekly_schedule": {
                 "week_key": "2026-W15",
                 "today_weekday": 2,
-                "days": _empty_weekly_days(today_weekday=2),
+                "days": weekly_days,
                 "unknown": {
                     "label": "未知",
                     "hint": "拖拽以设置放送日",
-                    "items": [],
-                    "hidden_items": [],
-                    "has_hidden_items": False,
+                    "items": [_schedule_item(item_id=201, title="未知排期", poster_url=None, badges=["REVIEW"])],
+                    "hidden_items": [_schedule_item(item_id=202, title="未知隐藏", poster_url="http://ops.local:7892/posters/202.jpg")],
+                    "has_hidden_items": True,
                 },
             },
         },
@@ -374,8 +398,41 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert isinstance(payload["service_rows"], list) and payload["service_rows"]
     assert isinstance(payload["stack_control"], dict)
     assert payload["today_focus"]["items"][0]["badges"] == ["DL"]
+
+    today_focus_item = payload["today_focus"]["items"][0]
+    assert {"id", "title", "poster_url", "badges"}.issubset(today_focus_item.keys())
+
     assert len(payload["weekly_schedule"]["days"]) == 7
+    today_day = next(day for day in payload["weekly_schedule"]["days"] if day["weekday"] == 2)
+    assert {"weekday", "label", "items", "hidden_items", "has_hidden_items"}.issubset(today_day.keys())
+    assert {"id", "title", "poster_url", "badges"}.issubset(today_day["items"][0].keys())
+    assert {"id", "title", "poster_url", "badges"}.issubset(today_day["hidden_items"][0].keys())
+
     assert payload["weekly_schedule"]["unknown"]["label"] == "未知"
+    assert {"label", "hint", "items", "hidden_items", "has_hidden_items"}.issubset(payload["weekly_schedule"]["unknown"].keys())
+    assert {"id", "title", "poster_url", "badges"}.issubset(payload["weekly_schedule"]["unknown"]["items"][0].keys())
+    assert {"id", "title", "poster_url", "badges"}.issubset(payload["weekly_schedule"]["unknown"]["hidden_items"][0].keys())
+
+
+def test_overview_app_script_schedule_contract_reads_nested_fields_and_caps_unknown_bucket():
+    script = _script_text("app.js")
+
+    assert "item?.title" in script
+    assert "item?.poster_url" in script
+    assert "item?.badges" in script
+    assert "day?.weekday" in script
+    assert "day?.label" in script
+    assert "day?.items" in script
+    assert "day?.hidden_items" in script
+    assert "day?.has_hidden_items" in script
+    assert "unknown?.label" in script
+    assert "unknown?.items" in script
+    assert "unknown?.hidden_items" in script
+    assert "unknown?.has_hidden_items" in script
+
+    assert "UNKNOWN_VISIBLE_LIMIT" in script
+    assert ".slice(0, UNKNOWN_VISIBLE_LIMIT)" in script
+    assert ".slice(UNKNOWN_VISIBLE_LIMIT)" in script
 
 
 def test_overview_payload_logs_count_uses_uncapped_events_while_phase4_uses_limited_events(monkeypatch):

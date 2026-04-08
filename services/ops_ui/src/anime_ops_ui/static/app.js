@@ -16,6 +16,7 @@ const hostName = document.getElementById("host-name");
 const lastUpdated = document.getElementById("last-updated");
 const refreshIntervalLabel = document.getElementById("refresh-interval");
 const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v3";
+const UNKNOWN_VISIBLE_LIMIT = 6;
 const {
   createPageBootstrap,
   escapeHtml,
@@ -140,7 +141,10 @@ function todayFocusTemplate(items) {
 function unknownScheduleTemplate(unknown) {
   const items = Array.isArray(unknown?.items) ? unknown.items : [];
   const hiddenItems = Array.isArray(unknown?.hidden_items) ? unknown.hidden_items : [];
-  const hasHiddenItems = Boolean(unknown?.has_hidden_items && hiddenItems.length > 0);
+  const visibleItems = items.slice(0, UNKNOWN_VISIBLE_LIMIT);
+  const overflowItems = items.slice(UNKNOWN_VISIBLE_LIMIT);
+  const mergedHiddenItems = [...overflowItems, ...hiddenItems];
+  const hasHiddenItems = Boolean((unknown?.has_hidden_items && hiddenItems.length > 0) || mergedHiddenItems.length > 0);
   const total = items.length + hiddenItems.length;
   const hiddenId = "schedule-unknown-hidden";
 
@@ -153,8 +157,8 @@ function unknownScheduleTemplate(unknown) {
       <span class="broadcast-day-count">${total}</span>
     </div>
     ${
-      items.length
-        ? `<div class="schedule-poster-grid schedule-poster-grid-unknown">${items.map(schedulePosterTemplate).join("")}</div>`
+      visibleItems.length
+        ? `<div class="schedule-poster-grid schedule-poster-grid-unknown">${visibleItems.map(schedulePosterTemplate).join("")}</div>`
         : '<div class="broadcast-empty">未知分组暂无条目。</div>'
     }
     ${
@@ -166,11 +170,11 @@ function unknownScheduleTemplate(unknown) {
         data-schedule-toggle
         aria-controls="${hiddenId}"
         aria-expanded="false"
-        data-expand-label="展开 +${hiddenItems.length}"
+        data-expand-label="展开 +${mergedHiddenItems.length}"
         data-collapse-label="收起"
-      >展开 +${hiddenItems.length}</button>
+      >展开 +${mergedHiddenItems.length}</button>
       <div id="${hiddenId}" class="schedule-hidden-posters" hidden>
-        <div class="schedule-poster-grid schedule-poster-grid-unknown">${hiddenItems.map(schedulePosterTemplate).join("")}</div>
+        <div class="schedule-poster-grid schedule-poster-grid-unknown">${mergedHiddenItems.map(schedulePosterTemplate).join("")}</div>
       </div>
     `
         : ""
