@@ -1,4 +1,5 @@
 from anime_ops_ui import main as main_module
+from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES
 
 
 def test_navigation_api_contract_returns_internal_and_external(client, monkeypatch, tmp_path):
@@ -35,3 +36,7 @@ def test_navigation_api_contract_returns_internal_and_external(client, monkeypat
     jellyfin = next(item for item in payload["external"] if item["id"] == "jellyfin")
     assert dashboard["href"] == "/"
     assert jellyfin["href"] == "http://ops.local:8096"
+    assert set(item["id"] for item in payload["internal"]) == set(INTERNAL_PAGES.keys())
+    assert set(item["id"] for item in payload["external"]) == set(EXTERNAL_SERVICES.keys())
+    assert set(dashboard.keys()) == {"id", "label", "icon", "target", "path", "href", "badge", "tone"}
+    assert set(jellyfin.keys()) == {"id", "label", "icon", "target", "href", "badge", "tone"}

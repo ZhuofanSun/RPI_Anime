@@ -9,6 +9,8 @@ def test_navigation_registry_contains_expected_groups():
     assert INTERNAL_PAGES["ops-review"]["path"] == "/ops-review"
     assert EXTERNAL_SERVICES["jellyfin"]["target"] == "external"
     assert EXTERNAL_SERVICES["qbittorrent"]["port_env"] == "QBITTORRENT_WEBUI_PORT"
+    assert EXTERNAL_SERVICES["jellyfin"]["default_port"] == 8096
+    assert EXTERNAL_SERVICES["qbittorrent"]["default_port"] == 8080
 
 
 def test_overview_includes_page_context_fields(client, monkeypatch):
@@ -75,3 +77,54 @@ def test_navigation_state_service_rolls_up_badges(monkeypatch, tmp_path):
     assert internal["tailscale"]["badge"] == "Online"
     assert internal["tailscale"]["tone"] == "success"
     assert external["jellyfin"]["href"] == "http://ops.local:8096"
+    assert external["jellyfin"]["tone"] == "neutral"
+    assert external["jellyfin"]["badge"] is None
+    assert set(external.keys()) == {"jellyfin", "qbittorrent", "autobangumi", "glances"}
+    assert set(external["jellyfin"].keys()) == {"id", "label", "icon", "target", "href", "badge", "tone"}
+
+
+def test_navigation_state_service_reuses_cache_within_ttl(monkeypatch, tmp_path):
+    import anime_ops_ui.services.navigation_state_service as navigation_service
+
+    review_root = tmp_path / "manual_review"
+    review_root.mkdir(parents=True)
+    calls = {"scan": 0, "events": 0, "qb": 0, "tailscale": 0}
+
+    ticks = iter([10.0, 10.05, 10.1])
+    monkeypatch.setattr(navigation_service, "_monotonic", lambda: next(ticks), raising=False)
+    monkeypatch.setattr(navigation_service, "NAVIGATION_STATE_TTL_SECONDS", 0.25, raising=False)
+    monkeypatch.setattr(navigation_service, "_NAVIGATION_STATE_CACHE", None, raising=False)
+    monkeypatch.setattr(navigation_service, "_NAVIGATION_STATE_CACHE_TS", 0.0, raising=False)
+
+    monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
+
+    def fake_count_media_files(root):
+        calls["scan"] += 1
+        return 1 if root == review_root else 0
+
+    monkeypatch.setattr(main_module, "_count_media_files", fake_count_media_files)
+
+    def fake_read_events(limit=300):
+        calls["events"] += 1
+        return [{"level": "error", "message": "boom"}]
+
+    monkeypatch.setattr(main_module, "read_events", fake_read_events)
+
+    def fake_qb_snapshot():
+        calls["qb"] += 1
+        return {"active_downloads": 2}, None
+
+    monkeypatch.setattr(main_module, "_qb_snapshot", fake_qb_snapshot)
+
+    def fake_tailscale_status(socket_path):
+        calls["tailscale"] += 1
+        return {"BackendState": "Running", "Self": {"Online": True}}, None
+
+    monkeypatch.setattr(main_module, "_tailscale_status", fake_tailscale_status)
+    monkeypatch.setattr(main_module, "_env", lambda name, default: {"HOMEPAGE_BASE_HOST": "ops.local"}.get(name, default))
+
+    first = navigation_service.build_navigation_state()
+    second = navigation_service.build_navigation_state()
+
+    assert first == second
+    assert calls == {"scan": 1, "events": 1, "qb": 1, "tailscale": 1}

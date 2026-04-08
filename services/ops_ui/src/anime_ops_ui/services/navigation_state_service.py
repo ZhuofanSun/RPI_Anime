@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import copy
+import threading
+import time
 from typing import Any
 
 from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES
 
-_DEFAULT_SERVICE_PORTS = {
-    "jellyfin": 8096,
-    "qbittorrent": 8080,
-    "autobangumi": 7892,
-    "glances": 61208,
-}
+NAVIGATION_STATE_TTL_SECONDS = 1.0
+_NAVIGATION_STATE_CACHE_LOCK = threading.Lock()
+_NAVIGATION_STATE_CACHE: dict[str, list[dict[str, Any]]] | None = None
+_NAVIGATION_STATE_CACHE_TS = 0.0
+
+
+def _monotonic() -> float:
+    return time.monotonic()
 
 
 def _safe_port(raw: str, fallback: int) -> int:
@@ -19,7 +24,7 @@ def _safe_port(raw: str, fallback: int) -> int:
         return fallback
 
 
-def build_navigation_state() -> dict[str, list[dict[str, Any]]]:
+def _build_navigation_state_uncached() -> dict[str, list[dict[str, Any]]]:
     from anime_ops_ui import main as main_module
 
     review_root = main_module._manual_review_root()
@@ -71,7 +76,7 @@ def build_navigation_state() -> dict[str, list[dict[str, Any]]]:
     base_host = main_module._env("HOMEPAGE_BASE_HOST", main_module.socket.gethostname())
     external_entries: list[dict[str, Any]] = []
     for service_id, item in EXTERNAL_SERVICES.items():
-        fallback_port = _DEFAULT_SERVICE_PORTS.get(service_id, 80)
+        fallback_port = int(item.get("default_port", 80))
         port = _safe_port(main_module._env(item["port_env"], str(fallback_port)), fallback_port)
         external_entries.append(
             {
@@ -80,7 +85,23 @@ def build_navigation_state() -> dict[str, list[dict[str, Any]]]:
                 "icon": item["icon"],
                 "target": item["target"],
                 "href": main_module._service_link(base_host, port),
+                "badge": None,
+                "tone": "neutral",
             }
         )
 
     return {"internal": internal_entries, "external": external_entries}
+
+
+def build_navigation_state() -> dict[str, list[dict[str, Any]]]:
+    global _NAVIGATION_STATE_CACHE, _NAVIGATION_STATE_CACHE_TS
+
+    now = _monotonic()
+    with _NAVIGATION_STATE_CACHE_LOCK:
+        if _NAVIGATION_STATE_CACHE is not None and (now - _NAVIGATION_STATE_CACHE_TS) < NAVIGATION_STATE_TTL_SECONDS:
+            return copy.deepcopy(_NAVIGATION_STATE_CACHE)
+
+        payload = _build_navigation_state_uncached()
+        _NAVIGATION_STATE_CACHE = payload
+        _NAVIGATION_STATE_CACHE_TS = now
+        return copy.deepcopy(payload)
