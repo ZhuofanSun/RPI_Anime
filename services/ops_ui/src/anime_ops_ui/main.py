@@ -222,6 +222,10 @@ def _sample_interval_seconds() -> int:
     return max(30, _env_int("OPS_UI_SAMPLE_INTERVAL_SECONDS", 60))
 
 
+def _sampled_metric_freshness_seconds() -> int:
+    return max(_sample_interval_seconds() * 5, 300)
+
+
 def _series_window_hours() -> int:
     return max(6, _env_int("OPS_UI_SERIES_WINDOW_HOURS", 24))
 
@@ -383,6 +387,7 @@ def _series_values(name: str, *, window_hours: int, max_points: int = 180) -> tu
 
 
 def _latest_sampled_metric(name: str) -> float | None:
+    cutoff_ts = time.time() - _sampled_metric_freshness_seconds()
     with HISTORY_LOCK:
         global HISTORY_STATE
         if HISTORY_STATE is None:
@@ -391,7 +396,12 @@ def _latest_sampled_metric(name: str) -> float | None:
         if not isinstance(raw_series, list):
             return None
         for item in reversed(raw_series):
-            if isinstance(item, dict) and item.get("value") is not None:
+            if not isinstance(item, dict):
+                continue
+            sample_ts = item.get("ts")
+            if sample_ts is None or float(sample_ts) < cutoff_ts:
+                continue
+            if item.get("value") is not None:
                 return float(item.get("value"))
     return None
 

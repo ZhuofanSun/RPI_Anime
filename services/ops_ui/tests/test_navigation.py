@@ -112,6 +112,46 @@ def test_navigation_state_service_uses_neutral_state_when_sample_missing(monkeyp
     assert internal["tailscale"]["tone"] == "neutral"
 
 
+def test_navigation_state_service_ignores_stale_sampled_badges(monkeypatch, tmp_path):
+    from anime_ops_ui.services.navigation_state_service import build_navigation_state
+    import anime_ops_ui.services.navigation_state_service as navigation_service
+
+    review_root = tmp_path / "manual_review"
+    review_root.mkdir(parents=True)
+    stale_ts = 0.0
+    monkeypatch.setattr(navigation_service, "_NAVIGATION_STATE_FLIGHT", None, raising=False)
+    monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
+    monkeypatch.setattr(main_module, "_count_media_files", lambda root: 0)
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (_ for _ in ()).throw(AssertionError("live qb probe")))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda socket_path: (_ for _ in ()).throw(AssertionError("live tailscale probe")))
+    monkeypatch.setattr(
+        main_module,
+        "HISTORY_STATE",
+        {
+            "samples": {
+                "qb_active_downloads": [{"ts": stale_ts, "value": 3.0}],
+                "tailscale_online": [{"ts": stale_ts, "value": 1.0}],
+            },
+            "download_daily": {},
+            "upload_daily": {},
+            "last_download_total": None,
+            "last_upload_total": None,
+            "last_sample_ts": stale_ts,
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(main_module, "_env", lambda name, default: {"HOMEPAGE_BASE_HOST": "ops.local"}.get(name, default))
+
+    payload = build_navigation_state()
+    internal = {item["id"]: item for item in payload["internal"]}
+
+    assert internal["postprocessor"]["badge"] is None
+    assert internal["postprocessor"]["tone"] == "neutral"
+    assert internal["tailscale"]["badge"] is None
+    assert internal["tailscale"]["tone"] == "neutral"
+
+
 def test_navigation_state_service_builds_fresh_on_sequential_calls(monkeypatch, tmp_path):
     import anime_ops_ui.services.navigation_state_service as navigation_service
 

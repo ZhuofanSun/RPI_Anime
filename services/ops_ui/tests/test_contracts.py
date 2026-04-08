@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 import re
+
+import pytest
 
 from anime_ops_ui import main as main_module
 from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES
@@ -360,6 +366,168 @@ def test_shell_script_nav_toggle_controls_real_region_visibility():
 
     assert "aria-controls" in script
     assert ".hidden =" in script
+
+
+def test_shell_script_normalizes_external_links_to_browser_origin():
+    if shutil.which("node") is None:
+        pytest.skip("node is required for shell.js runtime contract coverage")
+
+    script = _script_text("shell.js")
+    payload = {
+        "internal": [],
+        "external": [
+            {
+                "id": "jellyfin",
+                "target": "external",
+                "href": "http://ops.local:8096",
+            },
+            {
+                "id": "qbittorrent",
+                "target": "external",
+                "href": "http://ops.local:8080/library?x=1#frag",
+            },
+        ],
+    }
+    runner = """
+const vm = require("node:vm");
+const script = process.env.SHELL_SCRIPT;
+const payload = JSON.parse(process.env.SHELL_PAYLOAD);
+
+function makeClassList(initial = []) {
+  const classes = new Set(initial);
+  return {
+    add(...names) {
+      for (const name of names) classes.add(name);
+    },
+    remove(...names) {
+      for (const name of names) classes.delete(name);
+    },
+    toggle(name, force) {
+      if (force === true) {
+        classes.add(name);
+        return true;
+      }
+      if (force === false) {
+        classes.delete(name);
+        return false;
+      }
+      if (classes.has(name)) {
+        classes.delete(name);
+        return false;
+      }
+      classes.add(name);
+      return true;
+    },
+    contains(name) {
+      return classes.has(name);
+    },
+    [Symbol.iterator]() {
+      return classes.values();
+    },
+  };
+}
+
+function makeLink(id) {
+  let href = `http://fallback.invalid/${id}`;
+  const attributes = {};
+  return {
+    dataset: { navItem: id },
+    classList: makeClassList(["nav-link"]),
+    querySelector() {
+      return null;
+    },
+    removeAttribute(name) {
+      delete attributes[name];
+    },
+    setAttribute(name, value) {
+      attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return attributes[name] ?? null;
+    },
+    get href() {
+      return href;
+    },
+    set href(value) {
+      href = String(value);
+    },
+  };
+}
+
+const links = {
+  jellyfin: makeLink("jellyfin"),
+  qbittorrent: makeLink("qbittorrent"),
+};
+
+const context = {
+  console,
+  document: {
+    body: {
+      dataset: {
+        navigationApiPath: "/api/navigation",
+        page: "dashboard",
+      },
+    },
+    querySelector(selector) {
+      if (selector === '[data-shell-nav="external"]') {
+        return {
+          querySelectorAll() {
+            return Object.values(links);
+          },
+        };
+      }
+      if (selector === '[data-nav-toggle]') {
+        return null;
+      }
+      return null;
+    },
+    getElementById() {
+      return null;
+    },
+  },
+  fetch: async () => ({
+    ok: true,
+    json: async () => payload,
+  }),
+  setTimeout,
+  clearTimeout,
+  URL,
+  window: {
+    location: {
+      href: "https://tail.example.ts.net:3000/",
+    },
+    setTimeout,
+    clearTimeout,
+  },
+};
+
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(script, context);
+
+setImmediate(() => {
+  process.stdout.write(
+    JSON.stringify(Object.values(links).map((link) => link.href))
+  );
+});
+"""
+    env = os.environ.copy()
+    env["SHELL_SCRIPT"] = script
+    env["SHELL_PAYLOAD"] = json.dumps(payload)
+
+    result = subprocess.run(
+        ["node", "-e", runner],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    hrefs = json.loads(result.stdout)
+    assert hrefs == [
+        "https://tail.example.ts.net:8096/",
+        "https://tail.example.ts.net:8080/library?x=1#frag",
+    ]
 
 
 def test_navigation_state_payload_matches_shell_contract(monkeypatch, tmp_path):

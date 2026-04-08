@@ -27,6 +27,23 @@ function applyBadge(link, badge) {
   badgeNode.hidden = false;
 }
 
+function resolveExternalHref(href) {
+  if (typeof href !== "string" || !href) {
+    return href;
+  }
+
+  try {
+    const currentUrl = new URL(window.location.href);
+    const targetUrl = new URL(href, currentUrl);
+    targetUrl.protocol = currentUrl.protocol;
+    targetUrl.hostname = currentUrl.hostname;
+    targetUrl.port = targetUrl.port || currentUrl.port;
+    return targetUrl.toString();
+  } catch {
+    return href;
+  }
+}
+
 function applyItem(link, item, navType, pageKey) {
   if (!item || typeof item !== "object") return;
 
@@ -39,7 +56,7 @@ function applyItem(link, item, navType, pageKey) {
     if (iconNode) iconNode.textContent = item.icon;
   }
   if (typeof item.href === "string" && item.href) {
-    link.href = item.href;
+    link.href = navType === "external" || item.target === "external" ? resolveExternalHref(item.href) : item.href;
   }
 
   if (navType === "external" || item.target === "external") {
