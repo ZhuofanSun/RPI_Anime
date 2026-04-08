@@ -32,9 +32,11 @@ def test_overview_includes_page_context_fields(client, monkeypatch):
 
 def test_navigation_state_service_rolls_up_badges(monkeypatch, tmp_path):
     from anime_ops_ui.services.navigation_state_service import build_navigation_state
+    import anime_ops_ui.services.navigation_state_service as navigation_service
 
     review_root = tmp_path / "manual_review"
     review_root.mkdir(parents=True)
+    monkeypatch.setattr(navigation_service, "_NAVIGATION_STATE_FLIGHT", None, raising=False)
 
     monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
     monkeypatch.setattr(main_module, "_count_media_files", lambda root: 4 if root == review_root else 0)
@@ -83,24 +85,19 @@ def test_navigation_state_service_rolls_up_badges(monkeypatch, tmp_path):
     assert set(external["jellyfin"].keys()) == {"id", "label", "icon", "target", "href", "badge", "tone"}
 
 
-def test_navigation_state_service_reuses_cache_within_ttl(monkeypatch, tmp_path):
+def test_navigation_state_service_builds_fresh_on_sequential_calls(monkeypatch, tmp_path):
     import anime_ops_ui.services.navigation_state_service as navigation_service
 
     review_root = tmp_path / "manual_review"
     review_root.mkdir(parents=True)
     calls = {"scan": 0, "events": 0, "qb": 0, "tailscale": 0}
-
-    ticks = iter([10.0, 10.05, 10.1])
-    monkeypatch.setattr(navigation_service, "_monotonic", lambda: next(ticks), raising=False)
-    monkeypatch.setattr(navigation_service, "NAVIGATION_STATE_TTL_SECONDS", 0.25, raising=False)
-    monkeypatch.setattr(navigation_service, "_NAVIGATION_STATE_CACHE", None, raising=False)
-    monkeypatch.setattr(navigation_service, "_NAVIGATION_STATE_CACHE_TS", 0.0, raising=False)
+    monkeypatch.setattr(navigation_service, "_NAVIGATION_STATE_FLIGHT", None, raising=False)
 
     monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
 
     def fake_count_media_files(root):
         calls["scan"] += 1
-        return 1 if root == review_root else 0
+        return calls["scan"] if root == review_root else 0
 
     monkeypatch.setattr(main_module, "_count_media_files", fake_count_media_files)
 
@@ -126,5 +123,55 @@ def test_navigation_state_service_reuses_cache_within_ttl(monkeypatch, tmp_path)
     first = navigation_service.build_navigation_state()
     second = navigation_service.build_navigation_state()
 
-    assert first == second
-    assert calls == {"scan": 1, "events": 1, "qb": 1, "tailscale": 1}
+    first_internal = {item["id"]: item for item in first["internal"]}
+    second_internal = {item["id"]: item for item in second["internal"]}
+    assert first_internal["ops-review"]["badge"] == "1"
+    assert second_internal["ops-review"]["badge"] == "2"
+    assert calls == {"scan": 2, "events": 2, "qb": 2, "tailscale": 2}
+
+
+def test_navigation_state_service_coalesces_inflight_build(monkeypatch):
+    import time
+    import threading
+    import anime_ops_ui.services.navigation_state_service as navigation_service
+
+    monkeypatch.setattr(navigation_service, "_NAVIGATION_STATE_FLIGHT", None, raising=False)
+    started = threading.Event()
+    release = threading.Event()
+    calls = {"builds": 0}
+    payload = {
+        "internal": [{"id": "dashboard", "label": "Dashboard", "icon": "D", "target": "internal", "path": "/", "href": "/", "badge": None, "tone": "neutral"}],
+        "external": [{"id": "jellyfin", "label": "Jellyfin", "icon": "J", "target": "external", "href": "http://ops.local:8096", "badge": None, "tone": "neutral"}],
+    }
+
+    def fake_build_uncached():
+        calls["builds"] += 1
+        started.set()
+        assert release.wait(timeout=1.0)
+        return payload
+
+    monkeypatch.setattr(navigation_service, "_build_navigation_state_uncached", fake_build_uncached)
+
+    thread_result = {}
+    second_result = {}
+
+    def worker_first():
+        thread_result["payload"] = navigation_service.build_navigation_state()
+
+    def worker_second():
+        second_result["payload"] = navigation_service.build_navigation_state()
+
+    thread = threading.Thread(target=worker_first)
+    thread_2 = threading.Thread(target=worker_second)
+    thread.start()
+    assert started.wait(timeout=1.0)
+    thread_2.start()
+    time.sleep(0.05)
+    release.set()
+    thread.join(timeout=1.0)
+    thread_2.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert not thread_2.is_alive()
+    assert calls["builds"] == 1
+    assert second_result["payload"] == thread_result["payload"] == payload

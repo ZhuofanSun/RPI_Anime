@@ -1,20 +1,23 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass, field
 import threading
-import time
 from typing import Any
 
 from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES
 
-NAVIGATION_STATE_TTL_SECONDS = 1.0
-_NAVIGATION_STATE_CACHE_LOCK = threading.Lock()
-_NAVIGATION_STATE_CACHE: dict[str, list[dict[str, Any]]] | None = None
-_NAVIGATION_STATE_CACHE_TS = 0.0
+_NAVIGATION_STATE_FLIGHT_LOCK = threading.Lock()
 
 
-def _monotonic() -> float:
-    return time.monotonic()
+@dataclass
+class _NavigationStateFlight:
+    done: threading.Event = field(default_factory=threading.Event)
+    payload: dict[str, list[dict[str, Any]]] | None = None
+    error: Exception | None = None
+
+
+_NAVIGATION_STATE_FLIGHT: _NavigationStateFlight | None = None
 
 
 def _safe_port(raw: str, fallback: int) -> int:
@@ -94,14 +97,32 @@ def _build_navigation_state_uncached() -> dict[str, list[dict[str, Any]]]:
 
 
 def build_navigation_state() -> dict[str, list[dict[str, Any]]]:
-    global _NAVIGATION_STATE_CACHE, _NAVIGATION_STATE_CACHE_TS
+    global _NAVIGATION_STATE_FLIGHT
 
-    now = _monotonic()
-    with _NAVIGATION_STATE_CACHE_LOCK:
-        if _NAVIGATION_STATE_CACHE is not None and (now - _NAVIGATION_STATE_CACHE_TS) < NAVIGATION_STATE_TTL_SECONDS:
-            return copy.deepcopy(_NAVIGATION_STATE_CACHE)
+    with _NAVIGATION_STATE_FLIGHT_LOCK:
+        flight = _NAVIGATION_STATE_FLIGHT
+        if flight is None:
+            flight = _NavigationStateFlight()
+            _NAVIGATION_STATE_FLIGHT = flight
+            is_builder = True
+        else:
+            is_builder = False
 
-        payload = _build_navigation_state_uncached()
-        _NAVIGATION_STATE_CACHE = payload
-        _NAVIGATION_STATE_CACHE_TS = now
-        return copy.deepcopy(payload)
+    if is_builder:
+        try:
+            payload = _build_navigation_state_uncached()
+            flight.payload = payload
+        except Exception as exc:  # pragma: no cover - defensive pass-through
+            flight.error = exc
+        finally:
+            with _NAVIGATION_STATE_FLIGHT_LOCK:
+                _NAVIGATION_STATE_FLIGHT = None
+            flight.done.set()
+    else:
+        flight.done.wait()
+
+    if flight.error is not None:
+        raise flight.error
+    if flight.payload is None:  # pragma: no cover - defensive guard
+        raise RuntimeError("navigation state build completed without payload")
+    return copy.deepcopy(flight.payload)
