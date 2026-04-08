@@ -290,8 +290,8 @@ function renderOverview(data, { cachedAt } = {}) {
 
   const heroTone = data.hero?.status_tone || "teal";
   if (heroEyebrow) heroEyebrow.textContent = data.hero?.eyebrow || "Control Surface";
-  if (heroTitle) heroTitle.textContent = data.hero?.title || data.title || "RPI Anime Ops";
-  if (heroSummary) heroSummary.textContent = data.hero?.summary || data.subtitle || "";
+  if (heroTitle) heroTitle.textContent = data.hero?.title || "RPI Anime Ops";
+  if (heroSummary) heroSummary.textContent = data.hero?.summary || "";
   if (heroStatusPill) {
     heroStatusPill.className = `status-pill ${toneStatusClass(heroTone)}`;
   }
@@ -299,7 +299,7 @@ function renderOverview(data, { cachedAt } = {}) {
     heroStatusLabel.textContent = data.hero?.status_label || "Unknown";
   }
 
-  hostName.textContent = window.location.host || data.hero?.host || data.host || "-";
+  hostName.textContent = window.location.host || data.hero?.host || "-";
   lastUpdated.textContent = formatUpdatedLabel(cachedAt);
   refreshIntervalMs = (data.refresh_interval_seconds || 8) * 1000;
   refreshIntervalLabel.textContent = `Auto · ${Math.round(refreshIntervalMs / 1000)}s`;

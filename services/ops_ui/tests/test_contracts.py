@@ -294,7 +294,9 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert {
         "hero.title",
         "hero.summary",
+        "hero.status_tone",
         "hero.status_label",
+        "hero.host",
         "summary_strip",
         "service_rows",
         "pipeline_cards",
@@ -305,6 +307,9 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     }.issubset(app_contract_paths)
     assert "services" not in app_contract_paths
     assert "queue_cards" not in app_contract_paths
+    assert "title" not in app_contract_paths
+    assert "subtitle" not in app_contract_paths
+    assert "host" not in app_contract_paths
 
     _assert_payload_matches_page_contract(
         payload=payload,
