@@ -1,3 +1,5 @@
+import pytest
+
 from anime_ops_ui.services.autobangumi_client import AutoBangumiClient
 
 
@@ -62,3 +64,21 @@ def test_autobangumi_client_logs_in_and_fetches_bangumi():
     assert session.gets == [("http://ab.local:7892/api/v1/bangumi/get/all", 5)]
     assert items[0]["official_title"] == "尖帽子的魔法工房"
     assert items[0]["poster_link"] == "posters/5cac94c7.jpg"
+
+
+def test_autobangumi_client_raises_when_bangumi_payload_contains_non_dict_items():
+    class _MixedPayloadSession(_FakeSession):
+        def get(self, url, timeout=5):
+            self.gets.append((url, timeout))
+            return _FakeResponse(json_data=[{"id": 9}, "invalid-item"])
+
+    session = _MixedPayloadSession()
+    client = AutoBangumiClient(
+        base_url="http://ab.local:7892",
+        username="sunzhuofan",
+        password="root1234",
+        session=session,
+    )
+
+    with pytest.raises(RuntimeError, match="list of dicts"):
+        client.fetch_bangumi()

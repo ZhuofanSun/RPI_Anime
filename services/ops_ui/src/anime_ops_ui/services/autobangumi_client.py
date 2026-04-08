@@ -37,4 +37,6 @@ class AutoBangumiClient:
         payload = response.json()
         if not isinstance(payload, list):
             raise RuntimeError("AutoBangumi bangumi payload must be a list")
-        return [item for item in payload if isinstance(item, dict)]
+        if any(not isinstance(item, dict) for item in payload):
+            raise RuntimeError("AutoBangumi bangumi payload must be a list of dicts")
+        return payload
