@@ -14,8 +14,10 @@ const logsClear = document.getElementById("logs-clear");
 const logsFlash = document.getElementById("logs-flash");
 const {
   clearFlash,
+  createPageBootstrap,
   debounce,
   escapeHtml,
+  fetchJson,
   formatUpdatedLabel,
   getQueryState,
   metricTemplate,
@@ -25,8 +27,6 @@ const {
 } = window.AnimeOpsCore;
 
 let logsRefreshMs = 10000;
-let logsTimerId = null;
-let logsFetchInFlight = false;
 let logsPayload = { items: [], levels: [], sources: [] };
 const initialLogsState = getQueryState(["source", "level", "q"]);
 
@@ -116,37 +116,23 @@ function syncUrlFromFilters() {
   );
 }
 
-function scheduleRefresh() {
-  if (logsTimerId) {
-    clearTimeout(logsTimerId);
-  }
-  logsTimerId = window.setTimeout(() => {
-    refreshLogs();
-  }, logsRefreshMs);
+function buildLogsParams() {
+  const params = new URLSearchParams();
+  if (logsSourceFilter.value) params.set("source", logsSourceFilter.value);
+  if (logsLevelFilter.value) params.set("level", logsLevelFilter.value);
+  if (logsSearch.value.trim()) params.set("q", logsSearch.value.trim());
+  params.set("limit", "300");
+  return params;
 }
 
-async function refreshLogs() {
-  if (logsFetchInFlight) return;
-  logsFetchInFlight = true;
-  try {
-    const params = new URLSearchParams();
-    if (logsSourceFilter.value) params.set("source", logsSourceFilter.value);
-    if (logsLevelFilter.value) params.set("level", logsLevelFilter.value);
-    if (logsSearch.value.trim()) params.set("q", logsSearch.value.trim());
-    params.set("limit", "300");
-    const response = await fetch(`/api/logs?${params.toString()}`, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    renderLogs(payload);
-  } catch (error) {
+const logsPage = createPageBootstrap({
+  fetcher: () => fetchJson(`/api/logs?${buildLogsParams().toString()}`, { cache: "no-store" }),
+  render: renderLogs,
+  getIntervalMs: () => logsRefreshMs,
+  onError: (error) => {
     setFlash("error", "日志页不可用", error.message || String(error));
-  } finally {
-    logsFetchInFlight = false;
-    scheduleRefresh();
-  }
-}
+  },
+});
 
 async function clearLogs() {
   if (!window.confirm("确认清理结构化日志？这个动作会清空当前 Logs 页里的历史记录。")) {
@@ -160,7 +146,7 @@ async function clearLogs() {
     }
     const payload = await response.json();
     setFlash("success", "日志已清理", payload.message || "日志已清理。");
-    await refreshLogs();
+    await logsPage.tick();
   } catch (error) {
     setFlash("error", "清理失败", error.message || String(error));
   }
@@ -168,16 +154,16 @@ async function clearLogs() {
 
 const debouncedLogsRefresh = debounce(() => {
   syncUrlFromFilters();
-  refreshLogs();
+  void logsPage.tick();
 }, 220);
 
 logsSourceFilter.addEventListener("change", () => {
   syncUrlFromFilters();
-  refreshLogs();
+  void logsPage.tick();
 });
 logsLevelFilter.addEventListener("change", () => {
   syncUrlFromFilters();
-  refreshLogs();
+  void logsPage.tick();
 });
 logsSearch.addEventListener("input", () => {
   clearFlash();
@@ -189,4 +175,4 @@ if (initialLogsState.source) logsSourceFilter.value = initialLogsState.source;
 if (initialLogsState.level) logsLevelFilter.value = initialLogsState.level;
 if (initialLogsState.q) logsSearch.value = initialLogsState.q;
 
-refreshLogs();
+logsPage.start();

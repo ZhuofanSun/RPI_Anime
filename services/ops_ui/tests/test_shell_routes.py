@@ -7,6 +7,14 @@ def test_dashboard_uses_shared_shell(client):
     assert "Jellyfin" in body
 
 
+def test_dashboard_shell_contains_bootstrap_roots(client):
+    response = client.get("/")
+    body = response.text
+    assert 'data-page="dashboard"' in body
+    assert 'id="services-grid"' in body
+    assert 'id="trend-grid"' in body
+
+
 def test_internal_pages_render_successfully(client):
     for path in ["/", "/ops-review", "/ops-review/item", "/logs", "/postprocessor", "/tailscale"]:
         response = client.get(path)

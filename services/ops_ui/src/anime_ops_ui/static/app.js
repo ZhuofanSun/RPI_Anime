@@ -13,11 +13,14 @@ const servicePanelFeedback = document.getElementById("service-panel-feedback");
 const restartStackButton = document.getElementById("restart-stack-button");
 const restartStackDetail = document.getElementById("restart-stack-detail");
 const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v3";
-const { formatUpdatedLabel, metricTemplate, readSessionCache, writeSessionCache } = window.AnimeOpsCore;
+const {
+  createPageBootstrap,
+  fetchJson,
+  formatUpdatedLabel,
+  metricTemplate,
+} = window.AnimeOpsCore;
 
 let refreshIntervalMs = 8000;
-let refreshInFlight = false;
-let refreshTimerId = null;
 let feedbackTimerId = null;
 
 function serviceInitials(name) {
@@ -275,6 +278,18 @@ function renderOverview(data, { cachedAt } = {}) {
   diagnostics.innerHTML = diagnosticsTemplate(data.diagnostics || []);
 }
 
+const overviewPage = createPageBootstrap({
+  cacheKey: OVERVIEW_CACHE_KEY,
+  fetcher: () => fetchJson("/api/overview", { cache: "no-store" }),
+  render: renderOverview,
+  getIntervalMs: () => refreshIntervalMs,
+  onError: (error) => {
+    diagnostics.innerHTML = diagnosticsTemplate([
+      { source: "frontend", message: error.message || String(error) },
+    ]);
+  },
+});
+
 async function handleServiceRestart(button) {
   const target = button.dataset.serviceRestart;
   const name = button.dataset.serviceName || target;
@@ -298,7 +313,7 @@ async function handleServiceRestart(button) {
       return;
     }
     window.setTimeout(() => {
-      refreshOverview();
+      void overviewPage.tick();
     }, 1600);
   } catch (error) {
     showServiceFeedback("error", error.message || `${name} 重启失败。`);
@@ -330,44 +345,6 @@ async function handleRestartStack() {
   }
 }
 
-function scheduleRefresh() {
-  if (refreshTimerId) {
-    clearTimeout(refreshTimerId);
-  }
-  refreshTimerId = window.setTimeout(() => {
-    refreshOverview();
-  }, refreshIntervalMs);
-}
-
-async function refreshOverview() {
-  if (refreshInFlight) {
-    return;
-  }
-  refreshInFlight = true;
-  try {
-    const response = await fetch("/api/overview", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-    renderOverview(data);
-    writeSessionCache(OVERVIEW_CACHE_KEY, data);
-  } catch (error) {
-    diagnostics.innerHTML = diagnosticsTemplate([
-      { source: "frontend", message: error.message || String(error) },
-    ]);
-  } finally {
-    refreshInFlight = false;
-    scheduleRefresh();
-  }
-}
-
-const cachedOverview = readSessionCache(OVERVIEW_CACHE_KEY);
-if (cachedOverview?.payload) {
-  renderOverview(cachedOverview.payload, { cachedAt: cachedOverview.cachedAt });
-}
-
 servicesGrid?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-service-restart]");
   if (!button) return;
@@ -380,4 +357,4 @@ restartStackButton?.addEventListener("click", (event) => {
   handleRestartStack();
 });
 
-refreshOverview();
+overviewPage.start();
