@@ -5,9 +5,9 @@
 从 `2026-04-07` 起，前端重构的有效文档已经迁移到：
 
 - 设计 spec：
-  [Ops UI Redesign Spec](/Users/sunzhuofan/RPI_Anime/.worktrees/ops-ui-phase2/docs/superpowers/specs/2026-04-07-ops-ui-redesign-design.md)
+  [Ops UI Redesign Spec](/Users/sunzhuofan/RPI_Anime/docs/superpowers/specs/2026-04-07-ops-ui-redesign-design.md)
 - 当前执行计划：
-  [Ops UI Phase 2 Foundation Plan](/Users/sunzhuofan/RPI_Anime/.worktrees/ops-ui-phase2/docs/superpowers/plans/2026-04-07-ops-ui-phase-2-foundation.md)
+  [Ops UI Phase 2 Foundation Plan](/Users/sunzhuofan/RPI_Anime/docs/superpowers/plans/2026-04-07-ops-ui-phase-2-foundation.md)
 
 ## 保留这份归档说明的原因
 
