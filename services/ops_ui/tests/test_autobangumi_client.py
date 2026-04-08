@@ -82,3 +82,72 @@ def test_autobangumi_client_raises_when_bangumi_payload_contains_non_dict_items(
 
     with pytest.raises(RuntimeError, match="list of dicts"):
         client.fetch_bangumi()
+
+
+def test_autobangumi_client_reauthenticates_and_retries_when_fetch_is_unauthorized():
+    class _ExpiredSession(_FakeSession):
+        def __init__(self):
+            super().__init__()
+            self._get_count = 0
+
+        def get(self, url, timeout=5):
+            self.gets.append((url, timeout))
+            self._get_count += 1
+            if self._get_count == 1:
+                return _FakeResponse(status_code=401, json_data={"detail": "unauthorized"})
+            return _FakeResponse(
+                json_data=[
+                    {
+                        "id": 10,
+                        "official_title": "药屋少女的呢喃",
+                        "air_weekday": 6,
+                        "poster_link": "posters/12345678.jpg",
+                    }
+                ]
+            )
+
+    session = _ExpiredSession()
+    client = AutoBangumiClient(
+        base_url="http://ab.local:7892",
+        username="sunzhuofan",
+        password="root1234",
+        session=session,
+    )
+
+    items = client.fetch_bangumi()
+
+    assert session.posts == [
+        (
+            "http://ab.local:7892/api/v1/auth/login",
+            {"username": "sunzhuofan", "password": "root1234"},
+            5,
+        ),
+        (
+            "http://ab.local:7892/api/v1/auth/login",
+            {"username": "sunzhuofan", "password": "root1234"},
+            5,
+        ),
+    ]
+    assert session.gets == [
+        ("http://ab.local:7892/api/v1/bangumi/get/all", 5),
+        ("http://ab.local:7892/api/v1/bangumi/get/all", 5),
+    ]
+    assert items[0]["official_title"] == "药屋少女的呢喃"
+
+
+def test_autobangumi_client_raises_when_bangumi_payload_is_not_a_list():
+    class _NonListPayloadSession(_FakeSession):
+        def get(self, url, timeout=5):
+            self.gets.append((url, timeout))
+            return _FakeResponse(json_data={"id": 9})
+
+    session = _NonListPayloadSession()
+    client = AutoBangumiClient(
+        base_url="http://ab.local:7892",
+        username="sunzhuofan",
+        password="root1234",
+        session=session,
+    )
+
+    with pytest.raises(RuntimeError, match="must be a list"):
+        client.fetch_bangumi()

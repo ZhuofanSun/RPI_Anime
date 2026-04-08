@@ -33,6 +33,9 @@ class AutoBangumiClient:
         if not self._authenticated:
             self.login()
         response = self.session.get(f"{self.base_url}/api/v1/bangumi/get/all", timeout=5)
+        if response.status_code in {401, 403}:
+            self.login()
+            response = self.session.get(f"{self.base_url}/api/v1/bangumi/get/all", timeout=5)
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, list):
