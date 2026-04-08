@@ -1,3 +1,9 @@
+from fastapi.testclient import TestClient
+
+from anime_ops_ui import main as main_module
+from anime_ops_ui.main import create_app
+
+
 def test_dashboard_uses_shared_shell(client):
     response = client.get("/")
     body = response.text
@@ -62,3 +68,20 @@ def test_legacy_static_html_pages_are_not_served(client):
     ]:
         response = client.get(path)
         assert response.status_code == 404
+
+
+def test_app_factory_default_lifespan_runs_startup(tmp_path, monkeypatch):
+    data_root = tmp_path / "anime-data"
+    state_root = tmp_path / "ops-ui-state"
+    event_log_path = tmp_path / "events.json"
+    monkeypatch.setenv("ANIME_DATA_ROOT", str(data_root))
+    monkeypatch.setenv("OPS_UI_STATE_ROOT", str(state_root))
+    monkeypatch.setenv("OPS_EVENT_LOG_PATH", str(event_log_path))
+    main_module.HISTORY_STATE = None
+
+    with TestClient(create_app()) as test_client:
+        response = test_client.get("/healthz")
+        assert response.status_code == 200
+
+    assert (state_root / "history.json").exists()
+    assert event_log_path.exists()

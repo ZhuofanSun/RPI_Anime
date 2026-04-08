@@ -1449,6 +1449,31 @@ def _delete_review_file(item_path: Path, review_root: Path) -> dict[str, Any]:
     }
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await asyncio.to_thread(_sample_history_once, force=True)
+    append_event(
+        source="ops-ui",
+        level="info",
+        action="startup",
+        message="Ops UI service started",
+        details={
+            "refresh_interval_seconds": _refresh_interval_seconds(),
+            "log_cap": event_log_cap(),
+            "history_file": str(_history_file()),
+        },
+    )
+    sampler_task = asyncio.create_task(_history_sampler_loop())
+    try:
+        yield
+    finally:
+        sampler_task.cancel()
+        try:
+            await sampler_task
+        except asyncio.CancelledError:
+            pass
+
+
 router = APIRouter()
 
 
