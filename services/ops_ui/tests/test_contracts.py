@@ -274,6 +274,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
             "ANIME_DATA_ROOT": str(data_root),
             "ANIME_COLLECTION_ROOT": str(collection_root),
             "HOMEPAGE_BASE_HOST": "ops.local",
+            "AUTOBANGUMI_API_URL": "",
             "TAILSCALE_SOCKET": "/var/run/tailscale/tailscaled.sock",
         }.get(name, default),
     )
@@ -333,10 +334,11 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
         "hidden_items": [_schedule_item(item_id=102, title="隐藏番剧", poster_url="http://ops.local:7892/posters/102.jpg", badges=["LIB"])],
         "has_hidden_items": True,
     }
-    monkeypatch.setattr(
-        overview_service,
-        "build_phase4_schedule_snapshot",
-        lambda **kwargs: {
+    captured_phase4_kwargs: dict[str, object] = {}
+
+    def fake_phase4_snapshot(**kwargs):
+        captured_phase4_kwargs.update(kwargs)
+        return {
             "today_focus": {"items": [{"id": 101, "title": "示例番剧", "poster_url": None, "badges": ["DL"]}]},
             "weekly_schedule": {
                 "week_key": "2026-W15",
@@ -350,7 +352,12 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
                     "has_hidden_items": True,
                 },
             },
-        },
+        }
+
+    monkeypatch.setattr(
+        overview_service,
+        "build_phase4_schedule_snapshot",
+        fake_phase4_snapshot,
         raising=False,
     )
 
@@ -398,6 +405,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert isinstance(payload["service_rows"], list) and payload["service_rows"]
     assert isinstance(payload["stack_control"], dict)
     assert payload["today_focus"]["items"][0]["badges"] == ["DL"]
+    assert captured_phase4_kwargs["autobangumi_base_url"] == "http://autobangumi:7892"
 
     today_focus_item = payload["today_focus"]["items"][0]
     assert {"id", "title", "poster_url", "badges"}.issubset(today_focus_item.keys())

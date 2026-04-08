@@ -238,6 +238,12 @@ touch deploy/.env
 - `AUTOBANGUMI_PASSWORD`
 - `TZ`
 
+可选覆盖项：
+
+- `AUTOBANGUMI_API_URL`
+  本地直接运行 `anime_ops_ui.main` 或非默认容器网络拓扑时可显式指定；
+  Docker Compose 默认会直接走 `http://autobangumi:7892`，通常不需要额外设置。
+
 ### 3. 第一次同步项目到树莓派
 
 ```bash
