@@ -48,11 +48,15 @@ def test_navigation_state_service_rolls_up_badges(monkeypatch, tmp_path):
             {"level": "info", "message": "ok"},
         ],
     )
-    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: ({"active_downloads": 3}, None))
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (_ for _ in ()).throw(AssertionError("live qb probe")))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda socket_path: (_ for _ in ()).throw(AssertionError("live tailscale probe")))
     monkeypatch.setattr(
         main_module,
-        "_tailscale_status",
-        lambda socket_path: ({"BackendState": "Running", "Self": {"Online": True}}, None),
+        "_latest_sampled_metric",
+        lambda name: {
+            "qb_active_downloads": 3.0,
+            "tailscale_online": 1.0,
+        }.get(name),
     )
     monkeypatch.setattr(
         main_module,
@@ -85,12 +89,35 @@ def test_navigation_state_service_rolls_up_badges(monkeypatch, tmp_path):
     assert set(external["jellyfin"].keys()) == {"id", "label", "icon", "target", "href", "badge", "tone"}
 
 
+def test_navigation_state_service_uses_neutral_state_when_sample_missing(monkeypatch, tmp_path):
+    from anime_ops_ui.services.navigation_state_service import build_navigation_state
+    import anime_ops_ui.services.navigation_state_service as navigation_service
+
+    review_root = tmp_path / "manual_review"
+    review_root.mkdir(parents=True)
+    monkeypatch.setattr(navigation_service, "_NAVIGATION_STATE_FLIGHT", None, raising=False)
+    monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
+    monkeypatch.setattr(main_module, "_count_media_files", lambda root: 0)
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    monkeypatch.setattr(main_module, "_latest_sampled_metric", lambda name: None)
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (_ for _ in ()).throw(AssertionError("live qb probe")))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda socket_path: (_ for _ in ()).throw(AssertionError("live tailscale probe")))
+
+    payload = build_navigation_state()
+    internal = {item["id"]: item for item in payload["internal"]}
+
+    assert internal["postprocessor"]["badge"] is None
+    assert internal["postprocessor"]["tone"] == "neutral"
+    assert internal["tailscale"]["badge"] is None
+    assert internal["tailscale"]["tone"] == "neutral"
+
+
 def test_navigation_state_service_builds_fresh_on_sequential_calls(monkeypatch, tmp_path):
     import anime_ops_ui.services.navigation_state_service as navigation_service
 
     review_root = tmp_path / "manual_review"
     review_root.mkdir(parents=True)
-    calls = {"scan": 0, "events": 0, "qb": 0, "tailscale": 0}
+    calls = {"scan": 0, "events": 0, "metrics": 0}
     monkeypatch.setattr(navigation_service, "_NAVIGATION_STATE_FLIGHT", None, raising=False)
 
     monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
@@ -106,18 +133,18 @@ def test_navigation_state_service_builds_fresh_on_sequential_calls(monkeypatch, 
         return [{"level": "error", "message": "boom"}]
 
     monkeypatch.setattr(main_module, "read_events", fake_read_events)
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (_ for _ in ()).throw(AssertionError("live qb probe")))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda socket_path: (_ for _ in ()).throw(AssertionError("live tailscale probe")))
 
-    def fake_qb_snapshot():
-        calls["qb"] += 1
-        return {"active_downloads": 2}, None
+    def fake_latest_sampled_metric(name):
+        calls["metrics"] += 1
+        if name == "qb_active_downloads":
+            return 2.0
+        if name == "tailscale_online":
+            return 1.0
+        return None
 
-    monkeypatch.setattr(main_module, "_qb_snapshot", fake_qb_snapshot)
-
-    def fake_tailscale_status(socket_path):
-        calls["tailscale"] += 1
-        return {"BackendState": "Running", "Self": {"Online": True}}, None
-
-    monkeypatch.setattr(main_module, "_tailscale_status", fake_tailscale_status)
+    monkeypatch.setattr(main_module, "_latest_sampled_metric", fake_latest_sampled_metric)
     monkeypatch.setattr(main_module, "_env", lambda name, default: {"HOMEPAGE_BASE_HOST": "ops.local"}.get(name, default))
 
     first = navigation_service.build_navigation_state()
@@ -127,7 +154,7 @@ def test_navigation_state_service_builds_fresh_on_sequential_calls(monkeypatch, 
     second_internal = {item["id"]: item for item in second["internal"]}
     assert first_internal["ops-review"]["badge"] == "1"
     assert second_internal["ops-review"]["badge"] == "2"
-    assert calls == {"scan": 2, "events": 2, "qb": 2, "tailscale": 2}
+    assert calls == {"scan": 2, "events": 2, "metrics": 4}
 
 
 def test_navigation_state_service_coalesces_inflight_build(monkeypatch):

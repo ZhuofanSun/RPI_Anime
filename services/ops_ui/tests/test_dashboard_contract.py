@@ -9,11 +9,15 @@ def test_navigation_api_contract_returns_internal_and_external(client, monkeypat
     monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
     monkeypatch.setattr(main_module, "_count_media_files", lambda root: 2 if root == review_root else 0)
     monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
-    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: ({"active_downloads": 1}, None))
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (_ for _ in ()).throw(AssertionError("live qb probe")))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda socket_path: (_ for _ in ()).throw(AssertionError("live tailscale probe")))
     monkeypatch.setattr(
         main_module,
-        "_tailscale_status",
-        lambda socket_path: ({"BackendState": "Running", "Self": {"Online": True}}, None),
+        "_latest_sampled_metric",
+        lambda name: {
+            "qb_active_downloads": 1.0,
+            "tailscale_online": 1.0,
+        }.get(name),
     )
     monkeypatch.setattr(
         main_module,

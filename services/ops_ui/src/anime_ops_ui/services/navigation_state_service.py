@@ -34,31 +34,35 @@ def _build_navigation_state_uncached() -> dict[str, list[dict[str, Any]]]:
     review_count = main_module._count_media_files(review_root)
     events = main_module.read_events(limit=300)
     error_count = sum(1 for item in events if str(item.get("level", "")).lower() == "error")
-    qb_snapshot, _ = main_module._qb_snapshot()
-    active_downloads = int((qb_snapshot or {}).get("active_downloads", 0) or 0)
+    sampled_active_downloads = main_module._latest_sampled_metric("qb_active_downloads")
+    sampled_tailscale_online = main_module._latest_sampled_metric("tailscale_online")
 
-    tailscale_socket = main_module._env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock")
-    tailscale_status, _ = main_module._tailscale_status(tailscale_socket)
-    tailscale_self = ((tailscale_status or {}).get("Self") or {}) if isinstance(tailscale_status, dict) else {}
-    tailscale_online = bool(
-        isinstance(tailscale_status, dict)
-        and tailscale_status.get("BackendState") == "Running"
-        and tailscale_self.get("Online")
-    )
+    active_downloads_badge: str | None = None
+    active_downloads_tone = "neutral"
+    if sampled_active_downloads is not None and sampled_active_downloads > 0:
+        active_downloads_badge = str(int(sampled_active_downloads))
+        active_downloads_tone = "info"
+
+    tailscale_badge: str | None = None
+    tailscale_tone = "neutral"
+    if sampled_tailscale_online is not None:
+        tailscale_online = sampled_tailscale_online >= 0.5
+        tailscale_badge = "Online" if tailscale_online else "Offline"
+        tailscale_tone = "success" if tailscale_online else "danger"
 
     badge_by_page = {
         "dashboard": None,
         "ops-review": str(review_count) if review_count > 0 else None,
         "logs": str(error_count) if error_count > 0 else None,
-        "postprocessor": str(active_downloads) if active_downloads > 0 else None,
-        "tailscale": "Online" if tailscale_online else "Offline",
+        "postprocessor": active_downloads_badge,
+        "tailscale": tailscale_badge,
     }
     tone_by_page = {
         "dashboard": "neutral",
         "ops-review": "warning" if review_count > 0 else "neutral",
         "logs": "danger" if error_count > 0 else "neutral",
-        "postprocessor": "info" if active_downloads > 0 else "neutral",
-        "tailscale": "success" if tailscale_online else "danger",
+        "postprocessor": active_downloads_tone,
+        "tailscale": tailscale_tone,
     }
 
     internal_entries: list[dict[str, Any]] = []

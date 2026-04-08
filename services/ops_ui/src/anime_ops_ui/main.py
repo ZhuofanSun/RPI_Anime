@@ -48,7 +48,7 @@ from anime_postprocessor.watch import _build_groups, _should_process_group
 
 MEDIA_EXTENSIONS = {".mkv", ".mp4", ".avi", ".m4v", ".ts"}
 HISTORY_LOCK = threading.Lock()
-HISTORY_SERIES = ("cpu_percent", "cpu_temp_c", "playback_tx_rate")
+HISTORY_SERIES = ("cpu_percent", "cpu_temp_c", "playback_tx_rate", "qb_active_downloads", "tailscale_online")
 HISTORY_STATE: dict[str, Any] | None = None
 TEMPLATES = Jinja2Templates(directory=str(TEMPLATE_DIR))
 PAGE_TEMPLATES = {
@@ -382,6 +382,20 @@ def _series_values(name: str, *, window_hours: int, max_points: int = 180) -> tu
     return values, _downsample(values, max_points=max_points)
 
 
+def _latest_sampled_metric(name: str) -> float | None:
+    with HISTORY_LOCK:
+        global HISTORY_STATE
+        if HISTORY_STATE is None:
+            HISTORY_STATE = _load_history_state()
+        raw_series = HISTORY_STATE.get("samples", {}).get(name, [])
+        if not isinstance(raw_series, list):
+            return None
+        for item in reversed(raw_series):
+            if isinstance(item, dict) and item.get("value") is not None:
+                return float(item.get("value"))
+    return None
+
+
 def _daily_volume_bars(*, days: int, daily_key: str) -> tuple[list[dict[str, Any]], list[float]]:
     today = datetime.now().date()
     with HISTORY_LOCK:
@@ -412,6 +426,8 @@ def _collect_history_metrics() -> dict[str, float | None]:
     sensors, _ = _safe_get_json(f"{_glances_base_url()}/sensors")
     containers_raw, _ = _safe_get_json(f"{_glances_base_url()}/containers")
     qb, _ = _qb_snapshot()
+    tailscale_socket = _env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock")
+    tailscale, _ = _tailscale_status(tailscale_socket)
     containers_list = containers_raw if isinstance(containers_raw, list) else []
     containers = {
         item.get("name", ""): item
@@ -420,10 +436,18 @@ def _collect_history_metrics() -> dict[str, float | None]:
     }
     jellyfin = containers.get("jellyfin", {})
     jellyfin_network = jellyfin.get("network", {}) if isinstance(jellyfin, dict) else {}
+    tailscale_self = ((tailscale or {}).get("Self") or {}) if isinstance(tailscale, dict) else {}
+    tailscale_online = bool(
+        isinstance(tailscale, dict)
+        and tailscale.get("BackendState") == "Running"
+        and tailscale_self.get("Online")
+    )
     return {
         "cpu_percent": (quicklook or {}).get("cpu") if isinstance(quicklook, dict) else None,
         "cpu_temp_c": _extract_temperature(sensors),
         "playback_tx_rate": float(jellyfin.get("network_tx") or jellyfin_network.get("tx") or 0.0),
+        "qb_active_downloads": float((qb or {}).get("active_downloads", 0)) if qb else None,
+        "tailscale_online": float(1.0 if tailscale_online else 0.0) if isinstance(tailscale, dict) else None,
         "uploaded_total": float((qb or {}).get("uploaded_total", 0)) if qb else None,
         "downloaded_total": float((qb or {}).get("downloaded_total", 0)) if qb else None,
     }
