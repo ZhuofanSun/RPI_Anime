@@ -69,5 +69,12 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
         "diagnostics",
         "last_updated",
     }.issubset(payload.keys())
+    assert payload["hero"]["title"] == "RPI Anime Ops"
+    assert payload["hero"]["eyebrow"] == "Control Surface"
+    assert isinstance(payload["summary_strip"], list)
+    assert payload["summary_strip"][0]["question"] == "今天有什么值得看"
+    assert payload["summary_strip"][1]["question"] == "下载和入库链路是否正常"
+    assert payload["summary_strip"][2]["question"] == "设备和远程访问是否健康"
+    assert set(payload["summary_strip"][0].keys()) == {"question", "answer", "tone"}
     assert "services" in payload
     assert "queue_cards" in payload

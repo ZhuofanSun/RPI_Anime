@@ -253,8 +253,18 @@ def test_build_overview_payload_reports_service_summary(monkeypatch, tmp_path):
         "diagnostics",
         "last_updated",
     }.issubset(payload.keys())
+    assert payload["hero"]["title"] == "RPI Anime Ops"
+    assert payload["hero"]["eyebrow"] == "Control Surface"
     assert payload["hero"]["host"] == "sunzhuofan.local"
-    assert payload["summary_strip"][0]["label"] == "Services"
+    assert payload["summary_strip"][0] == {
+        "question": "今天有什么值得看",
+        "answer": "1 个下载中",
+        "tone": "teal",
+    }
+    assert payload["summary_strip"][1]["question"] == "下载和入库链路是否正常"
+    assert payload["summary_strip"][2]["question"] == "设备和远程访问是否健康"
+    assert set(payload["summary_strip"][1].keys()) == {"question", "answer", "tone"}
+    assert set(payload["summary_strip"][2].keys()) == {"question", "answer", "tone"}
     assert payload["pipeline_cards"] == payload["queue_cards"]
     assert payload["service_rows"][0]["id"] == "jellyfin"
     assert payload["service_rows"][0]["status"] == "running"

@@ -5,7 +5,7 @@ from typing import Any
 
 from anime_ops_ui.copy import text
 from anime_ops_ui.page_context import build_page_context
-from anime_ops_ui.services.dashboard_sections import build_hero_section, build_service_rows, build_summary_strip
+from anime_ops_ui.services.dashboard_sections import build_dashboard_hero, build_service_rows, build_summary_strip
 
 
 def build_service_summary(*, containers: dict[str, dict[str, Any]], tailscale_running: bool) -> dict[str, Any]:
@@ -390,17 +390,19 @@ def build_overview_payload() -> dict[str, Any]:
             "restart_label": "Restart",
         },
     ]
-    hero = build_hero_section(
+    active_downloads = int((qb or {}).get("active_downloads", 0) or 0)
+    review_count = int(manual_review_count or 0)
+    hero = build_dashboard_hero(
+        title=text("site.title"),
+        active_downloads=active_downloads,
+        review_count=review_count,
+        diagnostics=diagnostics,
+        tailnet_online=bool(tailscale_self.get("Online")),
         host=base_host,
-        service_summary=service_summary_card,
-        tailscaled_online=tailscaled_online,
-        tailnet_online_peers=tailnet_online_peers,
-        data_storage_ready=data_storage_ready,
     )
     summary_strip = build_summary_strip(
-        service_summary=service_summary_card,
-        queue_cards=queue_cards,
-        manual_review_count=manual_review_count,
+        active_downloads=active_downloads,
+        review_count=review_count,
         diagnostics=diagnostics,
     )
     service_rows = build_service_rows(services=services)
