@@ -33,6 +33,7 @@ if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
 from anime_ops_ui.copy import text
 from anime_ops_ui.page_context import build_page_context
 from anime_ops_ui.services.log_service import build_logs_payload as build_logs_payload_service
+from anime_ops_ui.services.navigation_state_service import build_navigation_state as build_navigation_state_service
 from anime_ops_ui.services.overview_service import build_overview_payload as build_overview_payload_service, build_service_summary
 from anime_ops_ui.services.postprocessor_service import build_postprocessor_payload as build_postprocessor_payload_service
 from anime_ops_ui.services.review_service import build_manual_review_item_payload as build_manual_review_item_payload_service, build_manual_review_payload as build_manual_review_payload_service
@@ -1497,6 +1498,11 @@ def healthz() -> dict[str, bool]:
 @router.get("/api/overview")
 def overview() -> JSONResponse:
     return JSONResponse(build_overview_payload_service())
+
+
+@router.get("/api/navigation")
+def navigation_api() -> JSONResponse:
+    return JSONResponse(build_navigation_state_service())
 
 
 @router.get("/api/manual-review")
