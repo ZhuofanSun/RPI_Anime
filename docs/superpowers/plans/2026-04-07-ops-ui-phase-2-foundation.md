@@ -331,6 +331,7 @@ git commit -m "refactor: add ops-ui navigation and copy registries"
 - Create: `services/ops_ui/src/anime_ops_ui/templates/logs.html`
 - Create: `services/ops_ui/src/anime_ops_ui/templates/postprocessor.html`
 - Create: `services/ops_ui/src/anime_ops_ui/templates/tailscale.html`
+- Modify: `services/ops_ui/pyproject.toml`
 - Modify: `services/ops_ui/src/anime_ops_ui/main.py`
 - Modify: `services/ops_ui/tests/test_shell_routes.py`
 - Test: `services/ops_ui/tests/test_shell_routes.py`
@@ -397,7 +398,26 @@ E   AssertionError: assert 'app-shell' in '<!doctype html>...'
 </html>
 ```
 
-- [ ] **Step 4: Add one page template and wire the route through Jinja**
+- [ ] **Step 4: Promote `jinja2` to a runtime dependency**
+
+```toml
+[project]
+dependencies = [
+  "fastapi>=0.116.0",
+  "jinja2>=3.1.4",
+  "requests>=2.31.0",
+  "requests-unixsocket>=0.4.1",
+  "uvicorn>=0.35.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27.0",
+  "pytest>=8.3.0",
+]
+```
+
+- [ ] **Step 5: Add one page template and wire the route through Jinja**
 
 ```html
 <!-- services/ops_ui/src/anime_ops_ui/templates/dashboard.html -->
@@ -421,33 +441,34 @@ from fastapi.templating import Jinja2Templates
 TEMPLATES = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
 
-def render_dashboard(request: Request):
+def render_page(request: Request, template_name: str, page_key: str, title: str):
+    context = build_page_context(page_key, title)
     return TEMPLATES.TemplateResponse(
         request,
-        "dashboard.html",
-        build_page_context("dashboard", "Dashboard"),
+        template_name,
+        {"request": request, **context},
     )
 ```
 
-- [ ] **Step 5: Convert the remaining internal pages to the same shell**
+- [ ] **Step 6: Convert the remaining internal pages to the same shell**
 
 ```python
 PAGE_TEMPLATES = {
     "/": ("dashboard.html", "dashboard", "Dashboard"),
-    "/ops-review": ("ops_review.html", "ops_review", "Ops Review"),
-    "/ops-review/item": ("ops_review_item.html", "ops_review", "Review Detail"),
+    "/ops-review": ("ops_review.html", "ops-review", "Ops Review"),
+    "/ops-review/item": ("ops_review_item.html", "ops-review", "Review Detail"),
     "/logs": ("logs.html", "logs", "Logs"),
     "/postprocessor": ("postprocessor.html", "postprocessor", "Postprocessor"),
     "/tailscale": ("tailscale.html", "tailscale", "Tailscale"),
 }
 ```
 
-- [ ] **Step 6: Re-run the shell tests**
+- [ ] **Step 7: Re-run the shell tests**
 
 Run:
 
 ```bash
-python3 -m pytest services/ops_ui/tests/test_shell_routes.py -q
+.venv/bin/python -m pytest services/ops_ui/tests/test_shell_routes.py -q
 ```
 
 Expected:
@@ -456,10 +477,10 @@ Expected:
 2 passed
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add services/ops_ui/src/anime_ops_ui/templates services/ops_ui/src/anime_ops_ui/main.py services/ops_ui/tests/test_shell_routes.py
+git add services/ops_ui/pyproject.toml services/ops_ui/src/anime_ops_ui/templates services/ops_ui/src/anime_ops_ui/main.py services/ops_ui/tests/test_shell_routes.py
 git commit -m "refactor: move ops-ui internal pages to shared Jinja shell"
 ```
 
