@@ -1,3 +1,12 @@
+def test_dashboard_uses_shared_shell(client):
+    response = client.get("/")
+    body = response.text
+    assert "app-shell" in body
+    assert "Dashboard" in body
+    assert "Ops Review" in body
+    assert "Jellyfin" in body
+
+
 def test_internal_pages_render_successfully(client):
     for path in ["/", "/ops-review", "/ops-review/item", "/logs", "/postprocessor", "/tailscale"]:
         response = client.get(path)

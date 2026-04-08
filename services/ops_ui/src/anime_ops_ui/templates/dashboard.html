@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block head %}
+<script defer src="/static/core.js?v=phase2"></script>
+<script defer src="/static/app.js?v=phase2"></script>
+{% endblock %}
+{% block content %}
+<div class="page-shell">
+  <header class="hero">
+    <div class="hero-copy">
+      <div class="eyebrow">Raspberry Pi Operations</div>
+      <h1 id="page-title">RPI Anime Ops</h1>
+      <p id="page-subtitle">树莓派私人影音库控制台</p>
+    </div>
+    <div class="hero-meta">
+      <div class="meta-pill">
+        <span class="meta-label">Host</span>
+        <span class="meta-value" id="host-name">-</span>
+      </div>
+      <div class="meta-pill">
+        <span class="meta-label">Updated</span>
+        <span class="meta-value" id="last-updated">-</span>
+      </div>
+      <div class="meta-pill meta-pill-subtle">
+        <span class="meta-label">Auto Refresh</span>
+        <span class="meta-value" id="refresh-interval">8s</span>
+      </div>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
+        <span class="theme-toggle-copy">
+          <span class="theme-toggle-title">Theme</span>
+          <span class="theme-toggle-state" data-theme-label>Light</span>
+        </span>
+        <span class="theme-toggle-track" aria-hidden="true">
+          <span class="theme-toggle-icon">☀</span>
+          <span class="theme-toggle-icon">☾</span>
+          <span class="theme-toggle-thumb"></span>
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <main class="content-grid">
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>服务入口</h2>
+          <p>一个页面统一进入媒体、下载和网络链路。</p>
+        </div>
+        <div class="panel-head-actions">
+          <button id="restart-stack-button" class="action-button action-button-compact action-button-secondary" type="button">
+            Restart Stack
+          </button>
+          <span class="panel-action-hint" id="restart-stack-detail">compose only · homepage last</span>
+        </div>
+      </div>
+      <div id="service-panel-feedback" class="inline-feedback is-hidden" role="status" aria-live="polite"></div>
+      <div id="services-grid" class="services-grid">
+        {% for _ in range(8) %}
+        <article class="service-card is-skeleton" aria-hidden="true">
+          <div class="service-top">
+            <div class="service-mark skeleton-box"></div>
+            <div class="status-pill skeleton-pill"></div>
+          </div>
+          <div class="skeleton-stack">
+            <span class="skeleton-line skeleton-line-title"></span>
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line skeleton-line-short"></span>
+          </div>
+          <div class="service-meta-wrap">
+            <span class="skeleton-line skeleton-line-meta"></span>
+            <span class="skeleton-line skeleton-line-short"></span>
+          </div>
+          <div class="service-actions">
+            <span class="service-link disabled skeleton-button">加载中</span>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head">
+        <h2>长时趋势</h2>
+        <p>过去 24 小时折线与近 7 日下载柱状图。</p>
+      </div>
+      <div id="trend-grid" class="trend-grid">
+        {% for _ in range(4) %}
+        <article class="trend-card is-skeleton" aria-hidden="true">
+          <div class="skeleton-stack">
+            <span class="skeleton-line skeleton-line-meta"></span>
+            <span class="skeleton-line skeleton-line-title"></span>
+          </div>
+          <div class="skeleton-chart"></div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>主机状态</h2>
+        <p>来自树莓派本地监控。</p>
+      </div>
+      <div id="system-cards" class="metric-grid">
+        {% for _ in range(3) %}
+        <article class="metric-card is-skeleton" aria-hidden="true">
+          <span class="skeleton-line skeleton-line-meta"></span>
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line skeleton-line-short"></span>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>下载链路</h2>
+        <p>来自 qBittorrent 与媒体目录。</p>
+      </div>
+      <div id="queue-cards" class="metric-grid">
+        {% for _ in range(3) %}
+        <article class="metric-card is-skeleton" aria-hidden="true">
+          <span class="skeleton-line skeleton-line-meta"></span>
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line skeleton-line-short"></span>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head">
+        <h2>网络与访问</h2>
+        <p>只使用本地 `Tailscale` 状态，不走云 API。</p>
+      </div>
+      <div id="network-cards" class="metric-grid metric-grid-wide">
+        {% for _ in range(3) %}
+        <article class="metric-card is-skeleton" aria-hidden="true">
+          <span class="skeleton-line skeleton-line-meta"></span>
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line skeleton-line-short"></span>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head">
+        <h2>诊断</h2>
+        <p>前端和数据源异常会集中出现在这里。</p>
+      </div>
+      <div id="diagnostics" class="diagnostics">
+        <div class="diagnostic-empty is-loading-state">正在连接本地数据源并刷新面板。</div>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

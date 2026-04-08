@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block head %}
+<script defer src="/static/core.js?v=phase2"></script>
+<script defer src="/static/ops-review.js?v=phase2"></script>
+{% endblock %}
+{% block content %}
+<div class="page-shell">
+  <header class="hero">
+    <div class="hero-copy">
+      <div class="hero-nav">
+        <a class="ghost-link ghost-link-subtle" href="/">← 返回 Dashboard</a>
+        <div class="hero-links">
+          <a class="hero-link" href="/">Dashboard</a>
+          <span class="hero-link-sep">/</span>
+          <span class="hero-link-current">Ops Review</span>
+        </div>
+      </div>
+      <div class="eyebrow">Ops Review</div>
+      <h1 id="review-title">Ops Review</h1>
+      <p id="review-subtitle">人工审核队列与未自动入库文件清单</p>
+    </div>
+    <div class="hero-meta">
+      <div class="meta-pill">
+        <span class="meta-label">Root</span>
+        <span class="meta-value meta-value-compact" id="review-root">-</span>
+      </div>
+      <div class="meta-pill">
+        <span class="meta-label">Updated</span>
+        <span class="meta-value" id="review-updated">-</span>
+      </div>
+      <div class="meta-pill meta-pill-subtle">
+        <span class="meta-label">Auto Refresh</span>
+        <span class="meta-value" id="review-refresh">15s</span>
+      </div>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
+        <span class="theme-toggle-copy">
+          <span class="theme-toggle-title">Theme</span>
+          <span class="theme-toggle-state" data-theme-label>Light</span>
+        </span>
+        <span class="theme-toggle-track" aria-hidden="true">
+          <span class="theme-toggle-icon">☀</span>
+          <span class="theme-toggle-icon">☾</span>
+          <span class="theme-toggle-thumb"></span>
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <div id="review-flash" class="flash-stack" aria-live="polite"></div>
+
+  <main class="content-grid">
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>队列概览</h2>
+          <p>当前 `manual_review` 的积压规模、体积和分桶分布。</p>
+        </div>
+        <span class="panel-badge">详情动作</span>
+      </div>
+      <div class="panel-note">列表页保持只读，具体的重试解析、手动发布和删除动作放在详情页里执行。</div>
+      <div id="review-summary" class="metric-grid review-summary-grid">
+        {% for _ in range(4) %}
+        <article class="metric-card is-skeleton" aria-hidden="true">
+          <span class="skeleton-line skeleton-line-meta"></span>
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line skeleton-line-short"></span>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>筛选</h2>
+          <p>先缩小范围，再进入详情页确认上下文和后续动作。</p>
+        </div>
+      </div>
+      <div class="review-toolbar">
+        <label class="review-control">
+          <span class="review-control-label">Bucket</span>
+          <select id="review-bucket-filter" class="review-select" name="bucket">
+            <option value="">All buckets</option>
+          </select>
+        </label>
+        <label class="review-control review-control-wide">
+          <span class="review-control-label">Search</span>
+          <input id="review-search" class="review-input" type="search" name="q" autocomplete="off" placeholder="搜索番名、文件名或路径…" />
+        </label>
+      </div>
+      <div id="review-bucket-chips" class="review-bucket-chips"></div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>待处理文件</h2>
+          <p>按系列、原因和路径查看当前待确认文件。</p>
+        </div>
+        <span id="review-list-meta" class="panel-badge panel-badge-muted">-</span>
+      </div>
+      <div id="review-list" class="review-list">
+        {% for _ in range(2) %}
+        <article class="review-item is-skeleton" aria-hidden="true">
+          <div class="review-item-top">
+            <div class="review-item-heading skeleton-stack">
+              <span class="skeleton-line skeleton-line-badge"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+            </div>
+            <div class="review-item-side skeleton-stack">
+              <span class="skeleton-line skeleton-line-short"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </div>
+          </div>
+          <div class="review-item-grid">
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+          </div>
+          <div class="review-item-paths">
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line skeleton-line-wide"></span>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}

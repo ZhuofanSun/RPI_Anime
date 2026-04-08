@@ -17,12 +17,14 @@ from typing import Any
 
 import requests
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
+TEMPLATE_DIR = APP_DIR / "templates"
 REPO_ROOT = APP_DIR.parents[3]
 POSTPROCESSOR_SRC = REPO_ROOT / "services" / "postprocessor" / "src"
 if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
@@ -42,6 +44,15 @@ MEDIA_EXTENSIONS = {".mkv", ".mp4", ".avi", ".m4v", ".ts"}
 HISTORY_LOCK = threading.Lock()
 HISTORY_SERIES = ("cpu_percent", "cpu_temp_c", "playback_tx_rate")
 HISTORY_STATE: dict[str, Any] | None = None
+TEMPLATES = Jinja2Templates(directory=str(TEMPLATE_DIR))
+PAGE_TEMPLATES = {
+    "/": ("dashboard.html", "dashboard", "Dashboard"),
+    "/ops-review": ("ops_review.html", "ops-review", "Ops Review"),
+    "/ops-review/item": ("ops_review_item.html", "ops-review", "Review Detail"),
+    "/logs": ("logs.html", "logs", "Logs"),
+    "/postprocessor": ("postprocessor.html", "postprocessor", "Postprocessor"),
+    "/tailscale": ("tailscale.html", "tailscale", "Tailscale"),
+}
 
 
 class ManualPublishRequest(BaseModel):
@@ -56,6 +67,15 @@ class TailscaleActionRequest(BaseModel):
 
 class ServiceRestartRequest(BaseModel):
     target: str = Field(..., min_length=1, max_length=64)
+
+
+def render_page(request: Request, template_name: str, page_key: str, title: str):
+    context = build_page_context(page_key, title)
+    return TEMPLATES.TemplateResponse(
+        request,
+        template_name,
+        {"request": request, **context},
+    )
 
 
 def _env(name: str, default: str) -> str:
@@ -2632,33 +2652,39 @@ def manual_review_delete(id: str = Query(...)) -> JSONResponse:
 
 
 @router.get("/")
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html", headers=OPS_UI_NO_CACHE_HEADERS)
+def index(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/"]
+    return render_page(request, template_name, page_key, title)
 
 
 @router.get("/ops-review")
-def ops_review_placeholder() -> FileResponse:
-    return FileResponse(STATIC_DIR / "ops-review.html", headers=OPS_UI_NO_CACHE_HEADERS)
+def ops_review_placeholder(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/ops-review"]
+    return render_page(request, template_name, page_key, title)
 
 
 @router.get("/ops-review/item")
-def ops_review_item_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "ops-review-item.html", headers=OPS_UI_NO_CACHE_HEADERS)
+def ops_review_item_page(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/ops-review/item"]
+    return render_page(request, template_name, page_key, title)
 
 
 @router.get("/postprocessor")
-def postprocessor_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "postprocessor.html", headers=OPS_UI_NO_CACHE_HEADERS)
+def postprocessor_page(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/postprocessor"]
+    return render_page(request, template_name, page_key, title)
 
 
 @router.get("/tailscale")
-def tailscale_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "tailscale.html", headers=OPS_UI_NO_CACHE_HEADERS)
+def tailscale_page(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/tailscale"]
+    return render_page(request, template_name, page_key, title)
 
 
 @router.get("/logs")
-def logs_placeholder() -> FileResponse:
-    return FileResponse(STATIC_DIR / "logs.html", headers=OPS_UI_NO_CACHE_HEADERS)
+def logs_placeholder(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/logs"]
+    return render_page(request, template_name, page_key, title)
 
 
 def create_app(*, enable_lifespan: bool = True) -> FastAPI:
