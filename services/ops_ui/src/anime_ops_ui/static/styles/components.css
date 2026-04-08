@@ -403,24 +403,65 @@ html[data-theme="dark"] .theme-toggle-thumb {
 }
 
 .schedule-poster-card {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-  padding: 8px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--ink) 5%, transparent);
-  box-shadow: inset 0 1px 0 var(--surface-lip);
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
 }
 
 .schedule-poster-media {
-  width: 42px;
-  height: 58px;
-  border-radius: 10px;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  aspect-ratio: 0.72;
+  border-radius: 12px;
   overflow: hidden;
   background: color-mix(in srgb, var(--ink) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  box-shadow: inset 0 1px 0 var(--surface-lip), var(--shadow-soft);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.schedule-poster-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 14% 6% 14%;
+  height: 14%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--teal) 42%, transparent);
+  filter: blur(18px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.schedule-poster-card:hover .schedule-poster-media,
+.schedule-poster-card:focus-visible .schedule-poster-media {
+  transform: translateY(-2px);
+}
+
+.schedule-poster-card.is-library-ready::after {
+  opacity: 0.72;
+}
+
+.schedule-poster-card.is-library-ready .schedule-poster-media {
+  border-color: color-mix(in srgb, var(--teal) 62%, var(--line));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--teal) 30%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--teal) 18%, transparent),
+    0 14px 28px color-mix(in srgb, var(--teal) 20%, transparent);
+  filter: saturate(1.05) brightness(1.02);
+}
+
+.schedule-poster-card:focus-visible .schedule-poster-media {
+  border-color: color-mix(in srgb, var(--teal) 68%, var(--line));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--teal) 36%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--teal) 26%, transparent),
+    0 14px 28px color-mix(in srgb, var(--teal) 16%, transparent);
 }
 
 .schedule-poster-image {
@@ -443,50 +484,92 @@ html[data-theme="dark"] .theme-toggle-thumb {
   letter-spacing: 0.06em;
 }
 
-.schedule-poster-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+.schedule-poster-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  z-index: 6;
+  width: min(240px, calc(100vw - 28px));
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  background: color-mix(in srgb, var(--panel-strong) 96%, var(--ink));
+  box-shadow: 0 14px 28px rgba(4, 10, 18, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 8px);
+  transition: opacity 160ms ease, transform 180ms ease;
 }
 
-.schedule-poster-title {
+.schedule-poster-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(100% - 1px);
+  width: 12px;
+  height: 12px;
+  border-right: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  background: color-mix(in srgb, var(--panel-strong) 96%, var(--ink));
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.schedule-poster-card:hover .schedule-poster-tooltip,
+.schedule-poster-card:focus-visible .schedule-poster-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.schedule-poster-tooltip-title {
+  display: block;
+  margin-bottom: 8px;
+  line-height: 1.35;
+  font-size: 0.86rem;
+}
+
+.schedule-poster-tooltip-meta {
+  display: grid;
+  gap: 6px;
   margin: 0;
-  line-height: 1.25;
-  font-size: 0.85rem;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
 }
 
-.schedule-poster-subtitle {
+.schedule-poster-tooltip-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.schedule-poster-tooltip-row dt {
   color: var(--muted);
   font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
-.schedule-poster-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+.schedule-poster-tooltip-row dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
-.schedule-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 18px;
-  padding: 0 6px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--teal) 25%, var(--line));
-  background: color-mix(in srgb, var(--teal) 12%, transparent);
+.schedule-poster-tooltip-state,
+.schedule-poster-tooltip-note {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.schedule-poster-tooltip-state {
   color: var(--teal);
-  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+}
+
+.schedule-poster-tooltip-note {
+  color: color-mix(in srgb, var(--amber) 72%, var(--ink));
 }
 
 .schedule-collapse-toggle {

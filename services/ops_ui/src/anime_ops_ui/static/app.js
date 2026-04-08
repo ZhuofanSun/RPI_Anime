@@ -55,24 +55,71 @@ function posterInitials(title) {
   return Array.from(normalized).slice(0, 2).join("").toUpperCase();
 }
 
-function scheduleBadgeTemplate(badges) {
-  if (!Array.isArray(badges) || badges.length === 0) {
-    return "";
-  }
+function scheduleTooltipRows(item) {
+  const rows = [
+    ["原题", item?.detail?.title_raw],
+    ["字幕组", item?.detail?.group_name],
+    ["来源", item?.detail?.source],
+    ["字幕", item?.detail?.subtitle],
+    ["画质", item?.detail?.dpi],
+    ["季度", item?.detail?.season_label],
+  ];
+  return rows.filter(([, value]) => Boolean(value));
+}
+
+function scheduleTooltipLabel(item) {
+  const title = item?.title || "Unknown";
+  const rows = scheduleTooltipRows(item);
+  const detailText = rows.map(([label, value]) => `${label} ${value}`).join("，");
+  const libraryText = item?.is_library_ready ? "本周已入库，可播放" : "";
+  const reviewText = item?.detail?.review_reason ? `审校提示 ${item.detail.review_reason}` : "";
+  return [title, detailText, libraryText, reviewText].filter(Boolean).join("，");
+}
+
+function scheduleTooltipTemplate(item) {
+  const title = item?.title || "Unknown";
+  const rows = scheduleTooltipRows(item);
+  const rowsMarkup = rows.length
+    ? `
+      <dl class="schedule-poster-tooltip-meta">
+        ${rows
+          .map(
+            ([label, value]) => `
+              <div class="schedule-poster-tooltip-row">
+                <dt>${escapeHtml(label)}</dt>
+                <dd>${escapeHtml(value || "-")}</dd>
+              </div>
+            `
+          )
+          .join("")}
+      </dl>
+    `
+    : "";
+  const libraryMarkup = item?.is_library_ready
+    ? '<p class="schedule-poster-tooltip-state">本周已入库，可播放</p>'
+    : "";
+  const reviewMarkup = item?.detail?.review_reason
+    ? `<p class="schedule-poster-tooltip-note">审校提示：${escapeHtml(item.detail.review_reason)}</p>`
+    : "";
+
   return `
-    <div class="schedule-poster-badges">
-      ${badges.map((badge) => `<span class="schedule-badge">${escapeHtml(badge || "-")}</span>`).join("")}
+    <div class="schedule-poster-tooltip" role="note">
+      <strong class="schedule-poster-tooltip-title">${escapeHtml(title)}</strong>
+      ${rowsMarkup}
+      ${libraryMarkup}
+      ${reviewMarkup}
     </div>
   `;
 }
 
 function schedulePosterTemplate(item) {
   const title = item?.title || "Unknown";
-  const badgeMarkup = scheduleBadgeTemplate(item?.badges);
-  const subtitle = item?.id != null ? `ID ${item.id}` : "Bangumi";
+  const stateClass = item?.is_library_ready ? " is-library-ready" : "";
+  const tooltipMarkup = scheduleTooltipTemplate(item);
+  const ariaLabel = scheduleTooltipLabel(item) || title;
 
   return `
-    <article class="schedule-poster-card">
+    <article class="schedule-poster-card${stateClass}" tabindex="0" aria-label="${escapeHtml(ariaLabel)}">
       <div class="schedule-poster-media">
         ${
           item?.poster_url
@@ -80,11 +127,7 @@ function schedulePosterTemplate(item) {
             : `<span class="schedule-poster-fallback">${escapeHtml(posterInitials(title))}</span>`
         }
       </div>
-      <div class="schedule-poster-body">
-        <strong class="schedule-poster-title" title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
-        <span class="schedule-poster-subtitle">${escapeHtml(subtitle)}</span>
-        ${badgeMarkup}
-      </div>
+      ${tooltipMarkup}
     </article>
   `;
 }

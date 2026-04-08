@@ -76,7 +76,25 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
         overview_service,
         "build_phase4_schedule_snapshot",
         lambda **kwargs: {
-            "today_focus": {"items": [{"id": 101, "title": "示例番剧", "poster_url": None, "badges": ["DL"]}]},
+            "today_focus": {
+                "items": [
+                    {
+                        "id": 101,
+                        "title": "示例番剧",
+                        "poster_url": None,
+                        "is_library_ready": True,
+                        "detail": {
+                            "title_raw": "Sample Show",
+                            "group_name": "ANi",
+                            "source": "Baha",
+                            "subtitle": "CHT",
+                            "dpi": "1080P",
+                            "season_label": "S01",
+                            "review_reason": None,
+                        },
+                    }
+                ]
+            },
             "weekly_schedule": {
                 "week_key": "2026-W15",
                 "today_weekday": 2,

@@ -1,6 +1,5 @@
 import json
 import inspect
-import sqlite3
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -11,23 +10,37 @@ from anime_ops_ui.services.weekly_schedule_service import (
 )
 
 
-def test_weekly_schedule_groups_items_today_unknown_badges_and_collapse(tmp_path):
+def test_weekly_schedule_groups_items_today_unknown_with_library_highlight_and_tooltip_detail(tmp_path):
     now = datetime(2026, 4, 8, 9, 0, tzinfo=ZoneInfo("America/Toronto"))
     payload = build_weekly_schedule_payload(
         bangumi_items=[
             {
                 "id": 9,
                 "official_title": "尖帽子的魔法工房",
+                "title_raw": "Witch Hat Atelier",
                 "air_weekday": now.weekday(),
                 "poster_link": "posters/5cac94c7.jpg",
                 "needs_review": False,
+                "group_name": "ANi",
+                "source": "Baha",
+                "subtitle": "CHT",
+                "dpi": "1080P",
+                "season": 1,
+                "season_raw": "S01",
             },
             {
                 "id": 11,
                 "official_title": "相反的你和我",
+                "title_raw": "Seihantai na Kimi to Boku",
                 "air_weekday": now.weekday(),
                 "poster_link": "posters/8d4ed23c.jpg",
                 "needs_review": False,
+                "group_name": "喵萌奶茶屋",
+                "source": None,
+                "subtitle": "简日双语",
+                "dpi": "1080P",
+                "season": 1,
+                "season_raw": "",
             },
             {
                 "id": 4,
@@ -35,13 +48,18 @@ def test_weekly_schedule_groups_items_today_unknown_badges_and_collapse(tmp_path
                 "air_weekday": None,
                 "poster_link": "posters/6b0a8a03.jpg",
                 "needs_review": True,
+                "needs_review_reason": "季度偏移待确认",
+                "group_name": "ANi",
+                "source": "Baha",
+                "subtitle": "CHT",
+                "dpi": "1080P",
+                "season": 4,
+                "season_raw": "第四季",
             },
         ],
         base_host="sunzhuofan.local",
         autobangumi_port=7892,
-        downloaded_ids={9},
         library_ids={9},
-        review_ids={9},
         now=now,
         state_root=tmp_path,
         visible_limit=1,
@@ -54,14 +72,25 @@ def test_weekly_schedule_groups_items_today_unknown_badges_and_collapse(tmp_path
     today = payload["days"][now.weekday()]
     assert today["is_today"] is True
     assert today["items"][0]["poster_url"] == "http://sunzhuofan.local:7892/posters/5cac94c7.jpg"
-    assert today["items"][0]["badges"] == ["DL", "LIB", "REVIEW"]
+    assert today["items"][0]["is_library_ready"] is True
+    assert today["items"][0]["detail"] == {
+        "title_raw": "Witch Hat Atelier",
+        "group_name": "ANi",
+        "source": "Baha",
+        "subtitle": "CHT",
+        "dpi": "1080P",
+        "season_label": "S01",
+        "review_reason": None,
+    }
     assert today["has_hidden_items"] is True
     assert today["hidden_items"][0]["title"] == "相反的你和我"
+    assert today["hidden_items"][0]["is_library_ready"] is False
 
     assert payload["unknown"]["label"] == "未知"
     assert payload["unknown"]["hint"] == "拖拽以设置放送日"
     assert payload["unknown"]["items"][0]["title"] == "关于我转生变成史莱姆这档事"
-    assert payload["unknown"]["items"][0]["badges"] == ["REVIEW"]
+    assert payload["unknown"]["items"][0]["is_library_ready"] is False
+    assert payload["unknown"]["items"][0]["detail"]["review_reason"] == "季度偏移待确认"
 
     state = json.loads((tmp_path / "weekly_schedule_state.json").read_text(encoding="utf-8"))
     assert state["week_key"] == payload["week_key"]
@@ -72,9 +101,7 @@ def test_weekly_schedule_rewrites_state_when_iso_week_changes(tmp_path):
         bangumi_items=[],
         base_host="sunzhuofan.local",
         autobangumi_port=7892,
-        downloaded_ids=set(),
         library_ids=set(),
-        review_ids=set(),
         now=datetime(2026, 4, 8, 9, 0, tzinfo=ZoneInfo("America/Toronto")),
         state_root=tmp_path,
     )
@@ -84,9 +111,7 @@ def test_weekly_schedule_rewrites_state_when_iso_week_changes(tmp_path):
         bangumi_items=[],
         base_host="sunzhuofan.local",
         autobangumi_port=7892,
-        downloaded_ids=set(),
         library_ids=set(),
-        review_ids=set(),
         now=datetime(2026, 4, 13, 9, 0, tzinfo=ZoneInfo("America/Toronto")),
         state_root=tmp_path,
     )
@@ -97,19 +122,7 @@ def test_weekly_schedule_rewrites_state_when_iso_week_changes(tmp_path):
     assert second_state["week_key"] == second["week_key"]
 
 
-def test_phase4_snapshot_derives_dl_and_lib_from_sqlite_and_events(tmp_path, monkeypatch):
-    db_root = tmp_path / "appdata" / "autobangumi" / "data"
-    db_root.mkdir(parents=True)
-    db_path = db_root / "data.db"
-    con = sqlite3.connect(db_path)
-    con.execute(
-        "create table torrent (id integer primary key, bangumi_id integer, downloaded boolean not null, qb_hash varchar)"
-    )
-    con.execute("insert into torrent (bangumi_id, downloaded, qb_hash) values (9, 1, 'hash-9')")
-    con.execute("insert into torrent (bangumi_id, downloaded, qb_hash) values (11, 0, 'hash-11')")
-    con.commit()
-    con.close()
-
+def test_phase4_snapshot_derives_library_highlight_from_publish_events(tmp_path, monkeypatch):
     title_map_path = tmp_path / "title_mappings.toml"
     title_map_path.write_text(
         """
@@ -133,6 +146,7 @@ aliases = ["尖帽子的魔法工房"]
                 {
                     "id": 9,
                     "official_title": "尖帽子的魔法工房",
+                    "title_raw": "Witch Hat Atelier",
                     "air_weekday": now.weekday(),
                     "poster_link": "posters/5cac94c7.jpg",
                     "needs_review": False,
@@ -200,7 +214,8 @@ aliases = ["尖帽子的魔法工房"]
 
     today_item = payload["today_focus"]["items"][0]
     assert today_item["id"] == 9
-    assert today_item["badges"] == ["DL", "LIB"]
+    assert today_item["is_library_ready"] is True
+    assert today_item["detail"]["title_raw"] == "Witch Hat Atelier"
 
     all_ids = {
         card["id"]
@@ -256,7 +271,7 @@ def test_phase4_snapshot_counts_lib_from_ops_review_publish_event(tmp_path, monk
 
     today_item = payload["today_focus"]["items"][0]
     assert today_item["id"] == 22
-    assert today_item["badges"] == ["LIB"]
+    assert today_item["is_library_ready"] is True
 
 
 def test_phase4_snapshot_signature_has_no_review_ids_parameter():
@@ -308,7 +323,7 @@ def test_phase4_snapshot_ignores_malformed_needs_review_ids(tmp_path, monkeypatc
     )
 
     assert payload["today_focus"]["items"][0]["id"] == 101
-    assert payload["today_focus"]["items"][0]["badges"] == []
+    assert payload["today_focus"]["items"][0]["is_library_ready"] is False
 
 
 def test_phase4_snapshot_skips_ambiguous_lib_target_matches(tmp_path, monkeypatch):
@@ -364,12 +379,12 @@ def test_phase4_snapshot_skips_ambiguous_lib_target_matches(tmp_path, monkeypatc
         ],
     )
 
-    badges = {
-        item["id"]: item["badges"]
+    library_state = {
+        item["id"]: item["is_library_ready"]
         for item in payload["today_focus"]["items"]
     }
-    assert badges[201] == []
-    assert badges[202] == []
+    assert library_state[201] is False
+    assert library_state[202] is False
 
 
 def test_weekly_schedule_state_write_failure_is_best_effort(tmp_path, monkeypatch):
@@ -392,9 +407,7 @@ def test_weekly_schedule_state_write_failure_is_best_effort(tmp_path, monkeypatc
         ],
         base_host="sunzhuofan.local",
         autobangumi_port=7892,
-        downloaded_ids=set(),
         library_ids=set(),
-        review_ids=set(),
         now=now,
         state_root=tmp_path,
     )

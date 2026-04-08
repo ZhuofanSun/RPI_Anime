@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -41,20 +40,6 @@ def _poster_url(base_host: str, autobangumi_port: int, poster_link: str | None) 
 
 def _autobangumi_db_path(anime_data_root: Path) -> Path:
     return anime_data_root / "appdata" / "autobangumi" / "data" / "data.db"
-
-
-def _read_downloaded_ids_from_autobangumi_db(anime_data_root: Path) -> set[int]:
-    db_path = _autobangumi_db_path(anime_data_root)
-    if not db_path.exists():
-        return set()
-    try:
-        with sqlite3.connect(db_path) as con:
-            rows = con.execute(
-                "select distinct bangumi_id from torrent where downloaded = 1 and bangumi_id is not null"
-            ).fetchall()
-    except sqlite3.Error:
-        return set()
-    return {int(row[0]) for row in rows if row and row[0] is not None}
 
 
 def _safe_int(value: Any) -> int | None:
@@ -168,6 +153,32 @@ def _resolve_target_ids(target: str, title_index: dict[str, set[int]]) -> set[in
     return matched
 
 
+def _season_label(item: dict[str, Any]) -> str | None:
+    raw = str(item.get("season_raw") or "").strip()
+    if raw:
+        return raw
+    season = _safe_int(item.get("season"))
+    if season is None:
+        return None
+    return f"S{season:02d}"
+
+
+def _card_detail(item: dict[str, Any], *, title: str) -> dict[str, str | None]:
+    title_raw = str(item.get("title_raw") or "").strip() or None
+    if title_raw == title:
+        title_raw = None
+
+    return {
+        "title_raw": title_raw,
+        "group_name": str(item.get("group_name") or "").strip() or None,
+        "source": str(item.get("source") or "").strip() or None,
+        "subtitle": str(item.get("subtitle") or "").strip() or None,
+        "dpi": str(item.get("dpi") or "").strip() or None,
+        "season_label": _season_label(item),
+        "review_reason": str(item.get("needs_review_reason") or "").strip() or None,
+    }
+
+
 def _read_postprocessor_publish_events(
     events: list[dict[str, Any]],
     bangumi_items: list[dict[str, Any]],
@@ -229,9 +240,7 @@ def build_weekly_schedule_payload(
     bangumi_items: list[dict[str, Any]],
     base_host: str,
     autobangumi_port: int,
-    downloaded_ids: set[int],
     library_ids: set[int],
-    review_ids: set[int],
     now: datetime,
     state_root: Path,
     visible_limit: int = 4,
@@ -257,19 +266,14 @@ def build_weekly_schedule_payload(
         if bangumi_id is None:
             continue
 
-        badges: list[str] = []
-        if bangumi_id in downloaded_ids:
-            badges.append("DL")
-        if bangumi_id in library_ids:
-            badges.append("LIB")
-        if bangumi_id in review_ids or bool(item.get("needs_review")):
-            badges.append("REVIEW")
+        title = item.get("official_title") or item.get("title_raw") or item.get("title") or "Unknown"
 
         card = {
             "id": bangumi_id,
-            "title": item.get("official_title") or item.get("title_raw") or item.get("title") or "Unknown",
+            "title": title,
             "poster_url": _poster_url(base_host, autobangumi_port, item.get("poster_link")),
-            "badges": badges,
+            "is_library_ready": bangumi_id in library_ids,
+            "detail": _card_detail(item, title=title),
         }
 
         weekday = _safe_int(item.get("air_weekday"))
@@ -330,26 +334,18 @@ def build_phase4_schedule_snapshot(
         if not bool(item.get("deleted")) and not bool(item.get("archived"))
     ]
 
-    downloaded_ids = _read_downloaded_ids_from_autobangumi_db(anime_data_root)
     library_ids = _read_postprocessor_publish_events(
         events,
         bangumi_items,
         _week_key(now),
         now=now,
     )
-    merged_review_ids = {
-        review_id
-        for item in bangumi_items
-        if bool(item.get("needs_review")) and (review_id := _safe_int(item.get("id"))) is not None
-    }
 
     schedule = build_weekly_schedule_payload(
         bangumi_items=bangumi_items,
         base_host=base_host,
         autobangumi_port=autobangumi_port,
-        downloaded_ids=downloaded_ids,
         library_ids=library_ids,
-        review_ids=merged_review_ids,
         now=now,
         state_root=state_root,
         visible_limit=visible_limit,

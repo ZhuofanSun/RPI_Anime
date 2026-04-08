@@ -41,13 +41,24 @@ def _schedule_item(
     item_id: int,
     title: str,
     poster_url: str | None,
-    badges: list[str] | None = None,
+    is_library_ready: bool = False,
+    detail: dict | None = None,
 ) -> dict:
     return {
         "id": item_id,
         "title": title,
         "poster_url": poster_url,
-        "badges": badges or [],
+        "is_library_ready": is_library_ready,
+        "detail": detail
+        or {
+            "title_raw": None,
+            "group_name": None,
+            "source": None,
+            "subtitle": None,
+            "dpi": None,
+            "season_label": None,
+            "review_reason": None,
+        },
     }
 
 
@@ -330,8 +341,24 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
         "weekday": 2,
         "label": "三",
         "is_today": True,
-        "items": [_schedule_item(item_id=101, title="示例番剧", poster_url=None, badges=["DL"])],
-        "hidden_items": [_schedule_item(item_id=102, title="隐藏番剧", poster_url="http://ops.local:7892/posters/102.jpg", badges=["LIB"])],
+        "items": [_schedule_item(item_id=101, title="示例番剧", poster_url=None)],
+        "hidden_items": [
+            _schedule_item(
+                item_id=102,
+                title="隐藏番剧",
+                poster_url="http://ops.local:7892/posters/102.jpg",
+                is_library_ready=True,
+                detail={
+                    "title_raw": "Hidden Show",
+                    "group_name": "ANi",
+                    "source": "Baha",
+                    "subtitle": "CHT",
+                    "dpi": "1080P",
+                    "season_label": "S01",
+                    "review_reason": None,
+                },
+            )
+        ],
         "has_hidden_items": True,
     }
     captured_phase4_kwargs: dict[str, object] = {}
@@ -339,7 +366,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     def fake_phase4_snapshot(**kwargs):
         captured_phase4_kwargs.update(kwargs)
         return {
-            "today_focus": {"items": [{"id": 101, "title": "示例番剧", "poster_url": None, "badges": ["DL"]}]},
+            "today_focus": {"items": [_schedule_item(item_id=101, title="示例番剧", poster_url=None)]},
             "weekly_schedule": {
                 "week_key": "2026-W15",
                 "today_weekday": 2,
@@ -347,7 +374,22 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
                 "unknown": {
                     "label": "未知",
                     "hint": "拖拽以设置放送日",
-                    "items": [_schedule_item(item_id=201, title="未知排期", poster_url=None, badges=["REVIEW"])],
+                    "items": [
+                        _schedule_item(
+                            item_id=201,
+                            title="未知排期",
+                            poster_url=None,
+                            detail={
+                                "title_raw": "Unknown Show",
+                                "group_name": "喵萌奶茶屋",
+                                "source": None,
+                                "subtitle": "简日双语",
+                                "dpi": "1080P",
+                                "season_label": "S01",
+                                "review_reason": "季度偏移待确认",
+                            },
+                        )
+                    ],
                     "hidden_items": [_schedule_item(item_id=202, title="未知隐藏", poster_url="http://ops.local:7892/posters/202.jpg")],
                     "has_hidden_items": True,
                 },
@@ -404,22 +446,29 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert {"label", "value", "detail", "chart_kind"}.issubset(payload["trend_cards"][0].keys())
     assert isinstance(payload["service_rows"], list) and payload["service_rows"]
     assert isinstance(payload["stack_control"], dict)
-    assert payload["today_focus"]["items"][0]["badges"] == ["DL"]
+    assert payload["today_focus"]["items"][0]["is_library_ready"] is False
     assert captured_phase4_kwargs["autobangumi_base_url"] == "http://autobangumi:7892"
 
     today_focus_item = payload["today_focus"]["items"][0]
-    assert {"id", "title", "poster_url", "badges"}.issubset(today_focus_item.keys())
+    assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(today_focus_item.keys())
+    assert {"title_raw", "group_name", "source", "subtitle", "dpi", "season_label", "review_reason"}.issubset(
+        today_focus_item["detail"].keys()
+    )
 
     assert len(payload["weekly_schedule"]["days"]) == 7
     today_day = next(day for day in payload["weekly_schedule"]["days"] if day["weekday"] == 2)
     assert {"weekday", "label", "items", "hidden_items", "has_hidden_items"}.issubset(today_day.keys())
-    assert {"id", "title", "poster_url", "badges"}.issubset(today_day["items"][0].keys())
-    assert {"id", "title", "poster_url", "badges"}.issubset(today_day["hidden_items"][0].keys())
+    assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(today_day["items"][0].keys())
+    assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(today_day["hidden_items"][0].keys())
 
     assert payload["weekly_schedule"]["unknown"]["label"] == "未知"
     assert {"label", "hint", "items", "hidden_items", "has_hidden_items"}.issubset(payload["weekly_schedule"]["unknown"].keys())
-    assert {"id", "title", "poster_url", "badges"}.issubset(payload["weekly_schedule"]["unknown"]["items"][0].keys())
-    assert {"id", "title", "poster_url", "badges"}.issubset(payload["weekly_schedule"]["unknown"]["hidden_items"][0].keys())
+    assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(
+        payload["weekly_schedule"]["unknown"]["items"][0].keys()
+    )
+    assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(
+        payload["weekly_schedule"]["unknown"]["hidden_items"][0].keys()
+    )
 
 
 def test_overview_app_script_schedule_contract_reads_nested_fields_and_caps_unknown_bucket():
@@ -427,7 +476,14 @@ def test_overview_app_script_schedule_contract_reads_nested_fields_and_caps_unkn
 
     assert "item?.title" in script
     assert "item?.poster_url" in script
-    assert "item?.badges" in script
+    assert "item?.is_library_ready" in script
+    assert "item?.detail?.title_raw" in script
+    assert "item?.detail?.group_name" in script
+    assert "item?.detail?.source" in script
+    assert "item?.detail?.subtitle" in script
+    assert "item?.detail?.dpi" in script
+    assert "item?.detail?.season_label" in script
+    assert "item?.detail?.review_reason" in script
     assert "day?.weekday" in script
     assert "day?.label" in script
     assert "day?.items" in script
@@ -441,6 +497,8 @@ def test_overview_app_script_schedule_contract_reads_nested_fields_and_caps_unkn
     assert "UNKNOWN_VISIBLE_LIMIT" in script
     assert ".slice(0, UNKNOWN_VISIBLE_LIMIT)" in script
     assert ".slice(UNKNOWN_VISIBLE_LIMIT)" in script
+    assert "item?.badges" not in script
+    assert "ID ${item.id}" not in script
 
 
 def test_overview_payload_logs_count_uses_uncapped_events_while_phase4_uses_limited_events(monkeypatch):
