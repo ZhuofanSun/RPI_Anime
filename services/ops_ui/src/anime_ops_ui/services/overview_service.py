@@ -5,6 +5,7 @@ from typing import Any
 
 from anime_ops_ui.copy import text
 from anime_ops_ui.page_context import build_page_context
+from anime_ops_ui.services.dashboard_sections import build_dashboard_hero, build_service_rows, build_summary_strip
 
 
 def build_service_summary(*, containers: dict[str, dict[str, Any]], tailscale_running: bool) -> dict[str, Any]:
@@ -118,6 +119,8 @@ def build_overview_payload() -> dict[str, Any]:
             else f"last update {int(fan_state_age_s)}s ago"
         )
 
+    service_summary_card = build_service_summary(containers=containers, tailscale_running=tailscaled_online)
+
     system_cards = [
         {
             "label": "CPU Usage",
@@ -139,7 +142,7 @@ def build_overview_payload() -> dict[str, Any]:
             "value": host_uptime,
             "detail": f"load {load_detail}",
         },
-        build_service_summary(containers=containers, tailscale_running=tailscaled_online),
+        service_summary_card,
         {
             "label": "Anime Data",
             "value": main_module._format_percent(disk.get("percent")),
@@ -289,6 +292,121 @@ def build_overview_payload() -> dict[str, Any]:
             }
         )
 
+    services = [
+        {
+            "id": "jellyfin",
+            "name": "Jellyfin",
+            "href": main_module._service_link(base_host, int(main_module._env("JELLYFIN_PORT", "8096"))),
+            "description": "私人影音库与播放入口",
+            "status": containers.get("jellyfin", {}).get("status", "unknown"),
+            "meta": "Media server",
+            "uptime": containers.get("jellyfin", {}).get("uptime") if isinstance(containers.get("jellyfin", {}), dict) else None,
+            "restart_target": "jellyfin",
+            "restart_label": "Restart",
+        },
+        {
+            "id": "qbittorrent",
+            "name": "qBittorrent",
+            "href": main_module._service_link(base_host, int(main_module._env("QBITTORRENT_WEBUI_PORT", "8080"))),
+            "description": "下载、任务队列和分类",
+            "status": containers.get("qbittorrent", {}).get("status", "unknown"),
+            "meta": "Download client",
+            "uptime": containers.get("qbittorrent", {}).get("uptime") if isinstance(containers.get("qbittorrent", {}), dict) else None,
+            "restart_target": "qbittorrent",
+            "restart_label": "Restart",
+        },
+        {
+            "id": "autobangumi",
+            "name": "AutoBangumi",
+            "href": main_module._service_link(base_host, int(main_module._env("AUTOBANGUMI_PORT", "7892"))),
+            "description": "RSS 订阅与自动下载规则",
+            "status": containers.get("autobangumi", {}).get("status", "unknown"),
+            "meta": "Subscription",
+            "uptime": containers.get("autobangumi", {}).get("uptime") if isinstance(containers.get("autobangumi", {}), dict) else None,
+            "restart_target": "autobangumi",
+            "restart_label": "Restart",
+        },
+        {
+            "id": "glances",
+            "name": "Glances",
+            "href": main_module._service_link(base_host, int(main_module._env("GLANCES_PORT", "61208"))),
+            "description": "系统、容器和进程监控",
+            "status": containers.get("glances", {}).get("status", "unknown"),
+            "meta": "System monitor",
+            "uptime": containers.get("glances", {}).get("uptime") if isinstance(containers.get("glances", {}), dict) else None,
+            "restart_target": "glances",
+            "restart_label": "Restart",
+        },
+        {
+            "id": "postprocessor",
+            "name": "Postprocessor",
+            "href": f"{main_module._service_link(base_host, int(main_module._env('HOMEPAGE_PORT', '3000')))} /postprocessor".replace(" ", ""),
+            "description": "下载完成后的选优、发布和 NFO 生成",
+            "status": containers.get("anime-postprocessor", {}).get("status", "unknown"),
+            "meta": "Background worker",
+            "uptime": containers.get("anime-postprocessor", {}).get("uptime") if isinstance(containers.get("anime-postprocessor", {}), dict) else None,
+            "internal": True,
+            "restart_target": "postprocessor",
+            "restart_label": "Restart",
+        },
+        {
+            "id": "ops-review",
+            "name": "Ops Review",
+            "href": f"{main_module._service_link(base_host, int(main_module._env('HOMEPAGE_PORT', '3000')))}/ops-review",
+            "description": "人工审核队列与文件处理",
+            "status": "online",
+            "meta": f"{manual_review_count} files" if manual_review_count is not None else "数据盘未挂载",
+            "uptime": "审核工作台",
+            "internal": True,
+            "restart_target": "homepage",
+            "restart_label": "Restart UI",
+            "restart_requires_reload": True,
+            "restart_name": "Ops UI",
+        },
+        {
+            "id": "logs",
+            "name": "Logs",
+            "href": f"{main_module._service_link(base_host, int(main_module._env('HOMEPAGE_PORT', '3000')))} /logs".replace(" ", ""),
+            "description": "结构化日志、来源筛选和清理",
+            "status": "online",
+            "meta": f"{log_count} events",
+            "uptime": f"上限 {main_module.event_log_cap()} 条",
+            "internal": True,
+            "restart_target": "homepage",
+            "restart_label": "Restart UI",
+            "restart_requires_reload": True,
+            "restart_name": "Ops UI",
+        },
+        {
+            "id": "tailscale",
+            "name": "Tailscale",
+            "href": f"{main_module._service_link(base_host, int(main_module._env('HOMEPAGE_PORT', '3000')))} /tailscale".replace(" ", ""),
+            "description": "本地 tailnet 状态与远程访问链路",
+            "status": "online" if tailscaled_online and tailscale_self.get("Online") else "offline",
+            "meta": main_module._tailscale_ip_pair(tailscale_self.get("TailscaleIPs") if tailscale_self else None)[0],
+            "uptime": main_module._strip_trailing_dot(tailscale_self.get("DNSName")) if tailscale_self else None,
+            "internal": True,
+            "restart_target": "tailscale",
+            "restart_label": "Restart",
+        },
+    ]
+    active_downloads = int((qb or {}).get("active_downloads", 0) or 0)
+    review_count = int(manual_review_count or 0)
+    hero = build_dashboard_hero(
+        title=text("site.title"),
+        active_downloads=active_downloads,
+        review_count=review_count,
+        diagnostics=diagnostics,
+        tailnet_online=bool(tailscale_self.get("Online")),
+        host=base_host,
+    )
+    summary_strip = build_summary_strip(
+        active_downloads=active_downloads,
+        review_count=review_count,
+        diagnostics=diagnostics,
+    )
+    service_rows = build_service_rows(services=services)
+    pipeline_cards = queue_cards
     page_context = build_page_context("dashboard", "Dashboard")
 
     return {
@@ -297,119 +415,27 @@ def build_overview_payload() -> dict[str, Any]:
         "subtitle": text("site.subtitle"),
         "host": base_host,
         "refresh_interval_seconds": main_module._refresh_interval_seconds(),
-        "services": [
-            {
-                "id": "jellyfin",
-                "name": "Jellyfin",
-                "href": main_module._service_link(base_host, int(main_module._env("JELLYFIN_PORT", "8096"))),
-                "description": "私人影音库与播放入口",
-                "status": containers.get("jellyfin", {}).get("status", "unknown"),
-                "meta": "Media server",
-                "uptime": containers.get("jellyfin", {}).get("uptime") if isinstance(containers.get("jellyfin", {}), dict) else None,
-                "restart_target": "jellyfin",
-                "restart_label": "Restart",
-            },
-            {
-                "id": "qbittorrent",
-                "name": "qBittorrent",
-                "href": main_module._service_link(base_host, int(main_module._env("QBITTORRENT_WEBUI_PORT", "8080"))),
-                "description": "下载、任务队列和分类",
-                "status": containers.get("qbittorrent", {}).get("status", "unknown"),
-                "meta": "Download client",
-                "uptime": containers.get("qbittorrent", {}).get("uptime") if isinstance(containers.get("qbittorrent", {}), dict) else None,
-                "restart_target": "qbittorrent",
-                "restart_label": "Restart",
-            },
-            {
-                "id": "autobangumi",
-                "name": "AutoBangumi",
-                "href": main_module._service_link(base_host, int(main_module._env("AUTOBANGUMI_PORT", "7892"))),
-                "description": "RSS 订阅与自动下载规则",
-                "status": containers.get("autobangumi", {}).get("status", "unknown"),
-                "meta": "Subscription",
-                "uptime": containers.get("autobangumi", {}).get("uptime") if isinstance(containers.get("autobangumi", {}), dict) else None,
-                "restart_target": "autobangumi",
-                "restart_label": "Restart",
-            },
-            {
-                "id": "glances",
-                "name": "Glances",
-                "href": main_module._service_link(base_host, int(main_module._env("GLANCES_PORT", "61208"))),
-                "description": "系统、容器和进程监控",
-                "status": containers.get("glances", {}).get("status", "unknown"),
-                "meta": "System monitor",
-                "uptime": containers.get("glances", {}).get("uptime") if isinstance(containers.get("glances", {}), dict) else None,
-                "restart_target": "glances",
-                "restart_label": "Restart",
-            },
-            {
-                "id": "postprocessor",
-                "name": "Postprocessor",
-                "href": f"{main_module._service_link(base_host, int(main_module._env('HOMEPAGE_PORT', '3000')))} /postprocessor".replace(" ", ""),
-                "description": "下载完成后的选优、发布和 NFO 生成",
-                "status": containers.get("anime-postprocessor", {}).get("status", "unknown"),
-                "meta": "Background worker",
-                "uptime": containers.get("anime-postprocessor", {}).get("uptime") if isinstance(containers.get("anime-postprocessor", {}), dict) else None,
-                "internal": True,
-                "restart_target": "postprocessor",
-                "restart_label": "Restart",
-            },
-            {
-                "id": "ops-review",
-                "name": "Ops Review",
-                "href": f"{main_module._service_link(base_host, int(main_module._env('HOMEPAGE_PORT', '3000')))}/ops-review",
-                "description": "人工审核队列与文件处理",
-                "status": "online",
-                "meta": f"{manual_review_count} files" if manual_review_count is not None else "数据盘未挂载",
-                "uptime": "审核工作台",
-                "internal": True,
-                "restart_target": "homepage",
-                "restart_label": "Restart UI",
-                "restart_requires_reload": True,
-                "restart_name": "Ops UI",
-            },
-            {
-                "id": "logs",
-                "name": "Logs",
-                "href": f"{main_module._service_link(base_host, int(main_module._env('HOMEPAGE_PORT', '3000')))} /logs".replace(" ", ""),
-                "description": "结构化日志、来源筛选和清理",
-                "status": "online",
-                "meta": f"{log_count} events",
-                "uptime": f"上限 {main_module.event_log_cap()} 条",
-                "internal": True,
-                "restart_target": "homepage",
-                "restart_label": "Restart UI",
-                "restart_requires_reload": True,
-                "restart_name": "Ops UI",
-            },
-            {
-                "id": "tailscale",
-                "name": "Tailscale",
-                "href": f"{main_module._service_link(base_host, int(main_module._env('HOMEPAGE_PORT', '3000')))} /tailscale".replace(" ", ""),
-                "description": "本地 tailnet 状态与远程访问链路",
-                "status": "online" if tailscaled_online and tailscale_self.get("Online") else "offline",
-                "meta": main_module._tailscale_ip_pair(tailscale_self.get("TailscaleIPs") if tailscale_self else None)[0],
-                "uptime": main_module._strip_trailing_dot(tailscale_self.get("DNSName")) if tailscale_self else None,
-                "internal": True,
-                "restart_target": "tailscale",
-                "restart_label": "Restart",
-            },
-        ],
+        "hero": hero,
+        "summary_strip": summary_strip,
+        "pipeline_cards": pipeline_cards,
         "system_cards": system_cards,
-        "queue_cards": queue_cards,
-        "trend_cards": trend_cards,
         "network_cards": network_cards,
+        "trend_cards": trend_cards,
+        "service_rows": service_rows,
         "stack_control": {
             "label": "Restart Stack",
             "detail": "compose only · homepage last",
         },
+        "diagnostics": diagnostics,
+        "last_updated": datetime.now().isoformat(timespec="seconds"),
+        # Phase 2 compatibility keys retained until Task 4 consumes sectioned payload.
+        "services": services,
+        "queue_cards": queue_cards,
         "generated_from": {
             "glances": glances_base,
             "tailscale_socket": tailscale_socket,
             "history_file": str(main_module._history_file()),
         },
-        "diagnostics": diagnostics,
-        "last_updated": datetime.now().isoformat(timespec="seconds"),
     }
 
 

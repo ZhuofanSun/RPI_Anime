@@ -29,16 +29,21 @@
 
 ## 前端结构
 
-`ops-ui` 当前已经整理成四层：
+`ops-ui` 当前按 Phase 3 拆成四层，shell 和各页面契约分离：
 
-- `FastAPI` 路由与页面装配：
-  负责 API、页面路由和共享页面上下文
-- `services/*` 后端聚合层：
-  负责把 `Logs`、`Ops Review`、`Postprocessor`、`Tailscale` 和首页概览的聚合逻辑从路由层剥离出来
-- `Jinja` 共享 shell：
-  内部工作页共用一套页面骨架、导航和主题入口
-- `static/` 前端层：
-  `core.js` 提供共享 bootstrap、缓存和查询参数工具；页面脚本只处理自己的数据请求与渲染；样式拆成 `tokens / base / layout / components / pages`
+- `FastAPI` 路由与页面装配（`main.py`）：
+  负责 API 和页面路由；共享页面上下文由 `page_context.py` 生成
+- 导航元数据与链接定义（`navigation.py`）：
+  内部页面、外部服务和基础元信息统一在这里维护
+- `services/*` 页面契约层：
+  `navigation_state_service.py` 负责左侧导航 badge / tone / 外链目标；
+  `overview_service.py` + `dashboard_sections.py` 负责首页 Control Surface；
+  `log_service.py` / `review_service.py` / `postprocessor_service.py` / `tailscale_service.py` 负责对应页面 payload
+- `templates/*` + `static/*` 前端层：
+  `base.html` + `shell.js` 提供共享 shell 与左侧导航；
+  `dashboard.html` + `app.js` 负责首页；
+  `logs.html`/`ops_review*.html`/`postprocessor.html`/`tailscale.html` 与对应页面脚本分别负责各工作页；
+  样式拆分保持 `tokens / base / layout / components / pages`
 
 后续大改方向以 spec 和 plan 为准。
 
@@ -111,9 +116,9 @@ flowchart LR
 ```text
 .
 ├── deploy
-│   ├── .env.example
 │   ├── compose.yaml
 │   ├── fan_control.toml
+│   ├── homepage
 │   ├── systemd
 │   └── title_mappings.toml
 ├── docs
@@ -137,19 +142,45 @@ flowchart LR
     ├── ops_ui
     │   └── src
     │       └── anime_ops_ui
+    │           ├── main.py
+    │           ├── page_context.py
+    │           ├── navigation.py
     │           ├── services
+    │           │   ├── log_service.py
+    │           │   ├── navigation_state_service.py
+    │           │   ├── overview_service.py
+    │           │   ├── postprocessor_service.py
+    │           │   ├── review_service.py
+    │           │   ├── tailscale_service.py
+    │           │   └── dashboard_sections.py
     │           ├── static
+    │           │   ├── app.js
     │           │   ├── core.js
+    │           │   ├── logs.js
+    │           │   ├── ops-review.js
+    │           │   ├── ops-review-item.js
+    │           │   ├── postprocessor.js
+    │           │   ├── tailscale.js
+    │           │   ├── shell.js
     │           │   ├── theme.js
     │           │   ├── styles.css
     │           │   └── styles
     │           └── templates
+    │               ├── base.html
+    │               ├── dashboard.html
+    │               ├── logs.html
+    │               ├── ops_review.html
+    │               ├── ops_review_item.html
+    │               ├── postprocessor.html
+    │               └── tailscale.html
     └── postprocessor
 ```
 
 ## 访问入口
 
-`ops-ui` 会按你当前打开页面的地址生成入口链接，所以无论你是从 `.local`、Tailscale IP 还是 MagicDNS 访问首页，外部服务按钮都会跳到同一条访问链路。
+首页 Service Console 卡片链接会按当前浏览器地址重写 host/协议，便于在 `.local`、Tailscale IP 或 MagicDNS 下直接复用当前访问链路。
+
+左侧共享 shell 的外部服务链接由 `HOMEPAGE_BASE_HOST`（未配置时回退主机名）生成，不保证与当前地址逐字一致。
 
 默认端口如下：
 
@@ -183,10 +214,10 @@ flowchart LR
 
 ### 2. 本地准备配置
 
-在本地仓库里复制环境文件：
+在本地仓库里创建环境文件：
 
 ```bash
-cp deploy/.env.example deploy/.env
+touch deploy/.env
 ```
 
 至少先改这些值：

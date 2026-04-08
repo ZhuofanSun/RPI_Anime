@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 import re
 
+import pytest
+
 from anime_ops_ui import main as main_module
+from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES
 from anime_ops_ui.services.log_service import build_logs_payload
+from anime_ops_ui.services.navigation_state_service import build_navigation_state
+from anime_ops_ui.services.overview_service import build_overview_payload
 from anime_ops_ui.services.postprocessor_service import build_postprocessor_payload
 from anime_ops_ui.services.review_service import build_manual_review_payload
 from anime_ops_ui.services.review_service import build_manual_review_item_payload
@@ -15,11 +24,13 @@ def _script_text(name: str) -> str:
     return (main_module.APP_DIR / "static" / name).read_text(encoding="utf-8")
 
 
-def _payload_paths(name: str) -> set[str]:
+def _contract_paths(name: str, *, root_var: str = "payload") -> set[str]:
     normalized_paths = set()
     ignored_suffixes = {"length", "map"}
-    for match in re.findall(r"payload(?:\.[A-Za-z_][A-Za-z0-9_]*)+", _script_text(name)):
-        path = match.removeprefix("payload.")
+    pattern = rf"{re.escape(root_var)}((?:\??\.[A-Za-z_][A-Za-z0-9_]*)+)"
+    for path_suffix in re.findall(pattern, _script_text(name)):
+        normalized = path_suffix.replace("?.", ".")
+        path = normalized.removeprefix(".")
         segments = path.split(".")
         if segments[-1] in ignored_suffixes:
             segments = segments[:-1]
@@ -40,12 +51,13 @@ def _assert_payload_matches_page_contract(
     *,
     payload: dict,
     script_name: str,
+    root_var: str = "payload",
     ignored_paths: set[str] | None = None,
 ) -> None:
     ignored = ignored_paths or set()
     missing = sorted(
         path
-        for path in _payload_paths(script_name)
+        for path in _contract_paths(script_name, root_var=root_var)
         if path not in ignored and not _payload_has_path(payload, path)
     )
     assert missing == []
@@ -191,8 +203,369 @@ def test_postprocessor_payload_matches_page_contract(monkeypatch, tmp_path):
     _assert_payload_matches_page_contract(payload=payload, script_name="postprocessor.js")
 
 
+def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp_path):
+    data_root = tmp_path / "anime-data"
+    collection_root = tmp_path / "anime-collection"
+    data_root.mkdir()
+    collection_root.mkdir()
+    (data_root / "library" / "seasonal").mkdir(parents=True)
+    (data_root / "downloads" / "Bangumi").mkdir(parents=True)
+    (data_root / "processing" / "manual_review").mkdir(parents=True)
+
+    containers = [
+        {"name": "jellyfin", "status": "running", "uptime": "1h"},
+        {"name": "qbittorrent", "status": "running", "uptime": "1h"},
+        {"name": "autobangumi", "status": "exited", "uptime": "1h"},
+        {"name": "glances", "status": "running", "uptime": "1h"},
+        {"name": "anime-postprocessor", "status": "running", "uptime": "1h"},
+        {"name": "homepage", "status": "running", "uptime": "1h"},
+    ]
+
+    def fake_get_json(url: str, *, timeout: int = 5):
+        if url.endswith("/quicklook"):
+            return {"cpu": 12, "cpu_name": "Raspberry Pi 4"}, None
+        if url.endswith("/containers"):
+            return containers, None
+        if url.endswith("/mem"):
+            return {"percent": 45, "available": 1024}, None
+        if url.endswith("/uptime"):
+            return "25:10:00", None
+        if url.endswith("/load"):
+            return {"min1": 0.4, "min5": 0.5, "min15": 0.6}, None
+        if url.endswith("/sensors"):
+            return [{"value": 50.0}], None
+        return None, "unexpected"
+
+    monkeypatch.setattr(
+        main_module,
+        "_env",
+        lambda name, default: {
+            "ANIME_DATA_ROOT": str(data_root),
+            "ANIME_COLLECTION_ROOT": str(collection_root),
+            "HOMEPAGE_BASE_HOST": "ops.local",
+            "TAILSCALE_SOCKET": "/var/run/tailscale/tailscaled.sock",
+        }.get(name, default),
+    )
+    monkeypatch.setattr(main_module, "_sample_history_once", lambda: None)
+    monkeypatch.setattr(main_module, "_safe_get_json", fake_get_json)
+    monkeypatch.setattr(
+        main_module,
+        "_tailscale_status",
+        lambda socket_path: (
+            {
+                "BackendState": "Running",
+                "Self": {
+                    "HostName": "sunzhuofan",
+                    "DNSName": "rpi.tail9ac25e.ts.net.",
+                    "Online": True,
+                    "TailscaleIPs": ["100.123.232.73", "fd7a:115c:a1e0::1"],
+                },
+                "Peer": {},
+            },
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_qb_snapshot",
+        lambda: (
+            {
+                "category": "Bangumi",
+                "task_count": 3,
+                "active_downloads": 1,
+                "active_seeds": 2,
+                "download_speed": 2048,
+                "upload_speed": 1024,
+            },
+            None,
+        ),
+    )
+    monkeypatch.setattr(main_module, "_fan_state_snapshot", lambda: ({"updated_ts": 0.0}, None))
+    monkeypatch.setattr(main_module, "_series_window_hours", lambda: 24)
+    monkeypatch.setattr(main_module, "_upload_window_days", lambda: 7)
+    monkeypatch.setattr(main_module, "_series_values", lambda name, window_hours: ([10.0, 20.0], [10.0, 20.0]))
+    monkeypatch.setattr(
+        main_module,
+        "_daily_volume_bars",
+        lambda *, days, daily_key: ([{"label": "04-07", "value": 1024, "value_label": "1.0 KB"}], [1024.0]),
+    )
+    monkeypatch.setattr(main_module, "_count_media_files", lambda root: 0)
+    monkeypatch.setattr(main_module, "_count_series_dirs", lambda root: 0)
+    monkeypatch.setattr(main_module, "_history_file", lambda: tmp_path / "history.json")
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+
+    payload = build_overview_payload()
+    app_contract_paths = _contract_paths("app.js", root_var="data")
+
+    assert {
+        "hero.title",
+        "hero.summary",
+        "hero.status_tone",
+        "hero.status_label",
+        "hero.host",
+        "summary_strip",
+        "service_rows",
+        "pipeline_cards",
+        "system_cards",
+        "network_cards",
+        "trend_cards",
+        "diagnostics",
+    }.issubset(app_contract_paths)
+    assert "services" not in app_contract_paths
+    assert "queue_cards" not in app_contract_paths
+    assert "title" not in app_contract_paths
+    assert "subtitle" not in app_contract_paths
+    assert "host" not in app_contract_paths
+
+    _assert_payload_matches_page_contract(
+        payload=payload,
+        script_name="app.js",
+        root_var="data",
+    )
+    assert isinstance(payload["hero"], dict)
+    assert {"eyebrow", "title", "summary", "status_tone", "status_label", "host"}.issubset(payload["hero"].keys())
+    assert isinstance(payload["summary_strip"], list) and payload["summary_strip"]
+    assert {"question", "answer", "tone"}.issubset(payload["summary_strip"][0].keys())
+    assert isinstance(payload["pipeline_cards"], list) and payload["pipeline_cards"]
+    assert {"label", "value", "detail"}.issubset(payload["pipeline_cards"][0].keys())
+    assert isinstance(payload["trend_cards"], list) and payload["trend_cards"]
+    assert {"label", "value", "detail", "chart_kind"}.issubset(payload["trend_cards"][0].keys())
+    assert isinstance(payload["service_rows"], list) and payload["service_rows"]
+    service = payload["service_rows"][0]
+    assert {
+        "id",
+        "name",
+        "href",
+        "status",
+        "meta",
+        "uptime",
+        "internal",
+        "restart_target",
+        "restart_label",
+    }.issubset(service.keys())
+    internal_service = next(item for item in payload["service_rows"] if item["id"] == "ops-review")
+    assert {"restart_requires_reload", "restart_name"}.issubset(internal_service.keys())
+
+
 def test_logs_page_uses_flash_helpers_with_logs_container():
     script = _script_text("logs.js")
 
     assert re.search(r"setFlash\(\s*logsFlash\s*,", script)
     assert re.search(r"clearFlash\(\s*logsFlash\s*\)", script)
+
+
+def test_shell_script_preserves_active_state_by_page_key():
+    script = _script_text("shell.js")
+
+    assert "body.dataset.page" in script
+    assert 'item.id === pageKey' in script
+
+
+def test_shell_script_nav_toggle_controls_real_region_visibility():
+    script = _script_text("shell.js")
+
+    assert "aria-controls" in script
+    assert ".hidden =" in script
+
+
+def test_shell_script_normalizes_external_links_to_browser_origin():
+    if shutil.which("node") is None:
+        pytest.skip("node is required for shell.js runtime contract coverage")
+
+    script = _script_text("shell.js")
+    payload = {
+        "internal": [],
+        "external": [
+            {
+                "id": "jellyfin",
+                "target": "external",
+                "href": "http://ops.local:8096",
+            },
+            {
+                "id": "qbittorrent",
+                "target": "external",
+                "href": "http://ops.local:8080/library?x=1#frag",
+            },
+        ],
+    }
+    runner = """
+const vm = require("node:vm");
+const script = process.env.SHELL_SCRIPT;
+const payload = JSON.parse(process.env.SHELL_PAYLOAD);
+
+function makeClassList(initial = []) {
+  const classes = new Set(initial);
+  return {
+    add(...names) {
+      for (const name of names) classes.add(name);
+    },
+    remove(...names) {
+      for (const name of names) classes.delete(name);
+    },
+    toggle(name, force) {
+      if (force === true) {
+        classes.add(name);
+        return true;
+      }
+      if (force === false) {
+        classes.delete(name);
+        return false;
+      }
+      if (classes.has(name)) {
+        classes.delete(name);
+        return false;
+      }
+      classes.add(name);
+      return true;
+    },
+    contains(name) {
+      return classes.has(name);
+    },
+    [Symbol.iterator]() {
+      return classes.values();
+    },
+  };
+}
+
+function makeLink(id) {
+  let href = `http://fallback.invalid/${id}`;
+  const attributes = {};
+  return {
+    dataset: { navItem: id },
+    classList: makeClassList(["nav-link"]),
+    querySelector() {
+      return null;
+    },
+    removeAttribute(name) {
+      delete attributes[name];
+    },
+    setAttribute(name, value) {
+      attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return attributes[name] ?? null;
+    },
+    get href() {
+      return href;
+    },
+    set href(value) {
+      href = String(value);
+    },
+  };
+}
+
+const links = {
+  jellyfin: makeLink("jellyfin"),
+  qbittorrent: makeLink("qbittorrent"),
+};
+
+const context = {
+  console,
+  document: {
+    body: {
+      dataset: {
+        navigationApiPath: "/api/navigation",
+        page: "dashboard",
+      },
+    },
+    querySelector(selector) {
+      if (selector === '[data-shell-nav="external"]') {
+        return {
+          querySelectorAll() {
+            return Object.values(links);
+          },
+        };
+      }
+      if (selector === '[data-nav-toggle]') {
+        return null;
+      }
+      return null;
+    },
+    getElementById() {
+      return null;
+    },
+  },
+  fetch: async () => ({
+    ok: true,
+    json: async () => payload,
+  }),
+  setTimeout,
+  clearTimeout,
+  URL,
+  window: {
+    location: {
+      href: "https://tail.example.ts.net:3000/",
+    },
+    setTimeout,
+    clearTimeout,
+  },
+};
+
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(script, context);
+
+setImmediate(() => {
+  process.stdout.write(
+    JSON.stringify(Object.values(links).map((link) => link.href))
+  );
+});
+"""
+    env = os.environ.copy()
+    env["SHELL_SCRIPT"] = script
+    env["SHELL_PAYLOAD"] = json.dumps(payload)
+
+    result = subprocess.run(
+        ["node", "-e", runner],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    hrefs = json.loads(result.stdout)
+    assert hrefs == [
+        "https://tail.example.ts.net:8096/",
+        "https://tail.example.ts.net:8080/library?x=1#frag",
+    ]
+
+
+def test_navigation_state_payload_matches_shell_contract(monkeypatch, tmp_path):
+    review_root = tmp_path / "manual_review"
+    review_root.mkdir(parents=True)
+
+    monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
+    monkeypatch.setattr(main_module, "_count_media_files", lambda root: 3 if root == review_root else 0)
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [{"level": "error"}])
+    monkeypatch.setattr(
+        main_module,
+        "_latest_sampled_metric",
+        lambda name: {
+            "qb_active_downloads": 2.0,
+            "tailscale_online": 1.0,
+        }.get(name),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_env",
+        lambda name, default: {
+            "HOMEPAGE_BASE_HOST": "ops.local",
+            "JELLYFIN_PORT": "8096",
+            "QBITTORRENT_WEBUI_PORT": "8080",
+            "AUTOBANGUMI_PORT": "7892",
+            "GLANCES_PORT": "61208",
+        }.get(name, default),
+    )
+
+    payload = build_navigation_state()
+    _assert_payload_matches_page_contract(payload=payload, script_name="shell.js")
+
+    assert payload["internal"]
+    assert payload["external"]
+    assert {item["id"] for item in payload["internal"]} == set(INTERNAL_PAGES.keys())
+    assert {item["id"] for item in payload["external"]} == set(EXTERNAL_SERVICES.keys())
+
+    required_internal_keys = {"id", "label", "icon", "target", "path", "href", "badge", "tone"}
+    required_external_keys = {"id", "label", "icon", "target", "href", "badge", "tone"}
+    assert all(required_internal_keys.issubset(item.keys()) for item in payload["internal"])
+    assert all(required_external_keys.issubset(item.keys()) for item in payload["external"])

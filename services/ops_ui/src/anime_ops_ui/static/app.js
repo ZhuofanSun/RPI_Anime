@@ -1,11 +1,15 @@
-const servicesGrid = document.getElementById("services-grid");
-const trendGrid = document.getElementById("trend-grid");
-const systemCards = document.getElementById("system-cards");
-const queueCards = document.getElementById("queue-cards");
-const networkCards = document.getElementById("network-cards");
+const dashboardHero = document.getElementById("dashboard-hero");
+const heroEyebrow = document.getElementById("dashboard-hero-eyebrow");
+const heroTitle = document.getElementById("dashboard-hero-title");
+const heroSummary = document.getElementById("dashboard-hero-summary");
+const heroStatusPill = document.getElementById("dashboard-hero-status-pill");
+const heroStatusLabel = document.getElementById("dashboard-hero-status-label");
+const summaryStrip = document.getElementById("dashboard-summary-strip");
+const serviceRowsRoot = document.getElementById("dashboard-service-rows");
+const pipelineGrid = document.getElementById("dashboard-pipeline-grid");
+const statusGrid = document.getElementById("dashboard-status-grid");
+const trendGrid = document.getElementById("dashboard-trend-grid");
 const diagnostics = document.getElementById("diagnostics");
-const pageTitle = document.getElementById("page-title");
-const pageSubtitle = document.getElementById("page-subtitle");
 const hostName = document.getElementById("host-name");
 const lastUpdated = document.getElementById("last-updated");
 const refreshIntervalLabel = document.getElementById("refresh-interval");
@@ -15,6 +19,7 @@ const restartStackDetail = document.getElementById("restart-stack-detail");
 const OVERVIEW_CACHE_KEY = "anime-ops-ui-overview-cache-v3";
 const {
   createPageBootstrap,
+  escapeHtml,
   fetchJson,
   formatUpdatedLabel,
   metricTemplate,
@@ -24,7 +29,7 @@ let refreshIntervalMs = 8000;
 let feedbackTimerId = null;
 
 function serviceInitials(name) {
-  return name
+  return String(name || "")
     .split(/\s+/)
     .map((part) => part[0] || "")
     .join("")
@@ -65,6 +70,13 @@ function statusClass(status) {
 function statusLabel(status) {
   const normalized = (status || "unknown").replace(/-/g, " ");
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function toneStatusClass(tone) {
+  if (tone === "teal") return "status-running";
+  if (tone === "amber") return "status-starting";
+  if (tone === "rose") return "status-offline";
+  return "status-unknown";
 }
 
 function showServiceFeedback(kind, message) {
@@ -111,49 +123,60 @@ async function postJson(url, body) {
   return payload || {};
 }
 
-function serviceTemplate(service) {
+function summaryItemTemplate(item) {
+  const tone = (item?.tone || "teal").toLowerCase();
+  const toneClass = ["teal", "amber", "rose"].includes(tone) ? `summary-${tone}` : "summary-neutral";
+  return `
+    <article class="summary-item ${toneClass}">
+      <span class="summary-question">${escapeHtml(item?.question || "-")}</span>
+      <strong class="summary-answer">${escapeHtml(item?.answer || "-")}</strong>
+    </article>
+  `;
+}
+
+function serviceRowTemplate(service) {
   const href = resolveServiceHref(service);
-  const disabled = service.href ? "" : "disabled";
-  const internal = Boolean(service.internal);
-  const restartTarget = service.restart_target || "";
+  const disabled = service?.href ? "" : "disabled";
+  const internal = Boolean(service?.internal);
+  const restartTarget = service?.restart_target || "";
   const restartButton = restartTarget
     ? `
         <button
           class="action-button action-button-compact action-button-secondary service-restart-button"
           type="button"
-          data-service-restart="${restartTarget}"
-          data-service-name="${service.restart_name || service.name}"
-          data-service-reload="${service.restart_requires_reload ? "true" : "false"}"
+          data-service-restart="${escapeHtml(restartTarget)}"
+          data-service-name="${escapeHtml(service?.restart_name || service?.name || restartTarget)}"
+          data-service-reload="${service?.restart_requires_reload ? "true" : "false"}"
         >
-          ${service.restart_label || "Restart"}
+          ${escapeHtml(service?.restart_label || "Restart")}
         </button>
       `
     : "";
-  const linkAttrs = service.href
+  const linkAttrs = service?.href
     ? internal
       ? ""
       : 'target="_blank" rel="noopener noreferrer"'
     : 'aria-disabled="true"';
+
   return `
-    <article class="service-card">
-      <div class="service-top">
-        <div class="service-mark">${serviceInitials(service.name)}</div>
-        <div class="status-pill ${statusClass(service.status)}" title="${service.status || "unknown"}">
-          <span class="status-dot"></span>
-          <span>${statusLabel(service.status)}</span>
+    <article class="service-row">
+      <div class="service-row-status">
+        <div class="service-mark">${escapeHtml(serviceInitials(service?.name || ""))}</div>
+        <div class="service-row-main">
+          <strong class="service-name">${escapeHtml(service?.name || "Unknown Service")}</strong>
+          <span class="service-meta">${escapeHtml(service?.meta || "-")}</span>
         </div>
       </div>
-      <div>
-        <h3 class="service-name">${service.name}</h3>
-        <p class="service-desc">${service.description}</p>
+      <div class="service-row-health">
+        <span class="status-pill ${statusClass(service?.status)}" title="${escapeHtml(service?.status || "unknown")}">
+          <span class="status-dot"></span>
+          <span>${escapeHtml(statusLabel(service?.status))}</span>
+        </span>
+        <span class="service-uptime">${escapeHtml(service?.uptime || "-")}</span>
       </div>
-      <div class="service-meta-wrap">
-        <div class="service-meta">${service.meta || "-"}</div>
-        <div class="service-uptime">${service.uptime || "-"}</div>
-      </div>
-      <div class="service-actions">
-        <a class="service-link ${disabled}" href="${href}" ${linkAttrs}>
-          ${service.href ? (internal ? "Open Workspace" : "Open Service") : "暂不可用"}
+      <div class="service-row-actions">
+        <a class="service-link ${disabled}" href="${escapeHtml(href)}" ${linkAttrs}>
+          ${service?.href ? (internal ? "Open Workspace" : "Open Service") : "暂不可用"}
         </a>
         ${restartButton}
       </div>
@@ -192,10 +215,10 @@ function barsTemplate(bars) {
           const height = max > 0 ? Math.max((rawValue / max) * 100, rawValue > 0 ? 8 : 3) : 3;
           return `
             <div class="trend-bar-col">
-              <div class="trend-bar-track" title="${bar.label} · ${bar.value_label || rawValue}">
+              <div class="trend-bar-track" title="${escapeHtml(`${bar.label || "-"} · ${bar.value_label || rawValue}`)}">
                 <span class="trend-bar-fill" style="height: ${height}%"></span>
               </div>
-              <span class="trend-bar-label">${bar.label}</span>
+              <span class="trend-bar-label">${escapeHtml(bar.label || "-")}</span>
             </div>
           `;
         })
@@ -205,15 +228,16 @@ function barsTemplate(bars) {
 }
 
 function trendTemplate(card) {
-  const toneClass = card.tone ? `trend-${card.tone}` : "trend-teal";
-  const windowLabel = card.window_label ? `<span class="trend-window">${card.window_label}</span>` : "";
+  const tone = card?.tone || "teal";
+  const toneClass = ["teal", "amber", "ocean", "violet"].includes(tone) ? `trend-${tone}` : "trend-teal";
+  const windowLabel = card?.window_label ? `<span class="trend-window">${escapeHtml(card.window_label)}</span>` : "";
   let canvas = `<div class="trend-canvas trend-canvas-empty">No history yet.</div>`;
 
-  if (card.chart_kind === "bars") {
+  if (card?.chart_kind === "bars") {
     const bars = Array.isArray(card.bars) ? card.bars : [];
     canvas = `<div class="trend-canvas trend-canvas-bars">${barsTemplate(bars)}</div>`;
   } else {
-    const points = Array.isArray(card.points) ? card.points : [];
+    const points = Array.isArray(card?.points) ? card.points : [];
     const path = sparklinePath(points);
     canvas = `
       <div class="trend-canvas">
@@ -229,12 +253,12 @@ function trendTemplate(card) {
     <article class="trend-card ${toneClass}">
       <div class="trend-head">
         <div>
-          <span class="trend-label">${card.label}</span>
-          <strong class="trend-value">${card.value}</strong>
+          <span class="trend-label">${escapeHtml(card?.label || "-")}</span>
+          <strong class="trend-value">${escapeHtml(card?.value || "-")}</strong>
         </div>
         <div class="trend-side">
           ${windowLabel}
-          <span class="trend-detail">${card.detail}</span>
+          <span class="trend-detail">${escapeHtml(card?.detail || "-")}</span>
         </div>
       </div>
       ${canvas}
@@ -251,8 +275,8 @@ function diagnosticsTemplate(items) {
     .map(
       (item) => `
       <article class="diagnostic-item">
-        <span class="diagnostic-source">${item.source}</span>
-        <p class="diagnostic-message">${item.message}</p>
+        <span class="diagnostic-source">${escapeHtml(item?.source || "diagnostics")}</span>
+        <p class="diagnostic-message">${escapeHtml(item?.message || "unknown issue")}</p>
       </article>
     `
     )
@@ -260,22 +284,52 @@ function diagnosticsTemplate(items) {
 }
 
 function renderOverview(data, { cachedAt } = {}) {
-  pageTitle.textContent = data.title;
-  pageSubtitle.textContent = data.subtitle;
-  hostName.textContent = window.location.host || data.host;
+  if (dashboardHero) {
+    dashboardHero.classList.remove("is-loading-state");
+  }
+
+  const heroTone = data.hero?.status_tone || "teal";
+  if (heroEyebrow) heroEyebrow.textContent = data.hero?.eyebrow || "Control Surface";
+  if (heroTitle) heroTitle.textContent = data.hero?.title || "RPI Anime Ops";
+  if (heroSummary) heroSummary.textContent = data.hero?.summary || "";
+  if (heroStatusPill) {
+    heroStatusPill.className = `status-pill ${toneStatusClass(heroTone)}`;
+  }
+  if (heroStatusLabel) {
+    heroStatusLabel.textContent = data.hero?.status_label || "Unknown";
+  }
+
+  hostName.textContent = window.location.host || data.hero?.host || "-";
   lastUpdated.textContent = formatUpdatedLabel(cachedAt);
   refreshIntervalMs = (data.refresh_interval_seconds || 8) * 1000;
   refreshIntervalLabel.textContent = `Auto · ${Math.round(refreshIntervalMs / 1000)}s`;
+
+  if (restartStackButton && data.stack_control?.label) {
+    restartStackButton.textContent = data.stack_control.label;
+  }
   if (restartStackDetail && data.stack_control?.detail) {
     restartStackDetail.textContent = data.stack_control.detail;
   }
 
-  servicesGrid.innerHTML = data.services.map(serviceTemplate).join("");
-  trendGrid.innerHTML = data.trend_cards.map(trendTemplate).join("");
-  systemCards.innerHTML = data.system_cards.map(metricTemplate).join("");
-  queueCards.innerHTML = data.queue_cards.map(metricTemplate).join("");
-  networkCards.innerHTML = data.network_cards.map(metricTemplate).join("");
-  diagnostics.innerHTML = diagnosticsTemplate(data.diagnostics || []);
+  const summaryItems = Array.isArray(data.summary_strip) ? data.summary_strip : [];
+  summaryStrip.innerHTML = summaryItems.map(summaryItemTemplate).join("");
+
+  const serviceRows = Array.isArray(data.service_rows) ? data.service_rows : [];
+  serviceRowsRoot.innerHTML = serviceRows.map(serviceRowTemplate).join("");
+
+  const pipelineCards = Array.isArray(data.pipeline_cards) ? data.pipeline_cards : [];
+  pipelineGrid.innerHTML = pipelineCards.map(metricTemplate).join("");
+
+  const statusCards = [...(Array.isArray(data.system_cards) ? data.system_cards : []), ...(Array.isArray(data.network_cards) ? data.network_cards : [])];
+  statusGrid.innerHTML = statusCards.map(metricTemplate).join("");
+
+  const trendCards = Array.isArray(data.trend_cards) ? data.trend_cards : [];
+  trendGrid.innerHTML = trendCards.map(trendTemplate).join("");
+
+  const diagnosticItems = Array.isArray(data.diagnostics) ? data.diagnostics : [];
+  diagnostics.classList.remove("diagnostics-loading");
+  diagnostics.classList.toggle("diagnostics-has-items", diagnosticItems.length > 0);
+  diagnostics.innerHTML = diagnosticsTemplate(diagnosticItems);
 }
 
 const overviewPage = createPageBootstrap({
@@ -284,6 +338,8 @@ const overviewPage = createPageBootstrap({
   render: renderOverview,
   getIntervalMs: () => refreshIntervalMs,
   onError: (error) => {
+    diagnostics.classList.remove("diagnostics-loading");
+    diagnostics.classList.add("diagnostics-has-items");
     diagnostics.innerHTML = diagnosticsTemplate([
       { source: "frontend", message: error.message || String(error) },
     ]);
@@ -345,7 +401,7 @@ async function handleRestartStack() {
   }
 }
 
-servicesGrid?.addEventListener("click", (event) => {
+serviceRowsRoot?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-service-restart]");
   if (!button) return;
   event.preventDefault();

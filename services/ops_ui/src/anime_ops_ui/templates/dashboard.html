@@ -4,46 +4,64 @@
 <script defer src="/static/app.js?v=phase2"></script>
 {% endblock %}
 {% block content %}
-<div class="page-shell">
-  <header class="hero">
-    <div class="hero-copy">
-      <div class="eyebrow">Raspberry Pi Operations</div>
-      <h1 id="page-title">RPI Anime Ops</h1>
-      <p id="page-subtitle">树莓派私人影音库控制台</p>
+<div class="page-shell dashboard-page-shell">
+  <section id="dashboard-hero" class="dashboard-hero is-loading-state">
+    <div class="dashboard-hero-main">
+      <div id="dashboard-hero-eyebrow" class="eyebrow">Control Surface</div>
+      <h1 id="dashboard-hero-title">RPI Anime Ops</h1>
+      <p id="dashboard-hero-summary">树莓派私人影音库控制台</p>
     </div>
-    <div class="hero-meta">
-      <div class="meta-pill">
-        <span class="meta-label">Host</span>
-        <span class="meta-value" id="host-name">-</span>
-      </div>
-      <div class="meta-pill">
-        <span class="meta-label">Updated</span>
-        <span class="meta-value" id="last-updated">-</span>
-      </div>
-      <div class="meta-pill meta-pill-subtle">
-        <span class="meta-label">Auto Refresh</span>
-        <span class="meta-value" id="refresh-interval">8s</span>
-      </div>
-      <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
-        <span class="theme-toggle-copy">
-          <span class="theme-toggle-title">Theme</span>
-          <span class="theme-toggle-state" data-theme-label>Light</span>
+    <div class="dashboard-hero-side">
+      <div class="dashboard-hero-status">
+        <span class="meta-label">Health</span>
+        <span id="dashboard-hero-status-pill" class="status-pill status-running">
+          <span class="status-dot"></span>
+          <span id="dashboard-hero-status-label">Stable</span>
         </span>
-        <span class="theme-toggle-track" aria-hidden="true">
-          <span class="theme-toggle-icon">☀</span>
-          <span class="theme-toggle-icon">☾</span>
-          <span class="theme-toggle-thumb"></span>
-        </span>
-      </button>
+      </div>
+      <div class="hero-meta">
+        <div class="meta-pill">
+          <span class="meta-label">Host</span>
+          <span class="meta-value" id="host-name">-</span>
+        </div>
+        <div class="meta-pill">
+          <span class="meta-label">Updated</span>
+          <span class="meta-value" id="last-updated">-</span>
+        </div>
+        <div class="meta-pill meta-pill-subtle">
+          <span class="meta-label">Auto Refresh</span>
+          <span class="meta-value" id="refresh-interval">8s</span>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
+          <span class="theme-toggle-copy">
+            <span class="theme-toggle-title">Theme</span>
+            <span class="theme-toggle-state" data-theme-label>Light</span>
+          </span>
+          <span class="theme-toggle-track" aria-hidden="true">
+            <span class="theme-toggle-icon">☀</span>
+            <span class="theme-toggle-icon">☾</span>
+            <span class="theme-toggle-thumb"></span>
+          </span>
+        </button>
+      </div>
     </div>
-  </header>
+  </section>
 
-  <div class="content-grid">
-    <section class="panel panel-wide">
+  <section id="dashboard-summary-strip" class="dashboard-summary-strip">
+    {% for _ in range(3) %}
+    <article class="summary-item is-skeleton" aria-hidden="true">
+      <span class="summary-question skeleton-line skeleton-line-meta"></span>
+      <span class="summary-answer skeleton-line skeleton-line-title"></span>
+    </article>
+    {% endfor %}
+  </section>
+
+  <div class="content-grid dashboard-content-grid">
+    <section class="panel panel-wide dashboard-services-panel">
       <div class="panel-head panel-head-compact">
         <div class="panel-heading">
-          <h2>服务入口</h2>
-          <p>一个页面统一进入媒体、下载和网络链路。</p>
+          <h2>Service Console</h2>
+          <p>统一查看状态并执行单服务或整栈重启动作。</p>
         </div>
         <div class="panel-head-actions">
           <button id="restart-stack-button" class="action-button action-button-compact action-button-secondary" type="button">
@@ -53,23 +71,21 @@
         </div>
       </div>
       <div id="service-panel-feedback" class="inline-feedback is-hidden" role="status" aria-live="polite"></div>
-      <div id="services-grid" class="services-grid">
+      <div id="dashboard-service-rows" class="service-rows">
         {% for _ in range(8) %}
-        <article class="service-card is-skeleton" aria-hidden="true">
-          <div class="service-top">
+        <article class="service-row is-skeleton" aria-hidden="true">
+          <div class="service-row-status">
             <div class="service-mark skeleton-box"></div>
-            <div class="status-pill skeleton-pill"></div>
+            <div class="skeleton-stack">
+              <span class="skeleton-line skeleton-line-title"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </div>
           </div>
-          <div class="skeleton-stack">
-            <span class="skeleton-line skeleton-line-title"></span>
-            <span class="skeleton-line"></span>
-            <span class="skeleton-line skeleton-line-short"></span>
-          </div>
-          <div class="service-meta-wrap">
+          <div class="service-row-meta">
             <span class="skeleton-line skeleton-line-meta"></span>
             <span class="skeleton-line skeleton-line-short"></span>
           </div>
-          <div class="service-actions">
+          <div class="service-row-actions">
             <span class="service-link disabled skeleton-button">加载中</span>
           </div>
         </article>
@@ -77,12 +93,44 @@
       </div>
     </section>
 
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Pipeline</h2>
+        <p>下载与入库链路核心指标。</p>
+      </div>
+      <div id="dashboard-pipeline-grid" class="metric-grid dashboard-metric-grid">
+        {% for _ in range(3) %}
+        <article class="metric-card is-skeleton" aria-hidden="true">
+          <span class="skeleton-line skeleton-line-meta"></span>
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line skeleton-line-short"></span>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Host + Network</h2>
+        <p>主机与远程访问状态汇总。</p>
+      </div>
+      <div id="dashboard-status-grid" class="metric-grid dashboard-metric-grid">
+        {% for _ in range(6) %}
+        <article class="metric-card is-skeleton" aria-hidden="true">
+          <span class="skeleton-line skeleton-line-meta"></span>
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line skeleton-line-short"></span>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
     <section class="panel panel-wide">
       <div class="panel-head">
-        <h2>长时趋势</h2>
+        <h2>Trends</h2>
         <p>过去 24 小时折线与近 7 日下载柱状图。</p>
       </div>
-      <div id="trend-grid" class="trend-grid">
+      <div id="dashboard-trend-grid" class="trend-grid">
         {% for _ in range(4) %}
         <article class="trend-card is-skeleton" aria-hidden="true">
           <div class="skeleton-stack">
@@ -95,60 +143,12 @@
       </div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>主机状态</h2>
-        <p>来自树莓派本地监控。</p>
-      </div>
-      <div id="system-cards" class="metric-grid">
-        {% for _ in range(3) %}
-        <article class="metric-card is-skeleton" aria-hidden="true">
-          <span class="skeleton-line skeleton-line-meta"></span>
-          <span class="skeleton-line skeleton-line-title"></span>
-          <span class="skeleton-line skeleton-line-short"></span>
-        </article>
-        {% endfor %}
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head">
-        <h2>下载链路</h2>
-        <p>来自 qBittorrent 与媒体目录。</p>
-      </div>
-      <div id="queue-cards" class="metric-grid">
-        {% for _ in range(3) %}
-        <article class="metric-card is-skeleton" aria-hidden="true">
-          <span class="skeleton-line skeleton-line-meta"></span>
-          <span class="skeleton-line skeleton-line-title"></span>
-          <span class="skeleton-line skeleton-line-short"></span>
-        </article>
-        {% endfor %}
-      </div>
-    </section>
-
     <section class="panel panel-wide">
       <div class="panel-head">
-        <h2>网络与访问</h2>
-        <p>只使用本地 `Tailscale` 状态，不走云 API。</p>
+        <h2>Diagnostics</h2>
+        <p>仅在存在异常时突出显示，正常时保持安静。</p>
       </div>
-      <div id="network-cards" class="metric-grid metric-grid-wide">
-        {% for _ in range(3) %}
-        <article class="metric-card is-skeleton" aria-hidden="true">
-          <span class="skeleton-line skeleton-line-meta"></span>
-          <span class="skeleton-line skeleton-line-title"></span>
-          <span class="skeleton-line skeleton-line-short"></span>
-        </article>
-        {% endfor %}
-      </div>
-    </section>
-
-    <section class="panel panel-wide">
-      <div class="panel-head">
-        <h2>诊断</h2>
-        <p>前端和数据源异常会集中出现在这里。</p>
-      </div>
-      <div id="diagnostics" class="diagnostics">
+      <div id="diagnostics" class="diagnostics diagnostics-loading">
         <div class="diagnostic-empty is-loading-state">正在连接本地数据源并刷新面板。</div>
       </div>
     </section>

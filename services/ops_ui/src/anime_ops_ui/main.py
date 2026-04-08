@@ -33,6 +33,7 @@ if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
 from anime_ops_ui.copy import text
 from anime_ops_ui.page_context import build_page_context
 from anime_ops_ui.services.log_service import build_logs_payload as build_logs_payload_service
+from anime_ops_ui.services.navigation_state_service import build_navigation_state as build_navigation_state_service
 from anime_ops_ui.services.overview_service import build_overview_payload as build_overview_payload_service, build_service_summary
 from anime_ops_ui.services.postprocessor_service import build_postprocessor_payload as build_postprocessor_payload_service
 from anime_ops_ui.services.review_service import build_manual_review_item_payload as build_manual_review_item_payload_service, build_manual_review_payload as build_manual_review_payload_service
@@ -47,7 +48,7 @@ from anime_postprocessor.watch import _build_groups, _should_process_group
 
 MEDIA_EXTENSIONS = {".mkv", ".mp4", ".avi", ".m4v", ".ts"}
 HISTORY_LOCK = threading.Lock()
-HISTORY_SERIES = ("cpu_percent", "cpu_temp_c", "playback_tx_rate")
+HISTORY_SERIES = ("cpu_percent", "cpu_temp_c", "playback_tx_rate", "qb_active_downloads", "tailscale_online")
 HISTORY_STATE: dict[str, Any] | None = None
 TEMPLATES = Jinja2Templates(directory=str(TEMPLATE_DIR))
 PAGE_TEMPLATES = {
@@ -221,6 +222,10 @@ def _sample_interval_seconds() -> int:
     return max(30, _env_int("OPS_UI_SAMPLE_INTERVAL_SECONDS", 60))
 
 
+def _sampled_metric_freshness_seconds() -> int:
+    return max(_sample_interval_seconds() * 5, 300)
+
+
 def _series_window_hours() -> int:
     return max(6, _env_int("OPS_UI_SERIES_WINDOW_HOURS", 24))
 
@@ -381,6 +386,26 @@ def _series_values(name: str, *, window_hours: int, max_points: int = 180) -> tu
     return values, _downsample(values, max_points=max_points)
 
 
+def _latest_sampled_metric(name: str) -> float | None:
+    cutoff_ts = time.time() - _sampled_metric_freshness_seconds()
+    with HISTORY_LOCK:
+        global HISTORY_STATE
+        if HISTORY_STATE is None:
+            HISTORY_STATE = _load_history_state()
+        raw_series = HISTORY_STATE.get("samples", {}).get(name, [])
+        if not isinstance(raw_series, list):
+            return None
+        for item in reversed(raw_series):
+            if not isinstance(item, dict):
+                continue
+            sample_ts = item.get("ts")
+            if sample_ts is None or float(sample_ts) < cutoff_ts:
+                continue
+            if item.get("value") is not None:
+                return float(item.get("value"))
+    return None
+
+
 def _daily_volume_bars(*, days: int, daily_key: str) -> tuple[list[dict[str, Any]], list[float]]:
     today = datetime.now().date()
     with HISTORY_LOCK:
@@ -411,6 +436,8 @@ def _collect_history_metrics() -> dict[str, float | None]:
     sensors, _ = _safe_get_json(f"{_glances_base_url()}/sensors")
     containers_raw, _ = _safe_get_json(f"{_glances_base_url()}/containers")
     qb, _ = _qb_snapshot()
+    tailscale_socket = _env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock")
+    tailscale, _ = _tailscale_status(tailscale_socket)
     containers_list = containers_raw if isinstance(containers_raw, list) else []
     containers = {
         item.get("name", ""): item
@@ -419,10 +446,18 @@ def _collect_history_metrics() -> dict[str, float | None]:
     }
     jellyfin = containers.get("jellyfin", {})
     jellyfin_network = jellyfin.get("network", {}) if isinstance(jellyfin, dict) else {}
+    tailscale_self = ((tailscale or {}).get("Self") or {}) if isinstance(tailscale, dict) else {}
+    tailscale_online = bool(
+        isinstance(tailscale, dict)
+        and tailscale.get("BackendState") == "Running"
+        and tailscale_self.get("Online")
+    )
     return {
         "cpu_percent": (quicklook or {}).get("cpu") if isinstance(quicklook, dict) else None,
         "cpu_temp_c": _extract_temperature(sensors),
         "playback_tx_rate": float(jellyfin.get("network_tx") or jellyfin_network.get("tx") or 0.0),
+        "qb_active_downloads": float((qb or {}).get("active_downloads", 0)) if qb else None,
+        "tailscale_online": float(1.0 if tailscale_online else 0.0) if isinstance(tailscale, dict) else None,
         "uploaded_total": float((qb or {}).get("uploaded_total", 0)) if qb else None,
         "downloaded_total": float((qb or {}).get("downloaded_total", 0)) if qb else None,
     }
@@ -1497,6 +1532,11 @@ def healthz() -> dict[str, bool]:
 @router.get("/api/overview")
 def overview() -> JSONResponse:
     return JSONResponse(build_overview_payload_service())
+
+
+@router.get("/api/navigation")
+def navigation_api() -> JSONResponse:
+    return JSONResponse(build_navigation_state_service())
 
 
 @router.get("/api/manual-review")

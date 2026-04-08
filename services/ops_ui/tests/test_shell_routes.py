@@ -1,3 +1,5 @@
+import re
+
 from fastapi.testclient import TestClient
 
 from anime_ops_ui import main as main_module
@@ -17,8 +19,45 @@ def test_dashboard_shell_contains_bootstrap_roots(client):
     response = client.get("/")
     body = response.text
     assert 'data-page="dashboard"' in body
-    assert 'id="services-grid"' in body
-    assert 'id="trend-grid"' in body
+    assert 'id="dashboard-hero"' in body
+    assert 'id="dashboard-summary-strip"' in body
+    assert 'id="dashboard-service-rows"' in body
+    assert 'id="dashboard-pipeline-grid"' in body
+    assert 'id="dashboard-status-grid"' in body
+    assert 'id="services-grid"' not in body
+
+
+def test_dashboard_shell_contains_navigation_hydration_hooks(client):
+    response = client.get("/")
+    body = response.text
+    assert 'data-navigation-api-path="/api/navigation"' in body
+    assert 'data-shell-nav="internal"' in body
+    assert 'data-shell-nav="external"' in body
+    assert "data-nav-item" in body
+    assert "data-nav-badge" in body
+    assert "data-nav-toggle" in body
+    assert 'aria-controls="shell-nav-sections"' in body
+    assert 'id="shell-nav-sections"' in body
+    assert '/static/shell.js' in body
+
+
+def test_external_nav_links_have_server_rendered_fallback_hrefs(client):
+    response = client.get("/")
+    body = response.text
+    assert 'data-shell-nav="external"' in body
+    assert re.search(r'data-shell-nav="external"', body)
+    assert re.search(r'<a class="nav-link is-external" href="http://[^"]+" data-nav-item="jellyfin"', body)
+    assert re.search(r'<a class="nav-link is-external" href="http://[^"]+" data-nav-item="qbittorrent"', body)
+    assert re.search(r'<a class="nav-link is-external" href="http://[^"]+" data-nav-item="autobangumi"', body)
+    assert re.search(r'<a class="nav-link is-external" href="http://[^"]+" data-nav-item="glances"', body)
+    assert re.search(r'<a class="nav-link is-external" href="#" data-nav-item=', body) is None
+
+
+def test_ops_review_detail_page_keeps_ops_review_nav_active_in_shell_markup(client):
+    response = client.get("/ops-review/item")
+    body = response.text
+    assert 'data-page="ops-review"' in body
+    assert re.search(r'class="nav-link is-active"\s+href="/ops-review"\s+data-nav-item="ops-review"', body)
 
 
 def test_internal_pages_render_successfully(client):

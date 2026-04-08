@@ -241,3 +241,51 @@ def test_build_overview_payload_reports_service_summary(monkeypatch, tmp_path):
     assert payload["services"][0]["name"] == "Jellyfin"
     assert payload["system_cards"][4]["label"] == "Services"
     assert payload["queue_cards"][0]["value"] == "3"
+    jellyfin = payload["services"][0]
+    assert jellyfin["description"] == "私人影音库与播放入口"
+    assert jellyfin["meta"] == "Media server"
+    assert jellyfin["uptime"] == "1h"
+    assert jellyfin["restart_target"] == "jellyfin"
+    assert jellyfin["restart_label"] == "Restart"
+    assert {"label", "value", "detail"}.issubset(payload["queue_cards"][0].keys())
+    ops_review_legacy = next(item for item in payload["services"] if item["id"] == "ops-review")
+    assert ops_review_legacy["internal"] is True
+    assert ops_review_legacy["restart_target"] == "homepage"
+    assert ops_review_legacy["restart_requires_reload"] is True
+    assert ops_review_legacy["restart_name"] == "Ops UI"
+    assert {
+        "hero",
+        "summary_strip",
+        "pipeline_cards",
+        "system_cards",
+        "network_cards",
+        "trend_cards",
+        "service_rows",
+        "stack_control",
+        "diagnostics",
+        "last_updated",
+    }.issubset(payload.keys())
+    assert payload["hero"]["title"] == "RPI Anime Ops"
+    assert payload["hero"]["eyebrow"] == "Control Surface"
+    assert payload["hero"]["host"] == "sunzhuofan.local"
+    assert payload["summary_strip"][0] == {
+        "question": "今天有什么值得看",
+        "answer": "1 个下载中",
+        "tone": "teal",
+    }
+    assert payload["summary_strip"][1]["question"] == "下载和入库链路是否正常"
+    assert payload["summary_strip"][2]["question"] == "设备和远程访问是否健康"
+    assert set(payload["summary_strip"][1].keys()) == {"question", "answer", "tone"}
+    assert set(payload["summary_strip"][2].keys()) == {"question", "answer", "tone"}
+    assert payload["pipeline_cards"] == payload["queue_cards"]
+    assert payload["service_rows"][0]["id"] == "jellyfin"
+    assert payload["service_rows"][0]["status"] == "running"
+    ops_review_row = next(item for item in payload["service_rows"] if item["id"] == "ops-review")
+    assert ops_review_row["internal"] is True
+    assert ops_review_row["href"].endswith("/ops-review")
+    assert ops_review_row["meta"] in {"0 files", "数据盘未挂载"}
+    assert ops_review_row["uptime"] == "审核工作台"
+    assert ops_review_row["restart_target"] == "homepage"
+    assert ops_review_row["restart_label"] == "Restart UI"
+    assert ops_review_row["restart_requires_reload"] is True
+    assert ops_review_row["restart_name"] == "Ops UI"
