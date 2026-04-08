@@ -161,7 +161,10 @@ def _target_title_candidates(target: str) -> set[str]:
 def _resolve_target_ids(target: str, title_index: dict[str, set[int]]) -> set[int]:
     matched: set[int] = set()
     for candidate in _target_title_candidates(target):
-        matched.update(title_index.get(candidate, set()))
+        candidate_ids = title_index.get(candidate, set())
+        matched.update(candidate_ids)
+        if len(matched) > 1:
+            return set()
     return matched
 
 
@@ -235,10 +238,13 @@ def build_weekly_schedule_payload(
 ) -> dict[str, Any]:
     state_root.mkdir(parents=True, exist_ok=True)
     week_key = _week_key(now)
-    _state_path(state_root).write_text(
-        json.dumps({"week_key": week_key}, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    try:
+        _state_path(state_root).write_text(
+            json.dumps({"week_key": week_key}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
 
     today_weekday = now.weekday()
     safe_limit = max(int(visible_limit), 0)
@@ -331,7 +337,11 @@ def build_phase4_schedule_snapshot(
         _week_key(now),
         now=now,
     )
-    merged_review_ids = {int(item["id"]) for item in bangumi_items if bool(item.get("needs_review"))}
+    merged_review_ids = {
+        review_id
+        for item in bangumi_items
+        if bool(item.get("needs_review")) and (review_id := _safe_int(item.get("id"))) is not None
+    }
 
     schedule = build_weekly_schedule_payload(
         bangumi_items=bangumi_items,

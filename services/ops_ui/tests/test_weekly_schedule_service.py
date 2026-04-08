@@ -262,3 +262,142 @@ def test_phase4_snapshot_counts_lib_from_ops_review_publish_event(tmp_path, monk
 def test_phase4_snapshot_signature_has_no_review_ids_parameter():
     params = inspect.signature(build_phase4_schedule_snapshot).parameters
     assert "review_ids" not in params
+
+
+def test_phase4_snapshot_ignores_malformed_needs_review_ids(tmp_path, monkeypatch):
+    now = datetime(2026, 4, 8, 9, 0, tzinfo=ZoneInfo("America/Toronto"))
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def fetch_bangumi(self):
+            return [
+                {
+                    "id": "bad-id",
+                    "official_title": "坏数据条目",
+                    "air_weekday": now.weekday(),
+                    "poster_link": "posters/bad.jpg",
+                    "needs_review": True,
+                    "deleted": False,
+                    "archived": False,
+                },
+                {
+                    "id": 101,
+                    "official_title": "正常条目",
+                    "air_weekday": now.weekday(),
+                    "poster_link": "posters/ok.jpg",
+                    "needs_review": False,
+                    "deleted": False,
+                    "archived": False,
+                },
+            ]
+
+    monkeypatch.setattr(service, "AutoBangumiClient", _FakeClient)
+
+    payload = build_phase4_schedule_snapshot(
+        anime_data_root=tmp_path,
+        base_host="sunzhuofan.local",
+        autobangumi_port=7892,
+        autobangumi_base_url="http://sunzhuofan.local:7892",
+        autobangumi_username="sunzhuofan",
+        autobangumi_password="root1234",
+        state_root=tmp_path / "ops-ui-state",
+        now=now,
+        events=[],
+    )
+
+    assert payload["today_focus"]["items"][0]["id"] == 101
+    assert payload["today_focus"]["items"][0]["badges"] == []
+
+
+def test_phase4_snapshot_skips_ambiguous_lib_target_matches(tmp_path, monkeypatch):
+    now = datetime(2026, 4, 8, 9, 0, tzinfo=ZoneInfo("America/Toronto"))
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def fetch_bangumi(self):
+            return [
+                {
+                    "id": 201,
+                    "official_title": "同名作品",
+                    "air_weekday": now.weekday(),
+                    "poster_link": "posters/a.jpg",
+                    "needs_review": False,
+                    "deleted": False,
+                    "archived": False,
+                },
+                {
+                    "id": 202,
+                    "official_title": "同名作品",
+                    "air_weekday": now.weekday(),
+                    "poster_link": "posters/b.jpg",
+                    "needs_review": False,
+                    "deleted": False,
+                    "archived": False,
+                },
+            ]
+
+    monkeypatch.setattr(service, "AutoBangumiClient", _FakeClient)
+
+    payload = build_phase4_schedule_snapshot(
+        anime_data_root=tmp_path,
+        base_host="sunzhuofan.local",
+        autobangumi_port=7892,
+        autobangumi_base_url="http://sunzhuofan.local:7892",
+        autobangumi_username="sunzhuofan",
+        autobangumi_password="root1234",
+        state_root=tmp_path / "ops-ui-state",
+        now=now,
+        events=[
+            {
+                "source": "postprocessor",
+                "action": "watch-process-group",
+                "ts_unix": int(now.timestamp()),
+                "details": {
+                    "published": 1,
+                    "winner_targets": ["/library/seasonal/同名作品/Season 01/同名作品 - S01E01.mkv"],
+                },
+            }
+        ],
+    )
+
+    badges = {
+        item["id"]: item["badges"]
+        for item in payload["today_focus"]["items"]
+    }
+    assert badges[201] == []
+    assert badges[202] == []
+
+
+def test_weekly_schedule_state_write_failure_is_best_effort(tmp_path, monkeypatch):
+    class _FailWritePath:
+        def write_text(self, *args, **kwargs):
+            raise OSError("disk full")
+
+    monkeypatch.setattr(service, "_state_path", lambda root: _FailWritePath())
+    now = datetime(2026, 4, 8, 9, 0, tzinfo=ZoneInfo("America/Toronto"))
+
+    payload = build_weekly_schedule_payload(
+        bangumi_items=[
+            {
+                "id": 301,
+                "official_title": "状态写入失败也要继续",
+                "air_weekday": now.weekday(),
+                "poster_link": "posters/c.jpg",
+                "needs_review": False,
+            }
+        ],
+        base_host="sunzhuofan.local",
+        autobangumi_port=7892,
+        downloaded_ids=set(),
+        library_ids=set(),
+        review_ids=set(),
+        now=now,
+        state_root=tmp_path,
+    )
+
+    assert payload["today_weekday"] == now.weekday()
+    assert payload["days"][now.weekday()]["items"][0]["id"] == 301
