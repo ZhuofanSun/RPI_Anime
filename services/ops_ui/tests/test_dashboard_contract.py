@@ -44,3 +44,30 @@ def test_navigation_api_contract_returns_internal_and_external(client, monkeypat
     assert set(item["id"] for item in payload["external"]) == set(EXTERNAL_SERVICES.keys())
     assert set(dashboard.keys()) == {"id", "label", "icon", "target", "path", "href", "badge", "tone"}
     assert set(jellyfin.keys()) == {"id", "label", "icon", "target", "href", "badge", "tone"}
+
+
+def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
+    monkeypatch.setattr(main_module, "_safe_get_json", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (None, None))
+    monkeypatch.setattr(main_module, "_fan_state_snapshot", lambda: (None, None))
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+
+    response = client.get("/api/overview")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert {
+        "hero",
+        "summary_strip",
+        "pipeline_cards",
+        "system_cards",
+        "network_cards",
+        "trend_cards",
+        "service_rows",
+        "stack_control",
+        "diagnostics",
+        "last_updated",
+    }.issubset(payload.keys())
+    assert "services" in payload
+    assert "queue_cards" in payload

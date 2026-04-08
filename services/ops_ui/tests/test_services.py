@@ -241,3 +241,20 @@ def test_build_overview_payload_reports_service_summary(monkeypatch, tmp_path):
     assert payload["services"][0]["name"] == "Jellyfin"
     assert payload["system_cards"][4]["label"] == "Services"
     assert payload["queue_cards"][0]["value"] == "3"
+    assert {
+        "hero",
+        "summary_strip",
+        "pipeline_cards",
+        "system_cards",
+        "network_cards",
+        "trend_cards",
+        "service_rows",
+        "stack_control",
+        "diagnostics",
+        "last_updated",
+    }.issubset(payload.keys())
+    assert payload["hero"]["host"] == "sunzhuofan.local"
+    assert payload["summary_strip"][0]["label"] == "Services"
+    assert payload["pipeline_cards"] == payload["queue_cards"]
+    assert payload["service_rows"][0]["id"] == "jellyfin"
+    assert payload["service_rows"][0]["status"] == "running"
