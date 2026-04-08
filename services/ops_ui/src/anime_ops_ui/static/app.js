@@ -5,7 +5,6 @@ const heroSummary = document.getElementById("dashboard-hero-summary");
 const heroStatusPill = document.getElementById("dashboard-hero-status-pill");
 const heroStatusLabel = document.getElementById("dashboard-hero-status-label");
 const summaryStrip = document.getElementById("dashboard-summary-strip");
-const todayFocusRoot = document.getElementById("dashboard-today-focus");
 const weeklyScheduleRoot = document.getElementById("dashboard-weekly-schedule");
 const unknownScheduleRoot = document.getElementById("dashboard-unknown-schedule");
 const pipelineGrid = document.getElementById("dashboard-pipeline-grid");
@@ -172,13 +171,6 @@ function scheduleDayColumnTemplate(day, todayWeekday) {
       }
     </article>
   `;
-}
-
-function todayFocusTemplate(items) {
-  if (!items.length) {
-    return '<div class="broadcast-empty">今天暂无重点番剧。</div>';
-  }
-  return `<div class="today-focus-items">${items.map(schedulePosterTemplate).join("")}</div>`;
 }
 
 function unknownScheduleTemplate(unknown) {
@@ -377,18 +369,6 @@ function renderOverview(data, { cachedAt } = {}) {
 
   const summaryItems = Array.isArray(data.summary_strip) ? data.summary_strip : [];
   summaryStrip.innerHTML = summaryItems.map(summaryItemTemplate).join("");
-
-  const todayFocusItems = Array.isArray(data.today_focus?.items) ? data.today_focus.items : [];
-  if (todayFocusRoot) {
-    todayFocusRoot.classList.remove("is-loading-state");
-    todayFocusRoot.innerHTML = `
-      <div class="today-focus-head">
-        <h2>Today Focus</h2>
-        <p>今天放送重点，支持快速扫视。</p>
-      </div>
-      ${todayFocusTemplate(todayFocusItems)}
-    `;
-  }
 
   const todayWeekday = Number(data.weekly_schedule?.today_weekday);
   const weeklyDays = Array.isArray(data.weekly_schedule?.days) ? data.weekly_schedule.days : [];

@@ -417,7 +417,6 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
         "hero.status_label",
         "hero.host",
         "summary_strip",
-        "today_focus.items",
         "weekly_schedule.today_weekday",
         "weekly_schedule.days",
         "weekly_schedule.unknown",
@@ -434,6 +433,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert "host" not in app_contract_paths
     assert "service_rows" not in app_contract_paths
     assert "stack_control" not in app_contract_paths
+    assert "today_focus.items" not in app_contract_paths
 
     _assert_payload_matches_page_contract(
         payload=payload,
@@ -450,14 +450,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert {"label", "value", "detail", "chart_kind"}.issubset(payload["trend_cards"][0].keys())
     assert isinstance(payload["service_rows"], list) and payload["service_rows"]
     assert isinstance(payload["stack_control"], dict)
-    assert payload["today_focus"]["items"][0]["is_library_ready"] is False
     assert captured_phase4_kwargs["autobangumi_base_url"] == "http://autobangumi:7892"
-
-    today_focus_item = payload["today_focus"]["items"][0]
-    assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(today_focus_item.keys())
-    assert {"title_raw", "group_name", "source", "subtitle", "dpi", "season_label", "review_reason"}.issubset(
-        today_focus_item["detail"].keys()
-    )
 
     assert len(payload["weekly_schedule"]["days"]) == 7
     today_day = next(day for day in payload["weekly_schedule"]["days"] if day["weekday"] == 2)

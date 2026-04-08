@@ -303,44 +303,9 @@ html[data-theme="dark"] .theme-toggle-thumb {
   background: color-mix(in srgb, var(--tone-rose-soft) 82%, var(--panel));
 }
 
-.today-focus-strip {
-  margin-top: 12px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--panel-strong), var(--panel-soft));
-  box-shadow: var(--shadow-soft);
-}
-
-.today-focus-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.today-focus-head h2 {
-  margin: 0;
-  font-size: 0.96rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.today-focus-head p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.86rem;
-}
-
-.today-focus-items,
 .schedule-poster-grid {
   display: grid;
   gap: 8px;
-}
-
-.today-focus-items {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .broadcast-wall {

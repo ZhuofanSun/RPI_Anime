@@ -21,7 +21,7 @@ def test_dashboard_shell_contains_bootstrap_roots(client):
     assert 'data-page="dashboard"' in body
     assert 'id="dashboard-hero"' in body
     assert 'id="dashboard-summary-strip"' in body
-    assert 'id="dashboard-today-focus"' in body
+    assert 'id="dashboard-today-focus"' not in body
     assert 'id="dashboard-weekly-schedule"' in body
     assert 'id="dashboard-unknown-schedule"' in body
     assert "broadcast-wall" in body
