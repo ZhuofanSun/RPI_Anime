@@ -21,6 +21,21 @@ from anime_ops_ui.services.review_service import build_manual_review_item_payloa
 from anime_ops_ui.services.tailscale_service import build_tailscale_payload
 
 
+def _empty_weekly_days(*, today_weekday: int) -> list[dict]:
+    labels = ["一", "二", "三", "四", "五", "六", "日"]
+    return [
+        {
+            "weekday": index,
+            "label": label,
+            "is_today": index == today_weekday,
+            "items": [],
+            "hidden_items": [],
+            "has_hidden_items": False,
+        }
+        for index, label in enumerate(labels)
+    ]
+
+
 def _script_text(name: str) -> str:
     return (main_module.APP_DIR / "static" / name).read_text(encoding="utf-8")
 
@@ -302,7 +317,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
             "weekly_schedule": {
                 "week_key": "2026-W15",
                 "today_weekday": 2,
-                "days": [],
+                "days": _empty_weekly_days(today_weekday=2),
                 "unknown": {
                     "label": "未知",
                     "hint": "拖拽以设置放送日",
@@ -355,7 +370,54 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert isinstance(payload["service_rows"], list) and payload["service_rows"]
     assert isinstance(payload["stack_control"], dict)
     assert payload["today_focus"]["items"][0]["badges"] == ["DL"]
+    assert len(payload["weekly_schedule"]["days"]) == 7
     assert payload["weekly_schedule"]["unknown"]["label"] == "未知"
+
+
+def test_overview_payload_logs_count_uses_uncapped_events_while_phase4_uses_limited_events(monkeypatch):
+    monkeypatch.setattr(main_module, "_sample_history_once", lambda: None)
+    monkeypatch.setattr(main_module, "_safe_get_json", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (None, None))
+    monkeypatch.setattr(main_module, "_fan_state_snapshot", lambda: (None, None))
+    monkeypatch.setattr(main_module, "_series_values", lambda name, window_hours: ([], []))
+    monkeypatch.setattr(main_module, "_daily_volume_bars", lambda *, days, daily_key: ([], []))
+    monkeypatch.setattr(main_module, "_count_media_files", lambda root: 0)
+    monkeypatch.setattr(main_module, "_count_series_dirs", lambda root: 0)
+
+    phase4_events_count = {"value": None}
+
+    def fake_read_events(*, limit=None):
+        count = 300 if limit == 300 else 450
+        return [{"id": idx, "ts_unix": idx} for idx in range(count)]
+
+    monkeypatch.setattr(main_module, "read_events", fake_read_events)
+
+    def fake_phase4(**kwargs):
+        phase4_events_count["value"] = len(kwargs["events"])
+        return {
+            "today_focus": {"items": []},
+            "weekly_schedule": {
+                "week_key": "2026-W15",
+                "today_weekday": 2,
+                "days": _empty_weekly_days(today_weekday=2),
+                "unknown": {
+                    "label": "未知",
+                    "hint": "拖拽以设置放送日",
+                    "items": [],
+                    "hidden_items": [],
+                    "has_hidden_items": False,
+                },
+            },
+        }
+
+    monkeypatch.setattr(overview_service, "build_phase4_schedule_snapshot", fake_phase4)
+
+    payload = build_overview_payload()
+
+    logs_service = next(item for item in payload["services"] if item["id"] == "logs")
+    assert phase4_events_count["value"] == 300
+    assert logs_service["meta"] == "450 events"
 
 
 def test_logs_page_uses_flash_helpers_with_logs_container():

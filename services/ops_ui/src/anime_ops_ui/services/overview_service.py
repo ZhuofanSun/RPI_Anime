@@ -36,6 +36,7 @@ def build_overview_payload() -> dict[str, Any]:
     autobangumi_port = int(main_module._env("AUTOBANGUMI_PORT", "7892"))
     overview_now = datetime.now().astimezone()
     events = main_module.read_events(limit=300)
+    phase4_error: str | None = None
     try:
         phase4 = build_phase4_schedule_snapshot(
             anime_data_root=anime_data_root,
@@ -48,13 +49,25 @@ def build_overview_payload() -> dict[str, Any]:
             now=overview_now,
             events=events,
         )
-    except Exception:
+    except Exception as exc:
+        phase4_error = str(exc)
+        labels = ["一", "二", "三", "四", "五", "六", "日"]
         phase4 = {
             "today_focus": {"items": []},
             "weekly_schedule": {
                 "week_key": "",
                 "today_weekday": overview_now.weekday(),
-                "days": [],
+                "days": [
+                    {
+                        "weekday": index,
+                        "label": label,
+                        "is_today": index == overview_now.weekday(),
+                        "items": [],
+                        "hidden_items": [],
+                        "has_hidden_items": False,
+                    }
+                    for index, label in enumerate(labels)
+                ],
                 "unknown": {
                     "label": "未知",
                     "hint": "拖拽以设置放送日",
@@ -215,7 +228,7 @@ def build_overview_payload() -> dict[str, Any]:
         },
     ]
     manual_review_count = main_module._count_media_files(manual_review_root) if data_storage_ready else None
-    log_count = len(events)
+    log_count = len(main_module.read_events(limit=None))
 
     network_cards = [
         {
@@ -275,6 +288,13 @@ def build_overview_payload() -> dict[str, Any]:
     ]
 
     diagnostics = []
+    if phase4_error:
+        diagnostics.append(
+            {
+                "source": "phase4-schedule",
+                "message": f"Phase 4 weekly schedule unavailable: {phase4_error}",
+            }
+        )
     for label, error in (
         ("glances/quicklook", quicklook_error),
         ("glances/containers", containers_error),

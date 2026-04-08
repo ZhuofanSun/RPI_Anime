@@ -3,6 +3,21 @@ from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES, SERVICE_A
 from anime_ops_ui.services import overview_service
 
 
+def _empty_weekly_days(*, today_weekday: int) -> list[dict]:
+    labels = ["一", "二", "三", "四", "五", "六", "日"]
+    return [
+        {
+            "weekday": index,
+            "label": label,
+            "is_today": index == today_weekday,
+            "items": [],
+            "hidden_items": [],
+            "has_hidden_items": False,
+        }
+        for index, label in enumerate(labels)
+    ]
+
+
 def test_navigation_api_contract_returns_internal_external_and_actions(client, monkeypatch, tmp_path):
     review_root = tmp_path / "manual_review"
     review_root.mkdir(parents=True)
@@ -65,7 +80,7 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
             "weekly_schedule": {
                 "week_key": "2026-W15",
                 "today_weekday": 2,
-                "days": [],
+                "days": _empty_weekly_days(today_weekday=2),
                 "unknown": {
                     "label": "未知",
                     "hint": "拖拽以设置放送日",
@@ -105,4 +120,27 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
     assert "queue_cards" in payload
     assert "today_focus" in payload
     assert "weekly_schedule" in payload
+    assert len(payload["weekly_schedule"]["days"]) == 7
     assert payload["weekly_schedule"]["unknown"]["label"] == "未知"
+
+
+def test_overview_api_contract_phase4_failure_adds_diagnostic_and_fallback_schedule(client, monkeypatch):
+    monkeypatch.setattr(main_module, "_safe_get_json", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (None, None))
+    monkeypatch.setattr(main_module, "_fan_state_snapshot", lambda: (None, None))
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    monkeypatch.setattr(
+        overview_service,
+        "build_phase4_schedule_snapshot",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("phase4 unavailable")),
+    )
+
+    response = client.get("/api/overview")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["today_focus"]["items"] == []
+    assert len(payload["weekly_schedule"]["days"]) == 7
+    assert [item["weekday"] for item in payload["weekly_schedule"]["days"]] == [0, 1, 2, 3, 4, 5, 6]
+    assert any(item.get("source") == "phase4-schedule" for item in payload["diagnostics"])
