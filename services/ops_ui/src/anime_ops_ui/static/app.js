@@ -5,6 +5,9 @@ const heroSummary = document.getElementById("dashboard-hero-summary");
 const heroStatusPill = document.getElementById("dashboard-hero-status-pill");
 const heroStatusLabel = document.getElementById("dashboard-hero-status-label");
 const summaryStrip = document.getElementById("dashboard-summary-strip");
+const todayFocusRoot = document.getElementById("dashboard-today-focus");
+const weeklyScheduleRoot = document.getElementById("dashboard-weekly-schedule");
+const unknownScheduleRoot = document.getElementById("dashboard-unknown-schedule");
 const pipelineGrid = document.getElementById("dashboard-pipeline-grid");
 const statusGrid = document.getElementById("dashboard-status-grid");
 const trendGrid = document.getElementById("dashboard-trend-grid");
@@ -39,6 +42,171 @@ function summaryItemTemplate(item) {
       <strong class="summary-answer">${escapeHtml(item?.answer || "-")}</strong>
     </article>
   `;
+}
+
+function posterInitials(title) {
+  const normalized = String(title || "").trim();
+  if (!normalized) return "??";
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0].slice(0, 1)}${words[1].slice(0, 1)}`.toUpperCase();
+  }
+  return Array.from(normalized).slice(0, 2).join("").toUpperCase();
+}
+
+function scheduleBadgeTemplate(badges) {
+  if (!Array.isArray(badges) || badges.length === 0) {
+    return "";
+  }
+  return `
+    <div class="schedule-poster-badges">
+      ${badges.map((badge) => `<span class="schedule-badge">${escapeHtml(badge || "-")}</span>`).join("")}
+    </div>
+  `;
+}
+
+function schedulePosterTemplate(item) {
+  const title = item?.title || "Unknown";
+  const badgeMarkup = scheduleBadgeTemplate(item?.badges);
+  const subtitle = item?.id != null ? `ID ${item.id}` : "Bangumi";
+
+  return `
+    <article class="schedule-poster-card">
+      <div class="schedule-poster-media">
+        ${
+          item?.poster_url
+            ? `<img class="schedule-poster-image" src="${escapeHtml(item.poster_url)}" alt="${escapeHtml(title)}" loading="lazy" referrerpolicy="no-referrer" />`
+            : `<span class="schedule-poster-fallback">${escapeHtml(posterInitials(title))}</span>`
+        }
+      </div>
+      <div class="schedule-poster-body">
+        <strong class="schedule-poster-title" title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
+        <span class="schedule-poster-subtitle">${escapeHtml(subtitle)}</span>
+        ${badgeMarkup}
+      </div>
+    </article>
+  `;
+}
+
+function scheduleDayColumnTemplate(day, todayWeekday) {
+  const items = Array.isArray(day?.items) ? day.items : [];
+  const hiddenItems = Array.isArray(day?.hidden_items) ? day.hidden_items : [];
+  const hasHiddenItems = Boolean(day?.has_hidden_items && hiddenItems.length > 0);
+  const total = items.length + hiddenItems.length;
+  const dayNumber = Number.isInteger(day?.weekday) ? day.weekday : -1;
+  const hiddenId = `schedule-day-hidden-${dayNumber}`;
+  const isToday = dayNumber === todayWeekday || day?.is_today;
+
+  return `
+    <article class="broadcast-day-column ${isToday ? "is-today" : ""}">
+      <div class="broadcast-day-head">
+        <span class="broadcast-day-label">${escapeHtml(day?.label || "?")}</span>
+        <span class="broadcast-day-count">${total}</span>
+      </div>
+      ${
+        items.length
+          ? `<div class="schedule-poster-grid">${items.map(schedulePosterTemplate).join("")}</div>`
+          : '<div class="broadcast-empty">无放送</div>'
+      }
+      ${
+        hasHiddenItems
+          ? `
+        <button
+          class="schedule-collapse-toggle"
+          type="button"
+          data-schedule-toggle
+          aria-controls="${hiddenId}"
+          aria-expanded="false"
+          data-expand-label="展开 +${hiddenItems.length}"
+          data-collapse-label="收起"
+        >展开 +${hiddenItems.length}</button>
+        <div id="${hiddenId}" class="schedule-hidden-posters" hidden>
+          <div class="schedule-poster-grid">${hiddenItems.map(schedulePosterTemplate).join("")}</div>
+        </div>
+      `
+          : ""
+      }
+    </article>
+  `;
+}
+
+function todayFocusTemplate(items) {
+  if (!items.length) {
+    return '<div class="broadcast-empty">今天暂无重点番剧。</div>';
+  }
+  return `<div class="today-focus-items">${items.map(schedulePosterTemplate).join("")}</div>`;
+}
+
+function unknownScheduleTemplate(unknown) {
+  const items = Array.isArray(unknown?.items) ? unknown.items : [];
+  const hiddenItems = Array.isArray(unknown?.hidden_items) ? unknown.hidden_items : [];
+  const hasHiddenItems = Boolean(unknown?.has_hidden_items && hiddenItems.length > 0);
+  const total = items.length + hiddenItems.length;
+  const hiddenId = "schedule-unknown-hidden";
+
+  return `
+    <div class="broadcast-unknown-head">
+      <div class="broadcast-unknown-copy">
+        <strong>${escapeHtml(unknown?.label || "未知")}</strong>
+        <span>${escapeHtml(unknown?.hint || "尚未设置放送日")}</span>
+      </div>
+      <span class="broadcast-day-count">${total}</span>
+    </div>
+    ${
+      items.length
+        ? `<div class="schedule-poster-grid schedule-poster-grid-unknown">${items.map(schedulePosterTemplate).join("")}</div>`
+        : '<div class="broadcast-empty">未知分组暂无条目。</div>'
+    }
+    ${
+      hasHiddenItems
+        ? `
+      <button
+        class="schedule-collapse-toggle"
+        type="button"
+        data-schedule-toggle
+        aria-controls="${hiddenId}"
+        aria-expanded="false"
+        data-expand-label="展开 +${hiddenItems.length}"
+        data-collapse-label="收起"
+      >展开 +${hiddenItems.length}</button>
+      <div id="${hiddenId}" class="schedule-hidden-posters" hidden>
+        <div class="schedule-poster-grid schedule-poster-grid-unknown">${hiddenItems.map(schedulePosterTemplate).join("")}</div>
+      </div>
+    `
+        : ""
+    }
+  `;
+}
+
+function bindScheduleToggles(container) {
+  if (!container || container.dataset.toggleBound === "1") {
+    return;
+  }
+
+  container.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-schedule-toggle]");
+    if (!toggle) {
+      return;
+    }
+
+    const controlsId = toggle.getAttribute("aria-controls");
+    if (!controlsId) {
+      return;
+    }
+
+    const target = document.getElementById(controlsId);
+    if (!target) {
+      return;
+    }
+
+    const isExpanded = toggle.getAttribute("aria-expanded") === "true";
+    const nextExpanded = !isExpanded;
+    toggle.setAttribute("aria-expanded", String(nextExpanded));
+    toggle.textContent = nextExpanded ? toggle.dataset.collapseLabel || "收起" : toggle.dataset.expandLabel || "展开";
+    target.hidden = !nextExpanded;
+  });
+
+  container.dataset.toggleBound = "1";
 }
 
 function sparklinePath(points, width = 260, height = 74, padding = 6) {
@@ -163,6 +331,33 @@ function renderOverview(data, { cachedAt } = {}) {
 
   const summaryItems = Array.isArray(data.summary_strip) ? data.summary_strip : [];
   summaryStrip.innerHTML = summaryItems.map(summaryItemTemplate).join("");
+
+  const todayFocusItems = Array.isArray(data.today_focus?.items) ? data.today_focus.items : [];
+  if (todayFocusRoot) {
+    todayFocusRoot.classList.remove("is-loading-state");
+    todayFocusRoot.innerHTML = `
+      <div class="today-focus-head">
+        <h2>Today Focus</h2>
+        <p>今天放送重点，支持快速扫视。</p>
+      </div>
+      ${todayFocusTemplate(todayFocusItems)}
+    `;
+  }
+
+  const todayWeekday = Number(data.weekly_schedule?.today_weekday);
+  const weeklyDays = Array.isArray(data.weekly_schedule?.days) ? data.weekly_schedule.days : [];
+  const unknownSchedule = data.weekly_schedule?.unknown || {};
+  if (weeklyScheduleRoot) {
+    weeklyScheduleRoot.innerHTML = weeklyDays.length
+      ? weeklyDays.map((day) => scheduleDayColumnTemplate(day, todayWeekday)).join("")
+      : '<div class="broadcast-empty">暂无本周放送数据。</div>';
+    bindScheduleToggles(weeklyScheduleRoot);
+  }
+  if (unknownScheduleRoot) {
+    unknownScheduleRoot.classList.remove("is-loading-state");
+    unknownScheduleRoot.innerHTML = unknownScheduleTemplate(unknownSchedule);
+    bindScheduleToggles(unknownScheduleRoot);
+  }
 
   const pipelineCards = Array.isArray(data.pipeline_cards) ? data.pipeline_cards : [];
   pipelineGrid.innerHTML = pipelineCards.map(metricTemplate).join("");

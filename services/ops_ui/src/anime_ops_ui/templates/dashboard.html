@@ -56,7 +56,55 @@
     {% endfor %}
   </section>
 
+  <section id="dashboard-today-focus" class="today-focus-strip is-loading-state">
+    <div class="today-focus-head">
+      <h2>Today Focus</h2>
+      <p>今天放送重点，支持快速扫视。</p>
+    </div>
+    <div class="today-focus-items">
+      {% for _ in range(4) %}
+      <article class="schedule-poster-card is-skeleton" aria-hidden="true">
+        <span class="schedule-poster-media skeleton-box"></span>
+        <div class="schedule-poster-body">
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line skeleton-line-short"></span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
   <div class="content-grid dashboard-content-grid">
+    <section class="panel panel-wide broadcast-wall">
+      <div class="panel-head">
+        <h2>Broadcast Wall</h2>
+        <p>一周放送墙，按星期聚合并保留未知分组。</p>
+      </div>
+      <div id="dashboard-weekly-schedule" class="broadcast-wall-grid">
+        {% for _ in range(7) %}
+        <article class="broadcast-day-column is-skeleton" aria-hidden="true">
+          <div class="broadcast-day-head">
+            <span class="skeleton-line skeleton-line-meta"></span>
+            <span class="skeleton-pill"></span>
+          </div>
+          <div class="schedule-poster-grid">
+            <article class="schedule-poster-card">
+              <span class="schedule-poster-media skeleton-box"></span>
+              <div class="schedule-poster-body">
+                <span class="skeleton-line skeleton-line-wide"></span>
+                <span class="skeleton-line skeleton-line-short"></span>
+              </div>
+            </article>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      <div id="dashboard-unknown-schedule" class="broadcast-unknown-row is-loading-state">
+        <span class="skeleton-line skeleton-line-meta"></span>
+        <span class="skeleton-line skeleton-line-wide"></span>
+      </div>
+    </section>
+
     <section class="panel">
       <div class="panel-head">
         <h2>Pipeline</h2>
