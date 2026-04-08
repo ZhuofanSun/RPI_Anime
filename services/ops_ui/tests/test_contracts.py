@@ -18,11 +18,13 @@ def _script_text(name: str) -> str:
     return (main_module.APP_DIR / "static" / name).read_text(encoding="utf-8")
 
 
-def _payload_paths(name: str) -> set[str]:
+def _contract_paths(name: str, *, root_var: str = "payload") -> set[str]:
     normalized_paths = set()
     ignored_suffixes = {"length", "map"}
-    for match in re.findall(r"payload(?:\.[A-Za-z_][A-Za-z0-9_]*)+", _script_text(name)):
-        path = match.removeprefix("payload.")
+    pattern = rf"{re.escape(root_var)}((?:\??\.[A-Za-z_][A-Za-z0-9_]*)+)"
+    for path_suffix in re.findall(pattern, _script_text(name)):
+        normalized = path_suffix.replace("?.", ".")
+        path = normalized.removeprefix(".")
         segments = path.split(".")
         if segments[-1] in ignored_suffixes:
             segments = segments[:-1]
@@ -43,12 +45,13 @@ def _assert_payload_matches_page_contract(
     *,
     payload: dict,
     script_name: str,
+    root_var: str = "payload",
     ignored_paths: set[str] | None = None,
 ) -> None:
     ignored = ignored_paths or set()
     missing = sorted(
         path
-        for path in _payload_paths(script_name)
+        for path in _contract_paths(script_name, root_var=root_var)
         if path not in ignored and not _payload_has_path(payload, path)
     )
     assert missing == []
@@ -290,7 +293,7 @@ def test_overview_payload_matches_phase2_dashboard_app_contract(monkeypatch, tmp
     _assert_payload_matches_page_contract(
         payload=payload,
         script_name="app.js",
-        ignored_paths={"message", "reload_after_seconds"},
+        root_var="data",
     )
     assert isinstance(payload["services"], list) and payload["services"]
     assert isinstance(payload["queue_cards"], list) and payload["queue_cards"]
