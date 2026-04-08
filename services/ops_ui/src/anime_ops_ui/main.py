@@ -16,18 +16,27 @@ import time
 from typing import Any
 
 import requests
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
+TEMPLATE_DIR = APP_DIR / "templates"
 REPO_ROOT = APP_DIR.parents[3]
 POSTPROCESSOR_SRC = REPO_ROOT / "services" / "postprocessor" / "src"
 if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
     sys.path.insert(0, str(POSTPROCESSOR_SRC))
 
+from anime_ops_ui.copy import text
+from anime_ops_ui.page_context import build_page_context
+from anime_ops_ui.services.log_service import build_logs_payload as build_logs_payload_service
+from anime_ops_ui.services.overview_service import build_overview_payload as build_overview_payload_service, build_service_summary
+from anime_ops_ui.services.postprocessor_service import build_postprocessor_payload as build_postprocessor_payload_service
+from anime_ops_ui.services.review_service import build_manual_review_item_payload as build_manual_review_item_payload_service, build_manual_review_payload as build_manual_review_payload_service
+from anime_ops_ui.services.tailscale_service import build_tailscale_payload as build_tailscale_payload_service
 from anime_postprocessor.models import ParsedMedia, UnparsedMedia
 from anime_postprocessor.eventlog import append_event, clear_events, event_log_cap, event_log_path, read_events
 from anime_postprocessor.parser import normalize_title, parse_media_file
@@ -40,6 +49,20 @@ MEDIA_EXTENSIONS = {".mkv", ".mp4", ".avi", ".m4v", ".ts"}
 HISTORY_LOCK = threading.Lock()
 HISTORY_SERIES = ("cpu_percent", "cpu_temp_c", "playback_tx_rate")
 HISTORY_STATE: dict[str, Any] | None = None
+TEMPLATES = Jinja2Templates(directory=str(TEMPLATE_DIR))
+PAGE_TEMPLATES = {
+    "/": ("dashboard.html", "dashboard", "Dashboard"),
+    "/ops-review": ("ops_review.html", "ops-review", "Ops Review"),
+    "/ops-review/item": ("ops_review_item.html", "ops-review", "Review Detail"),
+    "/logs": ("logs.html", "logs", "Logs"),
+    "/postprocessor": ("postprocessor.html", "postprocessor", "Postprocessor"),
+    "/tailscale": ("tailscale.html", "tailscale", "Tailscale"),
+}
+OPS_UI_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
 
 
 class ManualPublishRequest(BaseModel):
@@ -54,6 +77,15 @@ class TailscaleActionRequest(BaseModel):
 
 class ServiceRestartRequest(BaseModel):
     target: str = Field(..., min_length=1, max_length=64)
+
+
+def render_page(request: Request, template_name: str, page_key: str, title: str):
+    context = build_page_context(page_key, title)
+    return TEMPLATES.TemplateResponse(
+        request,
+        template_name,
+        {"request": request, **context},
+    )
 
 
 def _env(name: str, default: str) -> str:
@@ -175,12 +207,6 @@ def _tailscale_ip_pair(value: Any) -> tuple[str, str]:
     ipv4 = str(value[0]) if value[0] else "-"
     ipv6 = str(value[1]) if len(value) > 1 and value[1] else "-"
     return ipv4, ipv6
-
-
-def _container_status_count(containers: dict[str, dict[str, Any]]) -> tuple[int, int]:
-    values = list(containers.values())
-    running_like = sum(1 for item in values if str(item.get("status", "")).lower() == "running")
-    return running_like, len(values)
 
 
 def _glances_base_url() -> str:
@@ -953,7 +979,10 @@ def _guess_episode_number(name: str) -> int | None:
 
 def _manual_review_item_or_404(item_id: str) -> tuple[dict[str, Any], Path, Path]:
     review_root = _manual_review_root()
-    payload = build_manual_review_item_payload(item_id)
+    try:
+        payload = build_manual_review_item_payload_service(item_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="manual review file not found") from exc
     item = payload["item"]
     item_path = review_root / item["relative_path"]
     if not item_path.exists() or not item_path.is_file():
@@ -1056,148 +1085,6 @@ def _manual_review_items(review_root: Path) -> list[dict[str, Any]]:
     return items
 
 
-def build_manual_review_payload() -> dict[str, Any]:
-    review_root = _manual_review_root()
-    items = _manual_review_items(review_root)
-    bucket_stats: dict[str, dict[str, Any]] = {}
-    total_bytes = 0
-    series_names: set[str] = set()
-
-    for item in items:
-        total_bytes += int(item["size_bytes"])
-        series_names.add(item["series_name"])
-        stats = bucket_stats.setdefault(
-            item["bucket"],
-            {"bucket": item["bucket"], "count": 0, "size_bytes": 0},
-        )
-        stats["count"] += 1
-        stats["size_bytes"] += int(item["size_bytes"])
-
-    buckets = [
-        {
-            "bucket": bucket,
-            "label": bucket.replace("_", " ").title(),
-            "count": stats["count"],
-            "size_bytes": stats["size_bytes"],
-            "size_label": _format_bytes(stats["size_bytes"]),
-        }
-        for bucket, stats in sorted(bucket_stats.items(), key=lambda entry: (-entry[1]["count"], entry[0]))
-    ]
-
-    summary_cards = [
-        {
-            "label": "Review Files",
-            "value": str(len(items)),
-            "detail": "待处理媒体文件",
-        },
-        {
-            "label": "Total Size",
-            "value": _format_bytes(total_bytes),
-            "detail": str(review_root),
-        },
-        {
-            "label": "Series",
-            "value": str(len(series_names)),
-            "detail": "不同作品目录",
-        },
-        {
-            "label": "Buckets",
-            "value": str(len(buckets)),
-            "detail": ", ".join(bucket["label"] for bucket in buckets[:3]) if buckets else "当前没有分组",
-        },
-    ]
-
-    return {
-        "title": "Ops Review",
-        "subtitle": "人工审核队列与未自动入库文件清单",
-        "refresh_interval_seconds": 15,
-        "root": str(review_root),
-        "summary_cards": summary_cards,
-        "buckets": buckets,
-        "items": items,
-        "total_files": len(items),
-        "total_size_bytes": total_bytes,
-        "total_size_label": _format_bytes(total_bytes),
-        "last_updated": datetime.now().isoformat(timespec="seconds"),
-    }
-
-
-def build_logs_payload(
-    *,
-    level: str | None = None,
-    source: str | None = None,
-    search: str | None = None,
-    limit: int = 300,
-) -> dict[str, Any]:
-    raw_events = read_events()
-    keyword = (search or "").strip().lower()
-    filtered = []
-    for item in raw_events:
-        if level and item.get("level") != level:
-            continue
-        if source and item.get("source") != source:
-            continue
-        if keyword:
-            haystack = " ".join(
-                [
-                    str(item.get("source", "")),
-                    str(item.get("level", "")),
-                    str(item.get("action", "")),
-                    str(item.get("message", "")),
-                    json.dumps(item.get("details", {}), ensure_ascii=False),
-                ]
-            ).lower()
-            if keyword not in haystack:
-                continue
-        filtered.append(item)
-
-    visible = filtered[: max(20, min(limit, event_log_cap()))]
-    levels = sorted({str(item.get("level", "info")) for item in raw_events})
-    sources = sorted({str(item.get("source", "unknown")) for item in raw_events})
-    level_counts: dict[str, int] = {}
-    for item in raw_events:
-        item_level = str(item.get("level", "info"))
-        level_counts[item_level] = level_counts.get(item_level, 0) + 1
-
-    summary_cards = [
-        {
-            "label": "Visible",
-            "value": str(len(visible)),
-            "detail": f"{len(filtered)} 条匹配 / 共 {len(raw_events)} 条",
-        },
-        {
-            "label": "Sources",
-            "value": str(len(sources)),
-            "detail": ", ".join(sources[:3]) if sources else "暂无来源",
-        },
-        {
-            "label": "Errors",
-            "value": str(level_counts.get("error", 0)),
-            "detail": f"{level_counts.get('warning', 0)} 条 warning",
-        },
-        {
-            "label": "Retention",
-            "value": str(event_log_cap()),
-            "detail": str(event_log_path()),
-        },
-    ]
-
-    return {
-        "title": "Logs",
-        "subtitle": "项目侧结构化事件日志，优先覆盖自动处理、人工审核与运维动作。",
-        "refresh_interval_seconds": 10,
-        "summary_cards": summary_cards,
-        "levels": levels,
-        "sources": sources,
-        "items": visible,
-        "total_count": len(raw_events),
-        "matched_count": len(filtered),
-        "retention_cap": event_log_cap(),
-        "storage_path": str(event_log_path()),
-        "last_updated": datetime.now().isoformat(timespec="seconds"),
-    }
-
-
 def _postprocessor_paths() -> dict[str, Path]:
     anime_data_root = Path(_env("ANIME_DATA_ROOT", "/srv/anime-data"))
     return {
@@ -1282,412 +1169,6 @@ def _postprocessor_group_payload(
         "best_completed": score_candidate(best_completed).summary if best_completed else "-",
         "candidates": candidates,
     }
-
-
-def build_postprocessor_payload() -> dict[str, Any]:
-    paths = _postprocessor_paths()
-    source_root = paths["source_root"]
-    target_root = paths["target_root"]
-    review_root = paths["review_root"]
-    title_map = paths["title_map"]
-    category = _env("POSTPROCESSOR_CATEGORY", "Bangumi")
-    poll_interval = _env_int("POSTPROCESSOR_POLL_INTERVAL", 60)
-    wait_timeout = _env_int("POSTPROCESSOR_WAIT_TIMEOUT", 1800)
-    delete_losers = _env("POSTPROCESSOR_DELETE_LOSERS", "true").lower() in {"1", "true", "yes", "on"}
-
-    containers, containers_error = _glances_containers_snapshot()
-    worker = containers.get("anime-postprocessor", {})
-    worker_status = worker.get("status", "unknown") if isinstance(worker, dict) else "unknown"
-    worker_uptime = worker.get("uptime") if isinstance(worker, dict) else None
-
-    qb_snapshot, qb_error = _qb_snapshot()
-    diagnostics: list[dict[str, Any]] = []
-    if containers_error:
-        diagnostics.append({"source": "glances/containers", "message": containers_error})
-    if qb_error:
-        diagnostics.append({"source": "qbittorrent", "message": qb_error})
-
-    ready_groups: list[dict[str, Any]] = []
-    waiting_groups: list[dict[str, Any]] = []
-    active_groups: list[dict[str, Any]] = []
-    unparsed_torrents: list[dict[str, Any]] = []
-    total_groups = 0
-
-    if qb_error is None:
-        try:
-            qb = QBClient(
-                _env("QBITTORRENT_API_URL", "http://qbittorrent:8080"),
-                _env("QBITTORRENT_USERNAME", ""),
-                _env("QBITTORRENT_PASSWORD", ""),
-            )
-            qb.auth()
-            torrents = qb.list_torrents(category=category)
-            groups, completed_unparsed = _build_groups(
-                torrents,
-                qb,
-                qb_download_root=Path(_env("QBITTORRENT_DOWNLOAD_ROOT", "/downloads/Bangumi")),
-                local_download_root=source_root,
-            )
-            total_groups = len(groups)
-            now_ts = int(time.time())
-            for key, state in sorted(
-                groups.items(),
-                key=lambda item: (item[0].normalized_title, item[0].season, item[0].episode),
-            ):
-                completed_entries = [entry for entry in state if entry.torrent.completed]
-                should_process, reason = _should_process_group(
-                    state=state,
-                    completed_entries=completed_entries,
-                    now_ts=now_ts,
-                    wait_timeout=wait_timeout,
-                )
-                if should_process:
-                    ready_groups.append(
-                        _postprocessor_group_payload(
-                            key=key,
-                            state=state,
-                            completed_entries=completed_entries,
-                            reason=reason,
-                            status="ready",
-                        )
-                    )
-                elif completed_entries:
-                    waiting_groups.append(
-                        _postprocessor_group_payload(
-                            key=key,
-                            state=state,
-                            completed_entries=completed_entries,
-                            reason=reason,
-                            status="waiting",
-                        )
-                    )
-                else:
-                    active_groups.append(
-                        _postprocessor_group_payload(
-                            key=key,
-                            state=state,
-                            completed_entries=completed_entries,
-                            reason=reason,
-                            status="active",
-                        )
-                    )
-
-            for entry in completed_unparsed:
-                unparsed_torrents.append(
-                    {
-                        "title": entry.torrent.name,
-                        "status": "review",
-                        "reason": "已完成但无法解析，下一轮会送入 manual_review",
-                        "media_count": len(entry.media_paths),
-                        "path": str(entry.content_root),
-                    }
-                )
-        except Exception as exc:
-            diagnostics.append({"source": "postprocessor", "message": str(exc)})
-
-    post_events = [
-        item
-        for item in read_events(limit=200)
-        if str(item.get("source")) == "postprocessor"
-    ][:12]
-
-    summary_cards = [
-        {
-            "label": "Worker",
-            "value": str(worker_status).title(),
-            "detail": worker_uptime or "容器运行时长不可用",
-        },
-        {
-            "label": "Episode Groups",
-            "value": str(total_groups),
-            "detail": f"{len(ready_groups)} 组待处理 · {len(waiting_groups)} 组等待中",
-        },
-        {
-            "label": "Queue Tasks",
-            "value": str((qb_snapshot or {}).get("task_count", "-")) if qb_snapshot else "-",
-            "detail": f"{(qb_snapshot or {}).get('active_downloads', 0)} 个下载中 · {(qb_snapshot or {}).get('active_seeds', 0)} 个做种中" if qb_snapshot else "qB 不可用",
-        },
-        {
-            "label": "Manual Review",
-            "value": str(_count_media_files(review_root)),
-            "detail": f"{len(unparsed_torrents)} 个已完成但未解析",
-        },
-    ]
-
-    config_cards = [
-        {
-            "label": "Source Root",
-            "value": str(source_root),
-            "detail": "下载暂存区",
-        },
-        {
-            "label": "Target Root",
-            "value": str(target_root),
-            "detail": "Jellyfin 季度库",
-        },
-        {
-            "label": "Review Root",
-            "value": str(review_root),
-            "detail": "人工审核队列",
-        },
-        {
-            "label": "Policy",
-            "value": category,
-            "detail": f"轮询 {poll_interval}s · 等待 {wait_timeout}s · 删除落选 {'开启' if delete_losers else '关闭'}",
-        },
-        {
-            "label": "Title Map",
-            "value": str(title_map),
-            "detail": "作品名映射与季号偏移",
-        },
-    ]
-
-    commands = [
-        {
-            "label": "Watch Once",
-            "description": "手动触发一轮 watch 逻辑，最接近常驻服务实际行为。",
-            "command": "docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm postprocessor watch --once",
-        },
-        {
-            "label": "Publish Dry Run",
-            "description": "查看当前下载区如果手动发布，会生成什么计划。",
-            "command": "docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm postprocessor publish",
-        },
-        {
-            "label": "Live Logs",
-            "description": "持续观察常驻 worker 当前每轮处理输出。",
-            "command": "docker compose --env-file deploy/.env -f deploy/compose.yaml logs -f postprocessor",
-        },
-    ]
-
-    return {
-        "title": "Postprocessor",
-        "subtitle": "下载完成后的选优、等待窗口、自动发布与 review 分流工作台。",
-        "refresh_interval_seconds": 15,
-        "summary_cards": summary_cards,
-        "config_cards": config_cards,
-        "commands": commands,
-        "recent_events": post_events,
-        "sections": [
-            {
-                "id": "ready",
-                "title": "Ready On Next Tick",
-                "description": "已经满足处理条件，下一轮 watch 会直接接管并发布。",
-                "meta": f"{len(ready_groups)} groups",
-                "items": ready_groups[:8],
-            },
-            {
-                "id": "waiting",
-                "title": "Waiting Window",
-                "description": "已有完成候选，但还在为更高优先级版本保留等待窗口。",
-                "meta": f"{len(waiting_groups)} groups",
-                "items": waiting_groups[:8],
-            },
-            {
-                "id": "active",
-                "title": "Active Downloads",
-                "description": "当前还没有完成候选，继续等待下载完成。",
-                "meta": f"{len(active_groups)} groups",
-                "items": active_groups[:8],
-            },
-            {
-                "id": "unparsed",
-                "title": "Completed But Unparsed",
-                "description": "已完成但无法解析的 torrent，下一轮会被送进 manual_review。",
-                "meta": f"{len(unparsed_torrents)} torrents",
-                "items": unparsed_torrents[:8],
-            },
-        ],
-        "diagnostics": diagnostics,
-        "last_updated": datetime.now().isoformat(timespec="seconds"),
-    }
-
-
-def build_tailscale_payload() -> dict[str, Any]:
-    base_host = _env("HOMEPAGE_BASE_HOST", socket.gethostname())
-    tailscale_socket = _env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock")
-    tailscale, tailscale_error = _tailscale_status(tailscale_socket)
-    prefs, prefs_error = _tailscale_prefs(tailscale_socket)
-    self_info = ((tailscale or {}).get("Self") or {}) if isinstance(tailscale, dict) else {}
-    peer_map = ((tailscale or {}).get("Peer") or {}) if isinstance(tailscale, dict) else {}
-    peer_values = list(peer_map.values()) if isinstance(peer_map, dict) else []
-    backend_state = (tailscale or {}).get("BackendState", "unavailable") if tailscale else "unavailable"
-    health_messages = list((tailscale or {}).get("Health", [])) if isinstance(tailscale, dict) else []
-    online_peer_count = sum(1 for peer in peer_values if peer.get("Online"))
-    exit_node_candidates = sum(1 for peer in peer_values if peer.get("ExitNodeOption"))
-    tail_ip, ipv6 = _tailscale_ip_pair(self_info.get("TailscaleIPs") if self_info else None)
-    dns_name = _strip_trailing_dot(self_info.get("DNSName"))
-    self_online = bool(self_info.get("Online"))
-    want_running = bool((prefs or {}).get("WantRunning")) if isinstance(prefs, dict) else backend_state == "Running"
-    reachability = "Online" if self_online else ("Stopped" if not want_running else "Offline")
-    logged_out = bool((prefs or {}).get("LoggedOut")) if isinstance(prefs, dict) else backend_state in {"NeedsLogin", "NoState"}
-    machinekey_error = any("machinekey" in str(message).lower() for message in health_messages)
-    control_action = "stop" if want_running else "start"
-    control_label = "关闭 Tailscale" if control_action == "stop" else "开启 Tailscale"
-    if control_action == "stop":
-        control_detail = "仅停止 tailnet 连接，保留当前节点授权与配置。"
-    elif machinekey_error:
-        control_detail = "当前本地 state 已损坏，需要先重建宿主机 Tailscale 状态。"
-    elif backend_state in {"NeedsLogin", "NoState"} or logged_out:
-        control_detail = "启动 backend 后会进入登录态，需要在树莓派终端或网页登录完成授权。"
-    else:
-        control_detail = "恢复 tailnet backend 与远程访问链路。"
-    if self_online:
-        self_note = "当前节点已在线，可通过 Tailscale IP 或 MagicDNS 从其他设备访问。"
-    elif machinekey_error:
-        self_note = "当前节点的本地 state 已损坏。请先完整重建 /var/lib/tailscale，然后再重新登录。"
-    elif backend_state in {"NeedsLogin", "NoState"} or logged_out:
-        self_note = "当前节点已经脱离 tailnet，会话需要重新登录后才能恢复。"
-    elif not want_running:
-        self_note = "当前节点已关闭 Tailscale 网络连接，但授权仍保留，可随时重新开启。"
-    else:
-        self_note = "后台进程仍在运行，但控制面或 peer 可达性异常，节点当前不可用。"
-
-    summary_cards = [
-        {
-            "label": "Backend",
-            "value": backend_state,
-            "detail": "只读取本机 socket",
-        },
-        {
-            "label": "Reachability",
-            "value": reachability,
-            "detail": "控制面与 Peer 连通性",
-        },
-        {
-            "label": "Peers",
-            "value": str(len(peer_values)),
-            "detail": f"{online_peer_count} 台在线 · {exit_node_candidates} 台可做出口节点",
-        },
-        {
-            "label": "Tailnet IP",
-            "value": tail_ip,
-            "detail": dns_name,
-        },
-    ]
-
-    self_cards = [
-        {
-            "label": "Host",
-            "value": self_info.get("HostName") or base_host,
-            "detail": dns_name,
-        },
-        {
-            "label": "Reachability",
-            "value": "Yes" if self_online else "No",
-            "detail": "可从 tailnet 访问" if self_online else "当前无法从 tailnet 访问",
-        },
-        {
-            "label": "IPv4",
-            "value": tail_ip,
-            "detail": "主 tailnet 地址",
-        },
-        {
-            "label": "IPv6",
-            "value": ipv6,
-            "detail": "次要 tailnet 地址",
-        },
-        {
-            "label": "Current Addr",
-            "value": self_info.get("CurAddr") or "-",
-            "detail": f"relay {self_info.get('Relay') or '-'}",
-        },
-        {
-            "label": "Traffic",
-            "value": f"{_format_bytes(self_info.get('RxBytes'))} ↓",
-            "detail": f"{_format_bytes(self_info.get('TxBytes'))} ↑",
-        },
-    ]
-
-    peers = [
-        {
-            "id": peer.get("PublicKey") or str(peer.get("ID") or peer.get("HostName") or "peer"),
-            "host_name": peer.get("HostName", "Unknown"),
-            "dns_name": _strip_trailing_dot(peer.get("DNSName")),
-            "ip": _tailscale_ip_pair(peer.get("TailscaleIPs"))[0],
-            "ipv6": _tailscale_ip_pair(peer.get("TailscaleIPs"))[1],
-            "os": peer.get("OS", "-"),
-            "online": bool(peer.get("Online")),
-            "active": bool(peer.get("Active")),
-            "status": "online" if peer.get("Online") else "offline",
-            "current_addr": peer.get("CurAddr") or "-",
-            "relay": peer.get("Relay") or "-",
-            "rx_label": _format_bytes(peer.get("RxBytes")),
-            "tx_label": _format_bytes(peer.get("TxBytes")),
-            "last_write_label": _format_iso_datetime(peer.get("LastWrite")),
-            "last_seen_label": _format_iso_datetime(peer.get("LastSeen")),
-            "last_handshake_label": _format_iso_datetime(peer.get("LastHandshake")),
-            "key_expiry_label": _format_iso_datetime(peer.get("KeyExpiry")),
-            "exit_node_option": bool(peer.get("ExitNodeOption")),
-            "exit_node": bool(peer.get("ExitNode")),
-        }
-        for peer in sorted(
-            peer_values,
-            key=lambda item: (
-                not bool(item.get("Online")),
-                not bool(item.get("Active")),
-                str(item.get("HostName", "")).lower(),
-            ),
-        )
-    ]
-
-    diagnostics = []
-    if tailscale_error:
-        diagnostics.append(
-            {
-                "source": "tailscale-localapi",
-                "message": tailscale_error,
-            }
-        )
-    if prefs_error:
-        diagnostics.append(
-            {
-                "source": "tailscale-prefs",
-                "message": prefs_error,
-            }
-        )
-    diagnostics.extend(
-        {
-            "source": "tailscale-health",
-            "message": message,
-        }
-        for message in health_messages
-    )
-
-    return {
-        "title": "Tailscale",
-        "subtitle": "本地 tailnet 状态、peer 列表和节点可达性诊断。",
-        "refresh_interval_seconds": 15,
-        "socket_path": tailscale_socket,
-        "summary_cards": summary_cards,
-        "self_cards": self_cards,
-        "self_note": self_note,
-        "peers": peers,
-        "peer_total": len(peers),
-        "peer_online": online_peer_count,
-        "backend_state": backend_state,
-        "reachability": reachability,
-        "want_running": want_running,
-        "logged_out": logged_out,
-        "machinekey_error": machinekey_error,
-        "control": {
-            "action": control_action,
-            "label": control_label,
-            "detail": control_detail,
-        },
-        "self": {
-            "host_name": self_info.get("HostName") or _env("HOMEPAGE_BASE_HOST", socket.gethostname()),
-            "dns_name": dns_name,
-            "tail_ip": tail_ip,
-            "os": self_info.get("OS", "-"),
-            "key_expiry_label": _format_iso_datetime(self_info.get("KeyExpiry")),
-            "relay": self_info.get("Relay") or "-",
-            "current_addr": self_info.get("CurAddr") or "-",
-        },
-        "diagnostics": diagnostics,
-        "last_updated": datetime.now().isoformat(timespec="seconds"),
-    }
-
 
 def _tailscale_status_or_raise(socket_path: str) -> dict[str, Any]:
     status, error = _tailscale_status(socket_path)
@@ -1915,52 +1396,6 @@ def _schedule_stack_restart() -> dict[str, Any]:
         "message": "已安排整套服务重启，不包含 Tailscale；Ops UI 会在最后重启。",
     }
 
-
-def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
-    review_root = _manual_review_root()
-    items = _manual_review_items(review_root)
-    item = next((entry for entry in items if entry["id"] == item_id), None)
-    if item is None:
-        raise HTTPException(status_code=404, detail="未找到人工审核项")
-
-    item_path = review_root / item["relative_path"]
-    parent_dir = item_path.parent
-    sibling_items: list[dict[str, Any]] = []
-    if parent_dir.exists():
-        for sibling in sorted(parent_dir.iterdir()):
-            if sibling.is_file() and sibling.suffix.lower() in MEDIA_EXTENSIONS:
-                sibling_item = _review_item_from_path(sibling, review_root)
-                sibling_items.append(
-                    {
-                        "id": sibling_item["id"],
-                        "filename": sibling_item["filename"],
-                        "size_label": sibling_item["size_label"],
-                        "modified_label": sibling_item["modified_label"],
-                        "is_current": sibling_item["id"] == item_id,
-                    }
-                )
-
-    auto_parse = _build_auto_parse_payload(item_path, review_root)
-    manual_defaults = _manual_publish_defaults(item, auto_parse)
-
-    return {
-        "title": "审核项详情",
-        "subtitle": item["series_name"],
-        "refresh_interval_seconds": 15,
-        "root": str(review_root),
-        "item": item,
-        "siblings": sibling_items,
-        "auto_parse": auto_parse,
-        "manual_publish_defaults": manual_defaults,
-        "breadcrumbs": [
-            {"label": "首页", "href": "/"},
-            {"label": "Ops Review", "href": "/ops-review"},
-            {"label": item["filename"], "href": None},
-        ],
-        "last_updated": datetime.now().isoformat(timespec="seconds"),
-    }
-
-
 def _manual_parsed_media(
     *,
     item: dict[str, Any],
@@ -2017,309 +1452,6 @@ def _delete_review_file(item_path: Path, review_root: Path) -> dict[str, Any]:
     }
 
 
-def build_overview() -> dict[str, Any]:
-    try:
-        _sample_history_once()
-    except Exception:
-        pass
-
-    anime_data_root = Path(_env("ANIME_DATA_ROOT", "/srv/anime-data"))
-    anime_collection_root = Path(_env("ANIME_COLLECTION_ROOT", "/srv/anime-collection"))
-    base_host = _env("HOMEPAGE_BASE_HOST", socket.gethostname())
-    glances_base = _glances_base_url()
-    anime_data_mount = _mount_health(anime_data_root)
-    anime_collection_mount = _mount_health(anime_collection_root)
-    if anime_data_mount["mounted"]:
-        try:
-            disk = _disk_snapshot(anime_data_root)
-        except Exception:
-            disk = {
-                "path": str(anime_data_root),
-                "used_bytes": None,
-                "free_bytes": None,
-                "total_bytes": None,
-                "percent": None,
-            }
-    else:
-        disk = {
-            "path": str(anime_data_root),
-            "used_bytes": None,
-            "free_bytes": None,
-            "total_bytes": None,
-            "percent": None,
-        }
-
-    quicklook, quicklook_error = _safe_get_json(f"{glances_base}/quicklook")
-    containers_raw, containers_error = _safe_get_json(f"{glances_base}/containers")
-    mem, mem_error = _safe_get_json(f"{glances_base}/mem")
-    uptime_raw, uptime_error = _safe_get_json(f"{glances_base}/uptime")
-    load_raw, load_error = _safe_get_json(f"{glances_base}/load")
-    sensors_raw, sensors_error = _safe_get_json(f"{glances_base}/sensors")
-    tailscale_socket = _env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock")
-    tailscale, tailscale_error = _tailscale_status(tailscale_socket)
-    qb, qb_error = _qb_snapshot()
-
-    containers_list = containers_raw if isinstance(containers_raw, list) else []
-    containers = {
-        item.get("name", ""): item
-        for item in containers_list
-        if isinstance(item, dict)
-    }
-
-    manual_review_root = anime_data_root / "processing" / "manual_review"
-    seasonal_root = anime_data_root / "library" / "seasonal"
-    downloads_root = anime_data_root / "downloads" / "Bangumi"
-    data_storage_ready = bool(anime_data_mount["mounted"] and anime_data_mount["readable"] and not anime_data_mount["probe_error"])
-
-    tailscale_self = ((tailscale or {}).get("Self") or {}) if isinstance(tailscale, dict) else {}
-    tailscale_peers = ((tailscale or {}).get("Peer") or {}) if isinstance(tailscale, dict) else {}
-    tailscale_peer_values = list(tailscale_peers.values()) if isinstance(tailscale_peers, dict) else []
-    tailnet_online_peers = sum(1 for peer in tailscale_peer_values if peer.get("Online"))
-    running_services, total_services = _container_status_count(containers)
-    tailscaled_online = bool(isinstance(tailscale, dict) and not tailscale_error)
-    total_service_units = total_services + 1
-    online_service_units = running_services + (1 if tailscaled_online else 0)
-    cpu_percent = (quicklook or {}).get("cpu") if isinstance(quicklook, dict) else None
-    memory_percent = (mem or {}).get("percent") if isinstance(mem, dict) else None
-    cpu_temp_c = _extract_temperature(sensors_raw)
-    jellyfin_container = containers.get("jellyfin", {})
-    jellyfin_network = jellyfin_container.get("network", {}) if isinstance(jellyfin_container, dict) else {}
-    playback_tx_rate = jellyfin_container.get("network_tx") or jellyfin_network.get("tx")
-    fan_state, fan_state_error = _fan_state_snapshot()
-    host_uptime = _format_uptime(uptime_raw if isinstance(uptime_raw, str) else None)
-    load_min1 = (load_raw or {}).get("min1") if isinstance(load_raw, dict) else None
-    load_min5 = (load_raw or {}).get("min5") if isinstance(load_raw, dict) else None
-    load_min15 = (load_raw or {}).get("min15") if isinstance(load_raw, dict) else None
-    load_detail = "-"
-    if all(value is not None for value in (load_min1, load_min5, load_min15)):
-        load_detail = f"{float(load_min1):.2f} / {float(load_min5):.2f} / {float(load_min15):.2f}"
-
-    trend_window_hours = _series_window_hours()
-    upload_window_days = _upload_window_days()
-    cpu_values, cpu_points = _series_values("cpu_percent", window_hours=trend_window_hours)
-    temp_values, temp_points = _series_values("cpu_temp_c", window_hours=trend_window_hours)
-    playback_values, playback_points = _series_values("playback_tx_rate", window_hours=trend_window_hours)
-    download_bars, download_values = _daily_volume_bars(days=upload_window_days, daily_key="download_daily")
-
-    fan_updated_ts = float((fan_state or {}).get("updated_ts") or 0.0) if fan_state else 0.0
-    fan_state_age_s = max(0.0, time.time() - fan_updated_ts) if fan_updated_ts else None
-    fan_is_fresh = fan_state_age_s is not None and fan_state_age_s <= max(_refresh_interval_seconds() * 3, 30)
-    fan_duty = (fan_state or {}).get("applied_duty_percent") if fan_state else None
-    fan_cpu_temp = (fan_state or {}).get("cpu_temp_c") if fan_state else None
-    fan_pin = (fan_state or {}).get("pin") if fan_state else None
-    fan_status_label = "Online" if fan_is_fresh else "Stale"
-    fan_detail = "Fan state unavailable"
-    if fan_state and fan_state_age_s is not None:
-        fan_detail = (
-            f"Fan {int(round(float(fan_duty)))}% · GPIO{fan_pin or '-'} · {int(fan_state_age_s)}s ago"
-            if fan_is_fresh
-            else f"last update {int(fan_state_age_s)}s ago"
-        )
-
-    system_cards = [
-        {
-            "label": "CPU Usage",
-            "value": _format_percent(cpu_percent),
-            "detail": (quicklook or {}).get("cpu_name", "Raspberry Pi") if isinstance(quicklook, dict) else "Raspberry Pi",
-        },
-        {
-            "label": "CPU Temp",
-            "value": _format_temperature(cpu_temp_c),
-            "detail": f"{trend_window_hours}h avg {_format_temperature(_mean(temp_values))} · {fan_detail}",
-        },
-        {
-            "label": "Memory",
-            "value": _format_percent(memory_percent),
-            "detail": _format_bytes((mem or {}).get("available") if isinstance(mem, dict) else None),
-        },
-        {
-            "label": "Host Uptime",
-            "value": host_uptime,
-            "detail": f"load {load_detail}",
-        },
-        {
-            "label": "Services",
-            "value": f"{online_service_units} online",
-            "detail": f"{total_service_units} total · Docker + tailscaled",
-        },
-        {
-            "label": "Anime Data",
-            "value": _format_percent(disk.get("percent")),
-            "detail": _format_bytes(disk.get("free_bytes")) if data_storage_ready else "数据盘未挂载或不可读",
-        },
-    ]
-
-    queue_cards = [
-        {
-            "label": "Bangumi Tasks",
-            "value": str((qb or {}).get("task_count", "-")) if qb else "-",
-            "detail": (qb or {}).get("category", "Bangumi") if qb else "qB 不可用",
-        },
-        {
-            "label": "Downloading",
-            "value": str((qb or {}).get("active_downloads", "-")) if qb else "-",
-            "detail": _format_rate((qb or {}).get("download_speed") if qb else None),
-        },
-        {
-            "label": "Seeding",
-            "value": str((qb or {}).get("active_seeds", "-")) if qb else "-",
-            "detail": _format_rate((qb or {}).get("upload_speed") if qb else None),
-        },
-        {
-            "label": "Seasonal Episodes",
-            "value": str(_count_media_files(seasonal_root)) if data_storage_ready else "-",
-            "detail": f"{_count_series_dirs(seasonal_root)} 部作品" if data_storage_ready else "数据盘未挂载",
-        },
-        {
-            "label": "Manual Review",
-            "value": str(_count_media_files(manual_review_root)) if data_storage_ready else "-",
-            "detail": "待人工处理文件" if data_storage_ready else "数据盘未挂载",
-        },
-        {
-            "label": "Download Residue",
-            "value": str(_count_media_files(downloads_root)) if data_storage_ready else "-",
-            "detail": "下载区剩余媒体文件" if data_storage_ready else "数据盘未挂载",
-        },
-    ]
-    manual_review_count = _count_media_files(manual_review_root) if data_storage_ready else None
-    log_count = len(read_events())
-
-    network_cards = [
-        {
-            "label": "Tailnet",
-            "value": (tailscale or {}).get("BackendState", "unknown") if tailscale else "unavailable",
-            "detail": tailscale_self.get("HostName") or base_host,
-        },
-        {
-            "label": "Tailscale IP",
-            "value": _tailscale_ip_pair(tailscale_self.get("TailscaleIPs") if tailscale_self else None)[0],
-            "detail": _strip_trailing_dot(tailscale_self.get("DNSName")) if tailscale_self else "-",
-        },
-        {
-            "label": "Peers",
-            "value": str(len(tailscale_peer_values)) if tailscale else "-",
-            "detail": f"{tailnet_online_peers} 台在线" if tailscale else "本地 API 不可用",
-        },
-    ]
-
-    trend_cards = [
-        {
-            "label": "CPU Usage",
-            "value": _format_percent(cpu_percent),
-            "detail": f"{trend_window_hours}h · load {load_detail}",
-            "points": cpu_points,
-            "chart_kind": "line",
-            "window_label": f"{trend_window_hours}H",
-            "tone": "teal",
-        },
-        {
-            "label": "CPU Temp",
-            "value": _format_temperature(cpu_temp_c),
-            "detail": f"{trend_window_hours}h avg {_format_temperature(_mean(temp_values))}",
-            "points": temp_points,
-            "chart_kind": "line",
-            "window_label": f"{trend_window_hours}H",
-            "tone": "amber",
-        },
-        {
-            "label": "Playback Traffic",
-            "value": _format_rate(playback_tx_rate),
-            "detail": f"{trend_window_hours}h 平均 {_format_rate(_mean(playback_values))} · 全部客户端",
-            "points": playback_points,
-            "chart_kind": "line",
-            "window_label": f"{trend_window_hours}H",
-            "tone": "ocean",
-        },
-        {
-            "label": "Download Volume",
-            "value": _format_bytes(sum(download_values)),
-            "detail": f"近 {upload_window_days} 天总量 · qBittorrent",
-            "bars": download_bars,
-            "chart_kind": "bars",
-            "window_label": f"{upload_window_days}D",
-            "tone": "violet",
-        },
-    ]
-
-    diagnostics = []
-    for label, error in (
-        ("glances/quicklook", quicklook_error),
-        ("glances/containers", containers_error),
-        ("glances/mem", mem_error),
-        ("glances/uptime", uptime_error),
-        ("glances/load", load_error),
-        ("glances/sensors", sensors_error),
-        ("qBittorrent", qb_error),
-        ("tailscale", tailscale_error),
-        ("fan-control", fan_state_error),
-    ):
-        if error:
-            diagnostics.append({"source": label, "message": error})
-    if fan_state and not fan_is_fresh and fan_state_age_s is not None:
-        diagnostics.append(
-            {
-                "source": "fan-control",
-                "message": f"fan state is stale ({int(fan_state_age_s)}s since last update)",
-            }
-        )
-    if not anime_data_mount["mounted"]:
-        diagnostics.append(
-            {
-                "source": "mount:/srv/anime-data",
-                "message": "未检测到数据盘挂载，下载、整理和媒体库目录可能已回落到系统盘。",
-            }
-        )
-    elif anime_data_mount["probe_error"]:
-        diagnostics.append(
-            {
-                "source": "mount:/srv/anime-data",
-                "message": f"数据盘访问异常：{anime_data_mount['probe_error']}",
-            }
-        )
-    if not anime_collection_mount["mounted"]:
-        diagnostics.append(
-            {
-                "source": "mount:/srv/anime-collection",
-                "message": "未检测到收藏盘挂载，收藏库当前不可用。",
-            }
-        )
-    elif anime_collection_mount["probe_error"]:
-        diagnostics.append(
-            {
-                "source": "mount:/srv/anime-collection",
-                "message": f"收藏盘访问异常：{anime_collection_mount['probe_error']}",
-            }
-        )
-
-    return {
-        "title": "RPI Anime Ops",
-        "subtitle": "树莓派私人影音库控制台",
-        "host": base_host,
-        "refresh_interval_seconds": _refresh_interval_seconds(),
-        "services": _build_services(
-            base_host,
-            containers,
-            tailscale,
-            manual_review_count=manual_review_count,
-            log_count=log_count,
-        ),
-        "system_cards": system_cards,
-        "queue_cards": queue_cards,
-        "trend_cards": trend_cards,
-        "network_cards": network_cards,
-        "stack_control": {
-            "label": "Restart Stack",
-            "detail": "compose only · homepage last",
-        },
-        "generated_from": {
-            "glances": glances_base,
-            "tailscale_socket": tailscale_socket,
-            "history_file": str(_history_file()),
-        },
-        "diagnostics": diagnostics,
-    }
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await asyncio.to_thread(_sample_history_once, force=True)
@@ -2345,18 +1477,9 @@ async def lifespan(_app: FastAPI):
             pass
 
 
-OPS_UI_NO_CACHE_HEADERS = {
-    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    "Pragma": "no-cache",
-    "Expires": "0",
-}
+router = APIRouter()
 
 
-app = FastAPI(title="Anime Ops UI", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-
-@app.middleware("http")
 async def disable_browser_cache_for_ui_assets(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
@@ -2366,54 +1489,50 @@ async def disable_browser_cache_for_ui_assets(request: Request, call_next):
     return response
 
 
-@app.get("/healthz")
+@router.get("/healthz")
 def healthz() -> dict[str, bool]:
     return {"ok": True}
 
 
-@app.get("/api/overview")
+@router.get("/api/overview")
 def overview() -> JSONResponse:
-    return JSONResponse(build_overview())
+    return JSONResponse(build_overview_payload_service())
 
 
-@app.get("/api/manual-review")
+@router.get("/api/manual-review")
 def manual_review() -> JSONResponse:
-    return JSONResponse(build_manual_review_payload())
+    return JSONResponse(build_manual_review_payload_service())
 
 
-@app.get("/api/manual-review/item")
+@router.get("/api/manual-review/item")
 def manual_review_item(id: str = Query(...)) -> JSONResponse:
-    return JSONResponse(build_manual_review_item_payload(id))
+    try:
+        return JSONResponse(build_manual_review_item_payload_service(id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="manual review file not found") from exc
 
 
-@app.get("/api/logs")
+@router.get("/api/logs")
 def logs_api(
     level: str | None = Query(default=None),
     source: str | None = Query(default=None),
     q: str | None = Query(default=None),
     limit: int = Query(default=300, ge=20, le=1500),
 ) -> JSONResponse:
-    return JSONResponse(
-        build_logs_payload(
-            level=level,
-            source=source,
-            search=q,
-            limit=limit,
-        )
-    )
+    return JSONResponse(build_logs_payload_service(level=level, source=source, search=q, limit=limit))
 
 
-@app.get("/api/tailscale")
+@router.get("/api/tailscale")
 def tailscale_api() -> JSONResponse:
-    return JSONResponse(build_tailscale_payload())
+    return JSONResponse(build_tailscale_payload_service())
 
 
-@app.get("/api/postprocessor")
+@router.get("/api/postprocessor")
 def postprocessor_api() -> JSONResponse:
-    return JSONResponse(build_postprocessor_payload())
+    return JSONResponse(build_postprocessor_payload_service())
 
 
-@app.post("/api/tailscale/action")
+@router.post("/api/tailscale/action")
 def tailscale_action_api(payload: TailscaleActionRequest) -> JSONResponse:
     socket_path = _env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock")
     action = payload.action
@@ -2453,7 +1572,7 @@ def tailscale_action_api(payload: TailscaleActionRequest) -> JSONResponse:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.post("/api/services/restart")
+@router.post("/api/services/restart")
 def restart_service_api(payload: ServiceRestartRequest) -> JSONResponse:
     target = payload.target.strip().lower()
     specs = _service_restart_specs()
@@ -2492,7 +1611,7 @@ def restart_service_api(payload: ServiceRestartRequest) -> JSONResponse:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.post("/api/services/restart-all")
+@router.post("/api/services/restart-all")
 def restart_all_services_api() -> JSONResponse:
     _append_service_control_event(
         level="warning",
@@ -2504,7 +1623,7 @@ def restart_all_services_api() -> JSONResponse:
     return JSONResponse(_schedule_stack_restart())
 
 
-@app.post("/api/logs/clear")
+@router.post("/api/logs/clear")
 def clear_logs_api() -> JSONResponse:
     result = clear_events()
     append_event(
@@ -2525,7 +1644,7 @@ def clear_logs_api() -> JSONResponse:
     )
 
 
-@app.post("/api/manual-review/item/retry-parse")
+@router.post("/api/manual-review/item/retry-parse")
 def manual_review_retry_parse(id: str = Query(...)) -> JSONResponse:
     item, item_path, review_root = _manual_review_item_or_404(id)
     auto_parse = _build_auto_parse_payload(item_path, review_root)
@@ -2565,7 +1684,7 @@ def manual_review_retry_parse(id: str = Query(...)) -> JSONResponse:
     )
 
 
-@app.post("/api/manual-review/item/publish")
+@router.post("/api/manual-review/item/publish")
 def manual_review_publish(
     payload: ManualPublishRequest,
     id: str = Query(...),
@@ -2604,7 +1723,7 @@ def manual_review_publish(
     )
 
 
-@app.post("/api/manual-review/item/delete")
+@router.post("/api/manual-review/item/delete")
 def manual_review_delete(id: str = Query(...)) -> JSONResponse:
     item, item_path, review_root = _manual_review_item_or_404(id)
     result = _delete_review_file(item_path, review_root)
@@ -2628,40 +1747,54 @@ def manual_review_delete(id: str = Query(...)) -> JSONResponse:
     )
 
 
-@app.get("/")
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html", headers=OPS_UI_NO_CACHE_HEADERS)
+@router.get("/")
+def index(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/"]
+    return render_page(request, template_name, page_key, title)
 
 
-@app.get("/ops-review")
-def ops_review_placeholder() -> FileResponse:
-    return FileResponse(STATIC_DIR / "ops-review.html", headers=OPS_UI_NO_CACHE_HEADERS)
+@router.get("/ops-review")
+def ops_review_placeholder(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/ops-review"]
+    return render_page(request, template_name, page_key, title)
 
 
-@app.get("/ops-review/item")
-def ops_review_item_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "ops-review-item.html", headers=OPS_UI_NO_CACHE_HEADERS)
+@router.get("/ops-review/item")
+def ops_review_item_page(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/ops-review/item"]
+    return render_page(request, template_name, page_key, title)
 
 
-@app.get("/postprocessor")
-def postprocessor_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "postprocessor.html", headers=OPS_UI_NO_CACHE_HEADERS)
+@router.get("/postprocessor")
+def postprocessor_page(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/postprocessor"]
+    return render_page(request, template_name, page_key, title)
 
 
-@app.get("/tailscale")
-def tailscale_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "tailscale.html", headers=OPS_UI_NO_CACHE_HEADERS)
+@router.get("/tailscale")
+def tailscale_page(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/tailscale"]
+    return render_page(request, template_name, page_key, title)
 
 
-@app.get("/logs")
-def logs_placeholder() -> FileResponse:
-    return FileResponse(STATIC_DIR / "logs.html", headers=OPS_UI_NO_CACHE_HEADERS)
+@router.get("/logs")
+def logs_placeholder(request: Request):
+    template_name, page_key, title = PAGE_TEMPLATES["/logs"]
+    return render_page(request, template_name, page_key, title)
+
+
+def create_app(*, enable_lifespan: bool = True) -> FastAPI:
+    app = FastAPI(title="Anime Ops UI", lifespan=lifespan if enable_lifespan else None)
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    app.include_router(router)
+    app.middleware("http")(disable_browser_cache_for_ui_assets)
+    return app
 
 
 def main() -> None:
     import uvicorn
 
-    uvicorn.run("anime_ops_ui.main:app", host="0.0.0.0", port=3000, reload=False)
+    uvicorn.run(create_app(), host="0.0.0.0", port=3000)
 
 
 if __name__ == "__main__":

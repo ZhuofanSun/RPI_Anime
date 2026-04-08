@@ -14,11 +14,16 @@ const tailscalePeerMeta = document.getElementById("tailscale-peer-meta");
 const tailscalePeerList = document.getElementById("tailscale-peer-list");
 const tailscaleFlash = document.getElementById("tailscale-flash");
 const TAILSCALE_CACHE_KEY = "anime-ops-ui-tailscale-cache-v1";
-const { escapeHtml, formatUpdatedLabel, metricTemplate, readSessionCache, renderEmptyState, writeSessionCache } = window.AnimeOpsCore;
+const {
+  createPageBootstrap,
+  escapeHtml,
+  fetchJson,
+  formatUpdatedLabel,
+  metricTemplate,
+  renderEmptyState,
+} = window.AnimeOpsCore;
 
 let tailscaleRefreshMs = 15000;
-let tailscaleTimerId = null;
-let tailscaleFetchInFlight = false;
 let tailscaleActionInFlight = false;
 let tailscaleCurrentControl = { action: "start", label: "开启 Tailscale" };
 
@@ -161,15 +166,6 @@ function setActionBanner(tone, title, message, authUrl = "") {
   tailscaleActionStatus.innerHTML = actionBannerTemplate(tone, title, message, authUrl);
 }
 
-function scheduleRefresh() {
-  if (tailscaleTimerId) {
-    clearTimeout(tailscaleTimerId);
-  }
-  tailscaleTimerId = window.setTimeout(() => {
-    refreshTailscale();
-  }, tailscaleRefreshMs);
-}
-
 async function performTailscaleAction() {
   if (tailscaleActionInFlight) return;
   tailscaleActionInFlight = true;
@@ -191,7 +187,7 @@ async function performTailscaleAction() {
       payload.message || "操作已完成。",
       payload.auth_url || ""
     );
-    await refreshTailscale();
+    await tailscalePage.tick();
   } catch (error) {
     setActionBanner("error", tailscaleCurrentControl.label || "Tailscale", error.message || String(error));
   } finally {
@@ -200,30 +196,16 @@ async function performTailscaleAction() {
   }
 }
 
-async function refreshTailscale() {
-  if (tailscaleFetchInFlight) return;
-  tailscaleFetchInFlight = true;
-  try {
-    const response = await fetch("/api/tailscale", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    renderTailscale(payload);
-    writeSessionCache(TAILSCALE_CACHE_KEY, payload);
-  } catch (error) {
+const tailscalePage = createPageBootstrap({
+  cacheKey: TAILSCALE_CACHE_KEY,
+  fetcher: () => fetchJson("/api/tailscale", { cache: "no-store" }),
+  render: renderTailscale,
+  getIntervalMs: () => tailscaleRefreshMs,
+  onError: (error) => {
     tailscaleFlash.innerHTML = flashTemplate("Tailscale unavailable", error.message || String(error));
-  } finally {
-    tailscaleFetchInFlight = false;
-    scheduleRefresh();
-  }
-}
-
-const cachedTailscale = readSessionCache(TAILSCALE_CACHE_KEY);
-if (cachedTailscale) {
-  renderTailscale(cachedTailscale.payload, { cachedAt: cachedTailscale.cachedAt });
-}
+  },
+});
 
 tailscaleToggleButton?.addEventListener("click", performTailscaleAction);
 
-refreshTailscale();
+tailscalePage.start();

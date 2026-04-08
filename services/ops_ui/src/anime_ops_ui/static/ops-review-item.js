@@ -9,15 +9,21 @@ const reviewItemSiblings = document.getElementById("review-item-siblings");
 const reviewItemActions = document.getElementById("review-item-actions");
 const reviewItemBreadcrumbs = document.getElementById("review-item-breadcrumbs");
 const reviewItemActionStatus = document.getElementById("review-item-action-status");
-const { escapeHtml, formHasFocus, formatUpdatedLabel, metricTemplate, renderEmptyState } = window.AnimeOpsCore;
+const {
+  createPageBootstrap,
+  escapeHtml,
+  fetchJson,
+  formHasFocus,
+  formatUpdatedLabel,
+  metricTemplate,
+  renderEmptyState,
+} = window.AnimeOpsCore;
 
 const REVIEW_FLASH_KEY = "anime-ops-ui-flash-v1";
 const reviewItemParams = new URLSearchParams(window.location.search);
 const reviewItemId = reviewItemParams.get("id");
 
 let reviewItemRefreshMs = 15000;
-let reviewItemTimerId = null;
-let reviewItemLoading = false;
 let reviewItemActionInFlight = false;
 let reviewItemManualDraft = null;
 let reviewItemSuspendRefreshUntil = 0;
@@ -299,77 +305,55 @@ async function performAction(action, url, { title, pendingMessage, body } = {}) 
   }
 }
 
-function scheduleRefresh() {
-  if (reviewItemTimerId) {
-    clearTimeout(reviewItemTimerId);
-  }
-  reviewItemTimerId = window.setTimeout(() => {
-    refreshReviewItem();
-  }, reviewItemRefreshMs);
-}
-
 function shouldDeferRefresh() {
   const manualForm = document.getElementById("manual-publish-form");
   return reviewItemActionInFlight || formHasFocus(manualForm) || Date.now() < reviewItemSuspendRefreshUntil;
 }
 
-async function refreshReviewItem() {
-  if (!reviewItemId || reviewItemLoading) {
-    return;
-  }
-  if (shouldDeferRefresh()) {
-    scheduleRefresh();
-    return;
-  }
-  reviewItemLoading = true;
-  try {
-    const response = await fetch(`/api/manual-review/item?id=${encodeURIComponent(reviewItemId)}`, {
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
+function renderReviewItem(payload) {
+  const item = payload.item;
+  const autoParse = payload.auto_parse || { status: "unparsed", reason: "自动解析失败" };
 
-    const payload = await response.json();
-    const item = payload.item;
-    const autoParse = payload.auto_parse || { status: "unparsed", reason: "自动解析失败" };
-
-    if (!reviewItemManualDraft) {
-      reviewItemManualDraft = { ...(payload.manual_publish_defaults || {}) };
-    }
-
-    reviewItemTitle.textContent = payload.title || "审核项详情";
-    reviewItemSubtitle.textContent = item.filename;
-    reviewItemBucket.textContent = item.bucket;
-    reviewItemUpdated.textContent = formatUpdatedLabel();
-    reviewItemRefreshMs = (payload.refresh_interval_seconds || 15) * 1000;
-    reviewItemRefresh.textContent = `${Math.round(reviewItemRefreshMs / 1000)}s`;
-    reviewItemBreadcrumbs.innerHTML = breadcrumbTemplate(payload.breadcrumbs || []);
-    reviewItemSummary.innerHTML = [
-      { label: "大小", value: item.size_label, detail: item.extension },
-      { label: "作品", value: item.series_name, detail: item.season_label },
-      { label: "目录提示", value: item.folder_hint, detail: item.modified_label },
-      { label: "同目录文件", value: String((payload.siblings || []).length), detail: "同一父目录" },
-    ]
-      .map(metricTemplate)
-      .join("");
-    reviewItemMeta.innerHTML = detailMetaTemplate(item, autoParse);
-    reviewItemSiblings.innerHTML = (payload.siblings || []).length
-      ? payload.siblings.map(siblingTemplate).join("")
-      : renderEmptyState("当前没有同目录文件。", "当前目录下只有这一个媒体文件。");
-    reviewItemActions.innerHTML = actionsTemplate(payload);
-    bindActionControls(payload);
-  } catch (error) {
-    reviewItemMeta.innerHTML = renderEmptyState("加载审核项详情失败。", error.message || String(error), "review-empty-error");
-  } finally {
-    reviewItemLoading = false;
-    scheduleRefresh();
+  if (!reviewItemManualDraft) {
+    reviewItemManualDraft = { ...(payload.manual_publish_defaults || {}) };
   }
+
+  reviewItemTitle.textContent = payload.title || "审核项详情";
+  reviewItemSubtitle.textContent = item.filename;
+  reviewItemBucket.textContent = item.bucket;
+  reviewItemUpdated.textContent = formatUpdatedLabel();
+  reviewItemRefreshMs = (payload.refresh_interval_seconds || 15) * 1000;
+  reviewItemRefresh.textContent = `${Math.round(reviewItemRefreshMs / 1000)}s`;
+  reviewItemBreadcrumbs.innerHTML = breadcrumbTemplate(payload.breadcrumbs || []);
+  reviewItemSummary.innerHTML = [
+    { label: "大小", value: item.size_label, detail: item.extension },
+    { label: "作品", value: item.series_name, detail: item.season_label },
+    { label: "目录提示", value: item.folder_hint, detail: item.modified_label },
+    { label: "同目录文件", value: String((payload.siblings || []).length), detail: "同一父目录" },
+  ]
+    .map(metricTemplate)
+    .join("");
+  reviewItemMeta.innerHTML = detailMetaTemplate(item, autoParse);
+  reviewItemSiblings.innerHTML = (payload.siblings || []).length
+    ? payload.siblings.map(siblingTemplate).join("")
+    : renderEmptyState("当前没有同目录文件。", "当前目录下只有这一个媒体文件。");
+  reviewItemActions.innerHTML = actionsTemplate(payload);
+  bindActionControls(payload);
 }
+
+const reviewItemPage = createPageBootstrap({
+  fetcher: () => fetchJson(`/api/manual-review/item?id=${encodeURIComponent(reviewItemId)}`, { cache: "no-store" }),
+  render: renderReviewItem,
+  getIntervalMs: () => reviewItemRefreshMs,
+  shouldPause: shouldDeferRefresh,
+  onError: (error) => {
+    reviewItemMeta.innerHTML = renderEmptyState("加载审核项详情失败。", error.message || String(error), "review-empty-error");
+  },
+});
 
 if (!reviewItemId) {
   reviewItemMeta.innerHTML = renderEmptyState("缺少审核项 ID。", "请从 Ops Review 列表页进入详情页。", "review-empty-error");
 } else {
   clearActionStatus();
-  refreshReviewItem();
+  reviewItemPage.start();
 }

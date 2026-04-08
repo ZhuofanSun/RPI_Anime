@@ -734,7 +734,7 @@ git commit -m "refactor: layer ops-ui styles and normalize page bootstraps"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/frontend-refactor.md`
+- Modify: `docs/frontend-refactor.md` (archive note only)
 - Modify: `services/ops_ui/src/anime_ops_ui/main.py`
 - Test: `services/ops_ui/tests/test_shell_routes.py`
 - Test: `services/ops_ui/tests/test_navigation.py`
@@ -753,15 +753,10 @@ git commit -m "refactor: layer ops-ui styles and normalize page bootstraps"
 - `static/` 前端引导与样式层
 ```
 
-- [ ] **Step 2: Update `docs/frontend-refactor.md` to document the new foundation**
+- [ ] **Step 2: Keep `docs/frontend-refactor.md` as an archive note**
 
 ```md
-### Current Foundation
-
-- Internal pages share one Jinja shell
-- Navigation metadata lives in `navigation.py`
-- UI copy is keyed in `copy.py`
-- CSS is layered as `tokens/base/layout/components/pages`
+这份文件只保留归档说明，不再作为主文档。
 ```
 
 - [ ] **Step 3: Run the full ops-ui test suite**

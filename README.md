@@ -4,7 +4,10 @@
 
 这个项目把番剧订阅、下载、选优入库、播放、异地访问和运维界面串成了一条完整链路。核心思路是：外部服务尽量复用成熟组件，真正和“自用追番”强相关的部分自己写，比如下载后选优、重命名、NFO 生成、人工审核和统一运维入口。
 
-前端和运维界面的结构说明见：[Ops UI Frontend Refactor](/Users/sunzhuofan/RPI_Anime/docs/frontend-refactor.md)。
+前端和运维界面的重构方向见：
+
+- [Ops UI Redesign Spec](/Users/sunzhuofan/RPI_Anime/docs/superpowers/specs/2026-04-07-ops-ui-redesign-design.md)
+- [Ops UI Phase 2 Foundation Plan](/Users/sunzhuofan/RPI_Anime/docs/superpowers/plans/2026-04-07-ops-ui-phase-2-foundation.md)
 
 ## 这套项目解决什么问题
 
@@ -26,15 +29,18 @@
 
 ## 前端结构
 
-`ops-ui` 当前采用轻量多页面结构：
+`ops-ui` 当前已经整理成四层：
 
-- 静态 HTML 提供页面骨架和首屏骨架屏
-- `core.js` 负责共享缓存、空状态、查询参数和提示条
-- `theme.js` 负责明暗主题
-- 各页面单独的 `page.js` 只处理自己的数据请求和交互
-- `styles.css` 维护统一视觉系统
+- `FastAPI` 路由与页面装配：
+  负责 API、页面路由和共享页面上下文
+- `services/*` 后端聚合层：
+  负责把 `Logs`、`Ops Review`、`Postprocessor`、`Tailscale` 和首页概览的聚合逻辑从路由层剥离出来
+- `Jinja` 共享 shell：
+  内部工作页共用一套页面骨架、导航和主题入口
+- `static/` 前端层：
+  `core.js` 提供共享 bootstrap、缓存和查询参数工具；页面脚本只处理自己的数据请求与渲染；样式拆成 `tokens / base / layout / components / pages`
 
-更完整的前端设计说明见：[Ops UI Frontend Refactor](/Users/sunzhuofan/RPI_Anime/docs/frontend-refactor.md)。
+后续大改方向以 spec 和 plan 为准。
 
 ## 界面预览
 
@@ -113,7 +119,9 @@ flowchart LR
 ├── docs
 │   ├── dash1.png
 │   ├── dash2.png
-│   └── frontend-refactor.md
+│   ├── superpowers
+│   │   ├── plans
+│   │   └── specs
 ├── scripts
 │   ├── bootstrap_pi.sh
 │   ├── install_tailscale_pi.sh
@@ -127,10 +135,15 @@ flowchart LR
 │   └── fan_pwm_test.py
 └── services
     ├── ops_ui
-    │   └── static
-    │       ├── core.js
-    │       ├── theme.js
-    │       └── styles.css
+    │   └── src
+    │       └── anime_ops_ui
+    │           ├── services
+    │           ├── static
+    │           │   ├── core.js
+    │           │   ├── theme.js
+    │           │   ├── styles.css
+    │           │   └── styles
+    │           └── templates
     └── postprocessor
 ```
 

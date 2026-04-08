@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block head %}
+<script defer src="/static/core.js?v=phase2"></script>
+<script defer src="/static/postprocessor.js?v=phase2"></script>
+{% endblock %}
+{% block content %}
+<div class="page-shell">
+  <header class="hero">
+    <div class="hero-copy">
+      <div class="hero-nav">
+        <a class="ghost-link ghost-link-subtle" href="/">← 返回 Dashboard</a>
+        <div class="hero-links">
+          <a class="hero-link" href="/">Dashboard</a>
+          <span class="hero-link-sep">/</span>
+          <span class="hero-link-current">Postprocessor</span>
+        </div>
+      </div>
+      <div class="eyebrow">Postprocessor</div>
+      <h1 id="post-title">Postprocessor</h1>
+      <p id="post-subtitle">下载完成后的选优、等待窗口、自动发布与 review 分流工作台。</p>
+    </div>
+    <div class="hero-meta">
+      <div class="meta-pill">
+        <span class="meta-label">Worker</span>
+        <span class="meta-value meta-value-compact" id="post-worker-badge">-</span>
+      </div>
+      <div class="meta-pill">
+        <span class="meta-label">Updated</span>
+        <span class="meta-value" id="post-updated">-</span>
+      </div>
+      <div class="meta-pill meta-pill-subtle">
+        <span class="meta-label">Auto Refresh</span>
+        <span class="meta-value" id="post-refresh">15s</span>
+      </div>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
+        <span class="theme-toggle-copy">
+          <span class="theme-toggle-title">Theme</span>
+          <span class="theme-toggle-state" data-theme-label>Light</span>
+        </span>
+        <span class="theme-toggle-track" aria-hidden="true">
+          <span class="theme-toggle-icon">☀</span>
+          <span class="theme-toggle-icon">☾</span>
+          <span class="theme-toggle-thumb"></span>
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <div id="post-flash" class="flash-stack" aria-live="polite"></div>
+
+  <div class="content-grid">
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>运行概览</h2>
+          <p>当前 worker 状态、队列规模、等待窗口和人工审核积压。</p>
+        </div>
+      </div>
+      <div id="post-summary" class="metric-grid review-summary-grid">
+        {% for _ in range(4) %}
+        <article class="metric-card is-skeleton" aria-hidden="true">
+          <span class="skeleton-line skeleton-line-meta"></span>
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line skeleton-line-short"></span>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>路径与策略</h2>
+          <p>这页显示的根路径和策略，直接对应常驻 watch 使用的配置。</p>
+        </div>
+        <span class="panel-badge panel-badge-muted">只读</span>
+      </div>
+      <div id="post-config" class="metric-grid review-summary-grid">
+        {% for _ in range(4) %}
+        <article class="metric-card is-skeleton" aria-hidden="true">
+          <span class="skeleton-line skeleton-line-meta"></span>
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line skeleton-line-short"></span>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>手动入口</h2>
+          <p>先给安全命令入口，不直接在页面里执行会改文件的动作。</p>
+        </div>
+        <div class="hero-links">
+          <a class="hero-link" href="/logs">Logs</a>
+          <span class="hero-link-sep">/</span>
+          <a class="hero-link" href="/ops-review">Ops Review</a>
+        </div>
+      </div>
+      <div id="post-commands" class="review-action-grid">
+        {% for _ in range(3) %}
+        <article class="review-action-card is-skeleton" aria-hidden="true">
+          <span class="skeleton-line skeleton-line-meta"></span>
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line"></span>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>当前队列</h2>
+          <p>和真实 watch 逻辑一致的分组快照：已就绪、等待窗口、仍在下载、已完成但未解析。</p>
+        </div>
+      </div>
+      <div id="post-sections" class="post-sections">
+        <article class="review-item is-skeleton" aria-hidden="true">
+          <div class="review-item-top">
+            <div class="review-item-heading skeleton-stack">
+              <span class="skeleton-line skeleton-line-badge"></span>
+              <span class="skeleton-line skeleton-line-title"></span>
+            </div>
+            <div class="review-item-side skeleton-stack">
+              <span class="skeleton-line skeleton-line-short"></span>
+              <span class="skeleton-line skeleton-line-short"></span>
+            </div>
+          </div>
+          <div class="review-item-grid">
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>最近事件</h2>
+          <p>只看 `postprocessor` 自己写入的结构化事件，方便判断最近一轮到底做了什么。</p>
+        </div>
+      </div>
+      <div id="post-events" class="logs-list">
+        {% for _ in range(2) %}
+        <article class="log-entry is-skeleton" aria-hidden="true">
+          <div class="skeleton-stack">
+            <span class="skeleton-line skeleton-line-meta"></span>
+            <span class="skeleton-line skeleton-line-title"></span>
+            <span class="skeleton-line"></span>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

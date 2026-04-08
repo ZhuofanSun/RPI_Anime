@@ -13,19 +13,17 @@ const reviewFlash = document.getElementById("review-flash");
 const REVIEW_CACHE_KEY = "anime-ops-ui-manual-review-cache-v1";
 const REVIEW_FLASH_KEY = "anime-ops-ui-flash-v1";
 const {
+  createPageBootstrap,
   debounce,
+  fetchJson,
   formatUpdatedLabel,
   getQueryState,
   metricTemplate,
-  readSessionCache,
   renderEmptyState,
   setQueryState,
-  writeSessionCache,
 } = window.AnimeOpsCore;
 
 let reviewRefreshMs = 15000;
-let reviewTimerId = null;
-let reviewFetchInFlight = false;
 let reviewPayload = { buckets: [], items: [], summary_cards: [] };
 const initialReviewState = getQueryState(["bucket", "q"]);
 
@@ -182,37 +180,16 @@ function renderReview(payload, { cachedAt } = {}) {
   applyFilters();
 }
 
-function scheduleReviewRefresh() {
-  if (reviewTimerId) {
-    clearTimeout(reviewTimerId);
-  }
-  reviewTimerId = window.setTimeout(() => {
-    refreshReview();
-  }, reviewRefreshMs);
-}
-
-async function refreshReview() {
-  if (reviewFetchInFlight) {
-    return;
-  }
-  reviewFetchInFlight = true;
-  try {
-    const response = await fetch("/api/manual-review", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const payload = await response.json();
-    renderReview(payload);
-    writeSessionCache(REVIEW_CACHE_KEY, payload);
-  } catch (error) {
+const reviewPage = createPageBootstrap({
+  cacheKey: REVIEW_CACHE_KEY,
+  fetcher: () => fetchJson("/api/manual-review", { cache: "no-store" }),
+  render: renderReview,
+  getIntervalMs: () => reviewRefreshMs,
+  onError: (error) => {
     reviewList.innerHTML = renderEmptyState("加载人工审核队列失败。", error.message || String(error), "review-empty-error");
     reviewListMeta.textContent = "API 不可用";
-  } finally {
-    reviewFetchInFlight = false;
-    scheduleReviewRefresh();
-  }
-}
+  },
+});
 
 const debouncedApplyFilters = debounce(applyFilters, 180);
 
@@ -222,14 +199,9 @@ reviewSearch.addEventListener("input", debouncedApplyFilters);
 if (initialReviewState.bucket) reviewBucketFilter.value = initialReviewState.bucket;
 if (initialReviewState.q) reviewSearch.value = initialReviewState.q;
 
-const cachedReview = readSessionCache(REVIEW_CACHE_KEY);
-if (cachedReview) {
-  renderReview(cachedReview.payload, { cachedAt: cachedReview.cachedAt });
-}
-
 const flash = consumeFlash();
 if (flash && reviewFlash) {
   reviewFlash.innerHTML = flashTemplate(flash);
 }
 
-refreshReview();
+reviewPage.start();

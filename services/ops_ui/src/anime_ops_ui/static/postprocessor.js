@@ -10,11 +10,16 @@ const postSections = document.getElementById("post-sections");
 const postEvents = document.getElementById("post-events");
 const postFlash = document.getElementById("post-flash");
 const POSTPROCESSOR_CACHE_KEY = "anime-ops-ui-postprocessor-cache-v1";
-const { escapeHtml, formatUpdatedLabel, metricTemplate, readSessionCache, renderEmptyState, writeSessionCache } = window.AnimeOpsCore;
+const {
+  createPageBootstrap,
+  escapeHtml,
+  fetchJson,
+  formatUpdatedLabel,
+  metricTemplate,
+  renderEmptyState,
+} = window.AnimeOpsCore;
 
 let postRefreshMs = 15000;
-let postTimerId = null;
-let postFetchInFlight = false;
 
 function flashTemplate(title, message) {
   return `
@@ -192,32 +197,14 @@ function render(payload, { cachedAt } = {}) {
   postFlash.innerHTML = (payload.diagnostics || []).map((item) => flashTemplate(item.source || "postprocessor", item.message || "Unavailable")).join("");
 }
 
-function scheduleRefresh() {
-  if (postTimerId) clearTimeout(postTimerId);
-  postTimerId = window.setTimeout(() => {
-    refreshPostprocessor();
-  }, postRefreshMs);
-}
-
-async function refreshPostprocessor() {
-  if (postFetchInFlight) return;
-  postFetchInFlight = true;
-  try {
-    const response = await fetch("/api/postprocessor", { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload = await response.json();
-    writeSessionCache(POSTPROCESSOR_CACHE_KEY, payload);
-    render(payload);
-  } catch (error) {
+const postprocessorPage = createPageBootstrap({
+  cacheKey: POSTPROCESSOR_CACHE_KEY,
+  fetcher: () => fetchJson("/api/postprocessor", { cache: "no-store" }),
+  render,
+  getIntervalMs: () => postRefreshMs,
+  onError: (error) => {
     postFlash.innerHTML = flashTemplate("Postprocessor unavailable", error.message || String(error));
-  } finally {
-    postFetchInFlight = false;
-    scheduleRefresh();
-  }
-}
+  },
+});
 
-const cached = readSessionCache(POSTPROCESSOR_CACHE_KEY);
-if (cached?.payload) {
-  render(cached.payload, { cachedAt: cached.cachedAt });
-}
-refreshPostprocessor();
+postprocessorPage.start();

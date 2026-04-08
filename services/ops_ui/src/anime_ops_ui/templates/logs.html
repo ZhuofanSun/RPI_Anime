@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block head %}
+<script defer src="/static/core.js?v=phase2"></script>
+<script defer src="/static/logs.js?v=phase2"></script>
+{% endblock %}
+{% block content %}
+<div class="page-shell">
+  <header class="hero">
+    <div class="hero-copy">
+      <div class="hero-nav">
+        <a class="ghost-link ghost-link-subtle" href="/">← 返回 Dashboard</a>
+        <div class="hero-links">
+          <a class="hero-link" href="/">Dashboard</a>
+          <span class="hero-link-sep">/</span>
+          <span class="hero-link-current">Logs</span>
+        </div>
+      </div>
+      <div class="eyebrow">Logs</div>
+      <h1 id="logs-title">Logs</h1>
+      <p id="logs-subtitle">项目侧结构化事件日志</p>
+    </div>
+    <div class="hero-meta">
+      <div class="meta-pill">
+        <span class="meta-label">Storage</span>
+        <span class="meta-value meta-value-compact" id="logs-storage">-</span>
+      </div>
+      <div class="meta-pill">
+        <span class="meta-label">Updated</span>
+        <span class="meta-value" id="logs-updated">-</span>
+      </div>
+      <div class="meta-pill meta-pill-subtle">
+        <span class="meta-label">Auto Refresh</span>
+        <span class="meta-value" id="logs-refresh">10s</span>
+      </div>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="切换明暗主题">
+        <span class="theme-toggle-copy">
+          <span class="theme-toggle-title">Theme</span>
+          <span class="theme-toggle-state" data-theme-label>Light</span>
+        </span>
+        <span class="theme-toggle-track" aria-hidden="true">
+          <span class="theme-toggle-icon">☀</span>
+          <span class="theme-toggle-icon">☾</span>
+          <span class="theme-toggle-thumb"></span>
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <div id="logs-flash" class="flash-stack" aria-live="polite"></div>
+
+  <div class="content-grid">
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>日志概览</h2>
+          <p>来源、等级和保留上限都按结构化字段存储，便于后续继续接服务动作。</p>
+        </div>
+        <span id="logs-retention-badge" class="panel-badge panel-badge-muted">上限 -</span>
+      </div>
+      <div id="logs-summary" class="metric-grid review-summary-grid">
+        {% for _ in range(4) %}
+        <article class="metric-card is-skeleton" aria-hidden="true">
+          <span class="skeleton-line skeleton-line-meta"></span>
+          <span class="skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-line skeleton-line-short"></span>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>筛选与清理</h2>
+          <p>按来源、等级和关键字筛选，列表自动每 10 秒刷新一次。</p>
+        </div>
+        <button id="logs-clear" class="action-button action-button-danger" type="button">清理日志</button>
+      </div>
+      <div class="review-toolbar logs-toolbar">
+        <label class="review-control">
+          <span class="review-control-label">Source</span>
+          <select id="logs-source-filter" class="review-select" name="source">
+            <option value="">All sources</option>
+          </select>
+        </label>
+        <label class="review-control">
+          <span class="review-control-label">Level</span>
+          <select id="logs-level-filter" class="review-select" name="level">
+            <option value="">All levels</option>
+          </select>
+        </label>
+        <label class="review-control review-control-wide">
+          <span class="review-control-label">Search</span>
+          <input id="logs-search" class="review-input" type="search" name="q" autocomplete="off" placeholder="搜索动作、消息或 details…" />
+        </label>
+      </div>
+      <div class="logs-toolbar-secondary">
+        <span id="logs-list-meta" class="panel-badge panel-badge-muted">-</span>
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <div class="panel-head panel-head-compact">
+        <div class="panel-heading">
+          <h2>事件列表</h2>
+          <p>颜色区分重要等级，来源和动作字段帮助定位是哪边触发的日志。</p>
+        </div>
+      </div>
+      <div id="logs-list" class="logs-list">
+        {% for _ in range(2) %}
+        <article class="log-entry is-skeleton" aria-hidden="true">
+          <div class="skeleton-stack">
+            <span class="skeleton-line skeleton-line-meta"></span>
+            <span class="skeleton-line skeleton-line-title"></span>
+            <span class="skeleton-line"></span>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

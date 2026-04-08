@@ -1,0 +1,6 @@
+/*
+ * Page-specific overrides live here once the redesigned dashboard and
+ * internal workspaces start diverging further. Phase 2 keeps most selectors
+ * shared so the shell, cards, forms, and logs can still evolve from one
+ * component layer without duplicating rules.
+ */

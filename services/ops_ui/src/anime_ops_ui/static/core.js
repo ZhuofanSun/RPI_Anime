@@ -42,6 +42,14 @@ const AnimeOpsCore = (() => {
     } catch {}
   }
 
+  async function fetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  }
+
   function formatUpdatedLabel(cachedAt) {
     return new Date(cachedAt || Date.now()).toLocaleTimeString([], {
       hour: "2-digit",
@@ -124,10 +132,94 @@ const AnimeOpsCore = (() => {
     return Boolean(active && scope.contains(active));
   }
 
+  function createPageBootstrap({
+    cacheKey = "",
+    fetcher,
+    render,
+    onError,
+    shouldPause,
+    getIntervalMs,
+    intervalMs = 8000,
+  }) {
+    let timerId = null;
+    let inFlight = false;
+
+    function currentIntervalMs() {
+      const raw = typeof getIntervalMs === "function" ? Number(getIntervalMs()) : Number(intervalMs);
+      return Number.isFinite(raw) && raw > 0 ? raw : 8000;
+    }
+
+    function schedule() {
+      if (timerId) {
+        window.clearTimeout(timerId);
+      }
+      timerId = window.setTimeout(() => {
+        void tick();
+      }, currentIntervalMs());
+    }
+
+    async function tick() {
+      if (inFlight) return;
+      if (typeof shouldPause === "function" && shouldPause()) {
+        schedule();
+        return;
+      }
+
+      inFlight = true;
+      try {
+        const payload = await fetcher();
+        render(payload);
+        if (cacheKey) {
+          writeSessionCache(cacheKey, payload);
+        }
+      } catch (error) {
+        onError?.(error);
+      } finally {
+        inFlight = false;
+        schedule();
+      }
+    }
+
+    function restore() {
+      if (!cacheKey) return null;
+      const cached = readSessionCache(cacheKey);
+      if (!cached?.payload) return null;
+      render(cached.payload, { cachedAt: cached.cachedAt });
+      return cached;
+    }
+
+    function start() {
+      restore();
+      void tick();
+      return api;
+    }
+
+    function stop() {
+      if (timerId) {
+        window.clearTimeout(timerId);
+        timerId = null;
+      }
+    }
+
+    const api = {
+      currentIntervalMs,
+      isBusy: () => inFlight,
+      restore,
+      schedule,
+      start,
+      stop,
+      tick,
+    };
+
+    return api;
+  }
+
   return {
     clearFlash,
+    createPageBootstrap,
     debounce,
     escapeHtml,
+    fetchJson,
     flashTemplate,
     formatUpdatedLabel,
     formHasFocus,
