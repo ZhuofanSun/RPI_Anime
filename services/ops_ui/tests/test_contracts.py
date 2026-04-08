@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 
 from anime_ops_ui import main as main_module
+from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES
 from anime_ops_ui.services.log_service import build_logs_payload
 from anime_ops_ui.services.navigation_state_service import build_navigation_state
 from anime_ops_ui.services.postprocessor_service import build_postprocessor_payload
@@ -228,3 +229,13 @@ def test_navigation_state_payload_matches_shell_contract(monkeypatch, tmp_path):
 
     payload = build_navigation_state()
     _assert_payload_matches_page_contract(payload=payload, script_name="shell.js")
+
+    assert payload["internal"]
+    assert payload["external"]
+    assert {item["id"] for item in payload["internal"]} == set(INTERNAL_PAGES.keys())
+    assert {item["id"] for item in payload["external"]} == set(EXTERNAL_SERVICES.keys())
+
+    required_internal_keys = {"id", "label", "icon", "target", "path", "href", "badge", "tone"}
+    required_external_keys = {"id", "label", "icon", "target", "href", "badge", "tone"}
+    assert all(required_internal_keys.issubset(item.keys()) for item in payload["internal"])
+    assert all(required_external_keys.issubset(item.keys()) for item in payload["external"])
