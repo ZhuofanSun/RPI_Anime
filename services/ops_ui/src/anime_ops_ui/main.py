@@ -2656,8 +2656,8 @@ def logs_placeholder() -> FileResponse:
     return FileResponse(STATIC_DIR / "logs.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="Anime Ops UI", lifespan=lifespan)
+def create_app(*, enable_lifespan: bool = True) -> FastAPI:
+    app = FastAPI(title="Anime Ops UI", lifespan=lifespan if enable_lifespan else None)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(router)
     app.middleware("http")(disable_browser_cache_for_ui_assets)
