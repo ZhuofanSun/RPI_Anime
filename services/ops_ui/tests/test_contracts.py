@@ -7,6 +7,7 @@ from anime_ops_ui import main as main_module
 from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES
 from anime_ops_ui.services.log_service import build_logs_payload
 from anime_ops_ui.services.navigation_state_service import build_navigation_state
+from anime_ops_ui.services.overview_service import build_overview_payload
 from anime_ops_ui.services.postprocessor_service import build_postprocessor_payload
 from anime_ops_ui.services.review_service import build_manual_review_payload
 from anime_ops_ui.services.review_service import build_manual_review_item_payload
@@ -191,6 +192,128 @@ def test_postprocessor_payload_matches_page_contract(monkeypatch, tmp_path):
 
     payload = build_postprocessor_payload()
     _assert_payload_matches_page_contract(payload=payload, script_name="postprocessor.js")
+
+
+def test_overview_payload_matches_phase2_dashboard_app_contract(monkeypatch, tmp_path):
+    data_root = tmp_path / "anime-data"
+    collection_root = tmp_path / "anime-collection"
+    data_root.mkdir()
+    collection_root.mkdir()
+    (data_root / "library" / "seasonal").mkdir(parents=True)
+    (data_root / "downloads" / "Bangumi").mkdir(parents=True)
+    (data_root / "processing" / "manual_review").mkdir(parents=True)
+
+    containers = [
+        {"name": "jellyfin", "status": "running", "uptime": "1h"},
+        {"name": "qbittorrent", "status": "running", "uptime": "1h"},
+        {"name": "autobangumi", "status": "exited", "uptime": "1h"},
+        {"name": "glances", "status": "running", "uptime": "1h"},
+        {"name": "anime-postprocessor", "status": "running", "uptime": "1h"},
+        {"name": "homepage", "status": "running", "uptime": "1h"},
+    ]
+
+    def fake_get_json(url: str, *, timeout: int = 5):
+        if url.endswith("/quicklook"):
+            return {"cpu": 12, "cpu_name": "Raspberry Pi 4"}, None
+        if url.endswith("/containers"):
+            return containers, None
+        if url.endswith("/mem"):
+            return {"percent": 45, "available": 1024}, None
+        if url.endswith("/uptime"):
+            return "25:10:00", None
+        if url.endswith("/load"):
+            return {"min1": 0.4, "min5": 0.5, "min15": 0.6}, None
+        if url.endswith("/sensors"):
+            return [{"value": 50.0}], None
+        return None, "unexpected"
+
+    monkeypatch.setattr(
+        main_module,
+        "_env",
+        lambda name, default: {
+            "ANIME_DATA_ROOT": str(data_root),
+            "ANIME_COLLECTION_ROOT": str(collection_root),
+            "HOMEPAGE_BASE_HOST": "ops.local",
+            "TAILSCALE_SOCKET": "/var/run/tailscale/tailscaled.sock",
+        }.get(name, default),
+    )
+    monkeypatch.setattr(main_module, "_sample_history_once", lambda: None)
+    monkeypatch.setattr(main_module, "_safe_get_json", fake_get_json)
+    monkeypatch.setattr(
+        main_module,
+        "_tailscale_status",
+        lambda socket_path: (
+            {
+                "BackendState": "Running",
+                "Self": {
+                    "HostName": "sunzhuofan",
+                    "DNSName": "rpi.tail9ac25e.ts.net.",
+                    "Online": True,
+                    "TailscaleIPs": ["100.123.232.73", "fd7a:115c:a1e0::1"],
+                },
+                "Peer": {},
+            },
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_qb_snapshot",
+        lambda: (
+            {
+                "category": "Bangumi",
+                "task_count": 3,
+                "active_downloads": 1,
+                "active_seeds": 2,
+                "download_speed": 2048,
+                "upload_speed": 1024,
+            },
+            None,
+        ),
+    )
+    monkeypatch.setattr(main_module, "_fan_state_snapshot", lambda: ({"updated_ts": 0.0}, None))
+    monkeypatch.setattr(main_module, "_series_window_hours", lambda: 24)
+    monkeypatch.setattr(main_module, "_upload_window_days", lambda: 7)
+    monkeypatch.setattr(main_module, "_series_values", lambda name, window_hours: ([10.0, 20.0], [10.0, 20.0]))
+    monkeypatch.setattr(
+        main_module,
+        "_daily_volume_bars",
+        lambda *, days, daily_key: ([{"label": "04-07", "value": 1024, "value_label": "1.0 KB"}], [1024.0]),
+    )
+    monkeypatch.setattr(main_module, "_count_media_files", lambda root: 0)
+    monkeypatch.setattr(main_module, "_count_series_dirs", lambda root: 0)
+    monkeypatch.setattr(main_module, "_history_file", lambda: tmp_path / "history.json")
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+
+    payload = build_overview_payload()
+
+    _assert_payload_matches_page_contract(
+        payload=payload,
+        script_name="app.js",
+        ignored_paths={"message", "reload_after_seconds"},
+    )
+    assert isinstance(payload["services"], list) and payload["services"]
+    assert isinstance(payload["queue_cards"], list) and payload["queue_cards"]
+    assert {"label", "value", "detail"}.issubset(payload["queue_cards"][0].keys())
+    service = payload["services"][0]
+    assert {
+        "name",
+        "href",
+        "description",
+        "status",
+        "meta",
+        "uptime",
+        "restart_target",
+        "restart_label",
+    }.issubset(service.keys())
+    internal_service = next(item for item in payload["services"] if item["id"] == "ops-review")
+    assert {
+        "internal",
+        "restart_target",
+        "restart_label",
+        "restart_requires_reload",
+        "restart_name",
+    }.issubset(internal_service.keys())
 
 
 def test_logs_page_uses_flash_helpers_with_logs_container():
