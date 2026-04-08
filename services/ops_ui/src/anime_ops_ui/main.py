@@ -979,7 +979,10 @@ def _guess_episode_number(name: str) -> int | None:
 
 def _manual_review_item_or_404(item_id: str) -> tuple[dict[str, Any], Path, Path]:
     review_root = _manual_review_root()
-    payload = build_manual_review_item_payload_service(item_id)
+    try:
+        payload = build_manual_review_item_payload_service(item_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="manual review file not found") from exc
     item = payload["item"]
     item_path = review_root / item["relative_path"]
     if not item_path.exists() or not item_path.is_file():
@@ -1503,7 +1506,10 @@ def manual_review() -> JSONResponse:
 
 @router.get("/api/manual-review/item")
 def manual_review_item(id: str = Query(...)) -> JSONResponse:
-    return JSONResponse(build_manual_review_item_payload_service(id))
+    try:
+        return JSONResponse(build_manual_review_item_payload_service(id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="manual review file not found") from exc
 
 
 @router.get("/api/logs")

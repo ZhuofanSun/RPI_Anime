@@ -70,6 +70,13 @@ def test_legacy_static_html_pages_are_not_served(client):
         assert response.status_code == 404
 
 
+def test_manual_review_item_missing_returns_404(client):
+    response = client.get("/api/manual-review/item?id=missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "manual review file not found"
+
+
 def test_app_factory_default_lifespan_runs_startup(tmp_path, monkeypatch):
     data_root = tmp_path / "anime-data"
     state_root = tmp_path / "ops-ui-state"

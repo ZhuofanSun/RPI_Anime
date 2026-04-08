@@ -130,7 +130,7 @@ const logsPage = createPageBootstrap({
   render: renderLogs,
   getIntervalMs: () => logsRefreshMs,
   onError: (error) => {
-    setFlash("error", "日志页不可用", error.message || String(error));
+    setFlash(logsFlash, "error", "日志页不可用", error.message || String(error));
   },
 });
 
@@ -138,17 +138,17 @@ async function clearLogs() {
   if (!window.confirm("确认清理结构化日志？这个动作会清空当前 Logs 页里的历史记录。")) {
     return;
   }
-  clearFlash();
+  clearFlash(logsFlash);
   try {
     const response = await fetch("/api/logs/clear", { method: "POST" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
     const payload = await response.json();
-    setFlash("success", "日志已清理", payload.message || "日志已清理。");
+    setFlash(logsFlash, "success", "日志已清理", payload.message || "日志已清理。");
     await logsPage.tick();
   } catch (error) {
-    setFlash("error", "清理失败", error.message || String(error));
+    setFlash(logsFlash, "error", "清理失败", error.message || String(error));
   }
 }
 
@@ -166,7 +166,7 @@ logsLevelFilter.addEventListener("change", () => {
   void logsPage.tick();
 });
 logsSearch.addEventListener("input", () => {
-  clearFlash();
+  clearFlash(logsFlash);
   debouncedLogsRefresh();
 });
 logsClear.addEventListener("click", clearLogs);

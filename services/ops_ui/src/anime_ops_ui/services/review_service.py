@@ -48,6 +48,19 @@ def _manual_review_items(review_root: Path) -> list[dict[str, Any]]:
     return items
 
 
+def _review_siblings(item_path: Path, review_root: Path) -> list[dict[str, Any]]:
+    from anime_ops_ui import main as main_module
+
+    siblings = []
+    for path in sorted(item_path.parent.iterdir()):
+        if not path.is_file() or path.suffix.lower() not in main_module.MEDIA_EXTENSIONS:
+            continue
+        sibling = _review_item_from_path(path, review_root)
+        sibling["is_current"] = path == item_path
+        siblings.append(sibling)
+    return siblings
+
+
 def build_manual_review_payload() -> dict[str, Any]:
     from anime_ops_ui import main as main_module
 
@@ -125,13 +138,25 @@ def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
     if item is None:
         raise KeyError(item_id)
     item_path = review_root / item["relative_path"]
+    auto_parse = main_module._build_auto_parse_payload(item_path, review_root)
+    manual_publish_defaults = main_module._manual_publish_defaults(item, auto_parse)
     return {
         "title": "Review Detail",
         "subtitle": item["filename"],
+        "refresh_interval_seconds": 15,
         "item": item,
         "root": str(review_root),
         "path": str(item_path),
         "content_type": "media",
+        "auto_parse": auto_parse,
+        "manual_publish_defaults": manual_publish_defaults,
+        "siblings": _review_siblings(item_path, review_root),
+        "breadcrumbs": [
+            {"label": "Dashboard", "href": "/"},
+            {"label": "Ops Review", "href": "/ops-review"},
+            {"label": item["filename"]},
+        ],
+        "last_updated": datetime.now().isoformat(timespec="seconds"),
     }
 
 

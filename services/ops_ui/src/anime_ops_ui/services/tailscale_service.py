@@ -103,7 +103,10 @@ def build_tailscale_payload() -> dict[str, Any]:
     ]
 
     peer_cards = []
+    peer_list = []
     for peer in sorted(peer_values, key=lambda item: str(item.get("HostName", "")).lower()):
+        peer_ip, peer_ipv6 = main_module._tailscale_ip_pair(peer.get("TailscaleIPs"))
+        peer_status = "online" if peer.get("Online") else "offline"
         peer_cards.append(
             {
                 "hostname": peer.get("HostName") or peer.get("DNSName") or "unknown",
@@ -118,6 +121,27 @@ def build_tailscale_payload() -> dict[str, Any]:
                 "key_expiry": _format_peer_time(peer.get("KeyExpiry")),
                 "exit_node": bool(peer.get("ExitNodeOption")),
                 "taildrop": peer.get("TaildropTarget", 0),
+            }
+        )
+        peer_list.append(
+            {
+                "host_name": peer.get("HostName") or peer.get("DNSName") or "unknown",
+                "dns_name": main_module._strip_trailing_dot(peer.get("DNSName")),
+                "status": peer_status,
+                "active": bool(peer.get("Active")),
+                "exit_node_option": bool(peer.get("ExitNodeOption")),
+                "exit_node": bool(peer.get("ExitNode")),
+                "ip": peer_ip,
+                "ipv6": peer_ipv6,
+                "current_addr": main_module._strip_trailing_dot(peer.get("CurAddr")),
+                "relay": peer.get("Relay") or "-",
+                "rx_label": main_module._format_bytes(peer.get("RxBytes", 0)),
+                "tx_label": main_module._format_bytes(peer.get("TxBytes", 0)),
+                "last_write_label": main_module._format_iso_datetime(peer.get("LastWrite")),
+                "last_handshake_label": main_module._format_iso_datetime(peer.get("LastHandshake")),
+                "last_seen_label": main_module._format_iso_datetime(peer.get("LastSeen")),
+                "key_expiry_label": main_module._format_iso_datetime(peer.get("KeyExpiry")),
+                "os": peer.get("OS") or "-",
             }
         )
 
@@ -140,6 +164,18 @@ def build_tailscale_payload() -> dict[str, Any]:
         "title": "Tailscale",
         "subtitle": "本地 tailnet 状态与远程访问链路。",
         "refresh_interval_seconds": 15,
+        "socket_path": tailscale_socket,
+        "backend_state": backend_state,
+        "reachability": reachability,
+        "self_note": self_note,
+        "control": {
+            "action": control_action,
+            "label": control_label,
+            "detail": control_detail,
+        },
+        "peer_total": len(peer_values),
+        "peer_online": online_peer_count,
+        "peers": peer_list,
         "status": {
             "backend_state": backend_state,
             "reachable": self_online,
