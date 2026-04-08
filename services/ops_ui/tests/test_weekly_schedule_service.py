@@ -1,4 +1,5 @@
 import json
+import inspect
 import sqlite3
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -58,6 +59,7 @@ def test_weekly_schedule_groups_items_today_unknown_badges_and_collapse(tmp_path
     assert today["hidden_items"][0]["title"] == "相反的你和我"
 
     assert payload["unknown"]["label"] == "未知"
+    assert payload["unknown"]["hint"] == "拖拽以设置放送日"
     assert payload["unknown"]["items"][0]["title"] == "关于我转生变成史莱姆这档事"
     assert payload["unknown"]["items"][0]["badges"] == ["REVIEW"]
 
@@ -255,3 +257,8 @@ def test_phase4_snapshot_counts_lib_from_ops_review_publish_event(tmp_path, monk
     today_item = payload["today_focus"]["items"][0]
     assert today_item["id"] == 22
     assert today_item["badges"] == ["LIB"]
+
+
+def test_phase4_snapshot_signature_has_no_review_ids_parameter():
+    params = inspect.signature(build_phase4_schedule_snapshot).parameters
+    assert "review_ids" not in params

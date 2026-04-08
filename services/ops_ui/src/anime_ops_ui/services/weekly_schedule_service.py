@@ -292,6 +292,7 @@ def build_weekly_schedule_payload(
         "days": days,
         "unknown": {
             "label": "未知",
+            "hint": "拖拽以设置放送日",
             "items": unknown_items,
             "hidden_items": [],
             "has_hidden_items": False,
@@ -311,7 +312,6 @@ def build_phase4_schedule_snapshot(
     now: datetime,
     events: list[dict[str, Any]],
     visible_limit: int = 4,
-    review_ids: set[int] | None = None,
 ) -> dict[str, Any]:
     client = AutoBangumiClient(
         base_url=autobangumi_base_url,
@@ -332,8 +332,6 @@ def build_phase4_schedule_snapshot(
         now=now,
     )
     merged_review_ids = {int(item["id"]) for item in bangumi_items if bool(item.get("needs_review"))}
-    if review_ids:
-        merged_review_ids.update(int(item_id) for item_id in review_ids)
 
     schedule = build_weekly_schedule_payload(
         bangumi_items=bangumi_items,
