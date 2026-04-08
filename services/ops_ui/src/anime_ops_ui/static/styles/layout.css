@@ -80,6 +80,10 @@
   padding: 36px 20px 56px;
 }
 
+.dashboard-page-shell {
+  max-width: 1560px;
+}
+
 .hero {
   display: flex;
   justify-content: space-between;
@@ -225,6 +229,10 @@
   margin-top: 18px;
 }
 
+.dashboard-content-grid {
+  margin-top: 14px;
+}
+
 .panel {
   grid-column: span 6;
   border-radius: var(--radius-lg);
@@ -288,6 +296,12 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 14px;
+}
+
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .metric-grid {
@@ -429,6 +443,10 @@
     min-width: 100%;
     justify-content: flex-start;
   }
+
+  .dashboard-page-shell {
+    padding-top: 28px;
+  }
 }
 
 @media (max-width: 760px) {
@@ -472,6 +490,10 @@
 
   .panel {
     padding: 18px;
+  }
+
+  .dashboard-page-shell {
+    padding-top: 18px;
   }
 
   .panel-head,

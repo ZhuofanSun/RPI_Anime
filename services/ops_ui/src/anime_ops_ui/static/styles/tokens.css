@@ -11,6 +11,9 @@
   --amber: #b45309;
   --rose: #be123c;
   --violet: #6d28d9;
+  --tone-teal-soft: rgba(15, 118, 110, 0.12);
+  --tone-amber-soft: rgba(180, 83, 9, 0.12);
+  --tone-rose-soft: rgba(190, 18, 60, 0.12);
   --shadow: 0 24px 60px rgba(34, 44, 63, 0.12);
   --shadow-soft: 0 18px 34px rgba(34, 44, 63, 0.08);
   --shadow-strong: 0 28px 80px rgba(34, 44, 63, 0.16);
@@ -41,6 +44,9 @@ html[data-theme="dark"] {
   --amber: #f09b45;
   --rose: #ff6b8a;
   --violet: #8c66ff;
+  --tone-teal-soft: rgba(69, 183, 171, 0.16);
+  --tone-amber-soft: rgba(240, 155, 69, 0.18);
+  --tone-rose-soft: rgba(255, 107, 138, 0.2);
   --shadow: 0 26px 70px rgba(0, 0, 0, 0.34);
   --shadow-soft: 0 20px 38px rgba(0, 0, 0, 0.24);
   --shadow-strong: 0 34px 90px rgba(0, 0, 0, 0.42);

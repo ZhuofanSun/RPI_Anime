@@ -197,7 +197,7 @@ def test_postprocessor_payload_matches_page_contract(monkeypatch, tmp_path):
     _assert_payload_matches_page_contract(payload=payload, script_name="postprocessor.js")
 
 
-def test_overview_payload_matches_phase2_dashboard_app_contract(monkeypatch, tmp_path):
+def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp_path):
     data_root = tmp_path / "anime-data"
     collection_root = tmp_path / "anime-collection"
     data_root.mkdir()
@@ -289,34 +289,51 @@ def test_overview_payload_matches_phase2_dashboard_app_contract(monkeypatch, tmp
     monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
 
     payload = build_overview_payload()
+    app_contract_paths = _contract_paths("app.js", root_var="data")
+
+    assert {
+        "hero.title",
+        "hero.summary",
+        "hero.status_label",
+        "summary_strip",
+        "service_rows",
+        "pipeline_cards",
+        "system_cards",
+        "network_cards",
+        "trend_cards",
+        "diagnostics",
+    }.issubset(app_contract_paths)
+    assert "services" not in app_contract_paths
+    assert "queue_cards" not in app_contract_paths
 
     _assert_payload_matches_page_contract(
         payload=payload,
         script_name="app.js",
         root_var="data",
     )
-    assert isinstance(payload["services"], list) and payload["services"]
-    assert isinstance(payload["queue_cards"], list) and payload["queue_cards"]
-    assert {"label", "value", "detail"}.issubset(payload["queue_cards"][0].keys())
-    service = payload["services"][0]
+    assert isinstance(payload["hero"], dict)
+    assert {"eyebrow", "title", "summary", "status_tone", "status_label", "host"}.issubset(payload["hero"].keys())
+    assert isinstance(payload["summary_strip"], list) and payload["summary_strip"]
+    assert {"question", "answer", "tone"}.issubset(payload["summary_strip"][0].keys())
+    assert isinstance(payload["pipeline_cards"], list) and payload["pipeline_cards"]
+    assert {"label", "value", "detail"}.issubset(payload["pipeline_cards"][0].keys())
+    assert isinstance(payload["trend_cards"], list) and payload["trend_cards"]
+    assert {"label", "value", "detail", "chart_kind"}.issubset(payload["trend_cards"][0].keys())
+    assert isinstance(payload["service_rows"], list) and payload["service_rows"]
+    service = payload["service_rows"][0]
     assert {
+        "id",
         "name",
         "href",
-        "description",
         "status",
         "meta",
         "uptime",
-        "restart_target",
-        "restart_label",
-    }.issubset(service.keys())
-    internal_service = next(item for item in payload["services"] if item["id"] == "ops-review")
-    assert {
         "internal",
         "restart_target",
         "restart_label",
-        "restart_requires_reload",
-        "restart_name",
-    }.issubset(internal_service.keys())
+    }.issubset(service.keys())
+    internal_service = next(item for item in payload["service_rows"] if item["id"] == "ops-review")
+    assert {"restart_requires_reload", "restart_name"}.issubset(internal_service.keys())
 
 
 def test_logs_page_uses_flash_helpers_with_logs_container():

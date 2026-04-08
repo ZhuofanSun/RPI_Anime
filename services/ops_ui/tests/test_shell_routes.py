@@ -19,8 +19,12 @@ def test_dashboard_shell_contains_bootstrap_roots(client):
     response = client.get("/")
     body = response.text
     assert 'data-page="dashboard"' in body
-    assert 'id="services-grid"' in body
-    assert 'id="trend-grid"' in body
+    assert 'id="dashboard-hero"' in body
+    assert 'id="dashboard-summary-strip"' in body
+    assert 'id="dashboard-service-rows"' in body
+    assert 'id="dashboard-pipeline-grid"' in body
+    assert 'id="dashboard-status-grid"' in body
+    assert 'id="services-grid"' not in body
 
 
 def test_dashboard_shell_contains_navigation_hydration_hooks(client):
