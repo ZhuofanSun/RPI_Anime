@@ -8,7 +8,6 @@
 
 - [Ops UI Redesign Spec](/Users/sunzhuofan/RPI_Anime/docs/superpowers/specs/2026-04-07-ops-ui-redesign-design.md)
 - [Ops UI Phase 2 Foundation Plan](/Users/sunzhuofan/RPI_Anime/docs/superpowers/plans/2026-04-07-ops-ui-phase-2-foundation.md)
-- [Ops UI Frontend Refactor (Archived)](/Users/sunzhuofan/RPI_Anime/docs/frontend-refactor.md)
 
 ## 这套项目解决什么问题
 
@@ -41,7 +40,7 @@
 - `static/` 前端层：
   `core.js` 提供共享 bootstrap、缓存和查询参数工具；页面脚本只处理自己的数据请求与渲染；样式拆成 `tokens / base / layout / components / pages`
 
-当前基础层说明见：[Ops UI Frontend Refactor (Archived)](/Users/sunzhuofan/RPI_Anime/docs/frontend-refactor.md)；后续大改方向以 spec 和 plan 为准。
+后续大改方向以 spec 和 plan 为准。
 
 ## 界面预览
 
@@ -123,7 +122,6 @@ flowchart LR
 │   ├── superpowers
 │   │   ├── plans
 │   │   └── specs
-│   └── frontend-refactor.md
 ├── scripts
 │   ├── bootstrap_pi.sh
 │   ├── install_tailscale_pi.sh

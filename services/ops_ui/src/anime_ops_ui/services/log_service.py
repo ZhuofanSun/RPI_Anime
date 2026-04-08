@@ -1,6 +1,85 @@
 from __future__ import annotations
 
+import json
 from typing import Any
+
+
+def build_logs_payload(
+    *,
+    level: str | None = None,
+    source: str | None = None,
+    search: str | None = None,
+    limit: int = 300,
+) -> dict[str, Any]:
+    from anime_ops_ui import main as main_module
+
+    raw_events = main_module.read_events()
+    keyword = (search or "").strip().lower()
+    filtered = []
+    for item in raw_events:
+        if level and item.get("level") != level:
+            continue
+        if source and item.get("source") != source:
+            continue
+        if keyword:
+            haystack = " ".join(
+                [
+                    str(item.get("source", "")),
+                    str(item.get("level", "")),
+                    str(item.get("action", "")),
+                    str(item.get("message", "")),
+                    json.dumps(item.get("details", {}), ensure_ascii=False),
+                ]
+            ).lower()
+            if keyword not in haystack:
+                continue
+        filtered.append(item)
+
+    visible = filtered[: max(20, min(limit, main_module.event_log_cap()))]
+    levels = sorted({str(item.get("level", "info")) for item in raw_events})
+    sources = sorted({str(item.get("source", "unknown")) for item in raw_events})
+    level_counts: dict[str, int] = {}
+    for item in raw_events:
+        item_level = str(item.get("level", "info"))
+        level_counts[item_level] = level_counts.get(item_level, 0) + 1
+
+    summary_cards = [
+        {
+            "label": "Visible",
+            "value": str(len(visible)),
+            "detail": f"{len(filtered)} 条匹配 / 共 {len(raw_events)} 条",
+        },
+        {
+            "label": "Sources",
+            "value": str(len(sources)),
+            "detail": ", ".join(sources[:3]) if sources else "暂无来源",
+        },
+        {
+            "label": "Errors",
+            "value": str(level_counts.get("error", 0)),
+            "detail": f"{level_counts.get('warning', 0)} 条 warning",
+        },
+        {
+            "label": "Retention",
+            "value": str(main_module.event_log_cap()),
+            "detail": str(main_module.event_log_path()),
+        },
+    ]
+
+    return {
+        "title": "Logs",
+        "subtitle": "项目侧结构化事件日志，优先覆盖自动处理、人工审核与运维动作。",
+        "refresh_interval_seconds": 10,
+        "summary_cards": summary_cards,
+        "levels": levels,
+        "sources": sources,
+        "items": visible,
+        "total_count": len(raw_events),
+        "matched_count": len(filtered),
+        "retention_cap": main_module.event_log_cap(),
+        "storage_path": str(main_module.event_log_path()),
+        "last_updated": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+    }
 
 
 def list_log_events(
@@ -10,6 +89,4 @@ def list_log_events(
     search: str | None = None,
     limit: int = 300,
 ) -> dict[str, Any]:
-    from anime_ops_ui import main as main_module
-
-    return main_module.build_logs_payload(source=source, level=level, search=search, limit=limit)
+    return build_logs_payload(source=source, level=level, search=search, limit=limit)
