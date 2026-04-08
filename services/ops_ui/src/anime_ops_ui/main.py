@@ -16,7 +16,7 @@ import time
 from typing import Any
 
 import requests
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -2352,11 +2352,9 @@ OPS_UI_NO_CACHE_HEADERS = {
 }
 
 
-app = FastAPI(title="Anime Ops UI", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+router = APIRouter()
 
 
-@app.middleware("http")
 async def disable_browser_cache_for_ui_assets(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
@@ -2366,27 +2364,27 @@ async def disable_browser_cache_for_ui_assets(request: Request, call_next):
     return response
 
 
-@app.get("/healthz")
+@router.get("/healthz")
 def healthz() -> dict[str, bool]:
     return {"ok": True}
 
 
-@app.get("/api/overview")
+@router.get("/api/overview")
 def overview() -> JSONResponse:
     return JSONResponse(build_overview())
 
 
-@app.get("/api/manual-review")
+@router.get("/api/manual-review")
 def manual_review() -> JSONResponse:
     return JSONResponse(build_manual_review_payload())
 
 
-@app.get("/api/manual-review/item")
+@router.get("/api/manual-review/item")
 def manual_review_item(id: str = Query(...)) -> JSONResponse:
     return JSONResponse(build_manual_review_item_payload(id))
 
 
-@app.get("/api/logs")
+@router.get("/api/logs")
 def logs_api(
     level: str | None = Query(default=None),
     source: str | None = Query(default=None),
@@ -2403,17 +2401,17 @@ def logs_api(
     )
 
 
-@app.get("/api/tailscale")
+@router.get("/api/tailscale")
 def tailscale_api() -> JSONResponse:
     return JSONResponse(build_tailscale_payload())
 
 
-@app.get("/api/postprocessor")
+@router.get("/api/postprocessor")
 def postprocessor_api() -> JSONResponse:
     return JSONResponse(build_postprocessor_payload())
 
 
-@app.post("/api/tailscale/action")
+@router.post("/api/tailscale/action")
 def tailscale_action_api(payload: TailscaleActionRequest) -> JSONResponse:
     socket_path = _env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock")
     action = payload.action
@@ -2453,7 +2451,7 @@ def tailscale_action_api(payload: TailscaleActionRequest) -> JSONResponse:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.post("/api/services/restart")
+@router.post("/api/services/restart")
 def restart_service_api(payload: ServiceRestartRequest) -> JSONResponse:
     target = payload.target.strip().lower()
     specs = _service_restart_specs()
@@ -2492,7 +2490,7 @@ def restart_service_api(payload: ServiceRestartRequest) -> JSONResponse:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.post("/api/services/restart-all")
+@router.post("/api/services/restart-all")
 def restart_all_services_api() -> JSONResponse:
     _append_service_control_event(
         level="warning",
@@ -2504,7 +2502,7 @@ def restart_all_services_api() -> JSONResponse:
     return JSONResponse(_schedule_stack_restart())
 
 
-@app.post("/api/logs/clear")
+@router.post("/api/logs/clear")
 def clear_logs_api() -> JSONResponse:
     result = clear_events()
     append_event(
@@ -2525,7 +2523,7 @@ def clear_logs_api() -> JSONResponse:
     )
 
 
-@app.post("/api/manual-review/item/retry-parse")
+@router.post("/api/manual-review/item/retry-parse")
 def manual_review_retry_parse(id: str = Query(...)) -> JSONResponse:
     item, item_path, review_root = _manual_review_item_or_404(id)
     auto_parse = _build_auto_parse_payload(item_path, review_root)
@@ -2565,7 +2563,7 @@ def manual_review_retry_parse(id: str = Query(...)) -> JSONResponse:
     )
 
 
-@app.post("/api/manual-review/item/publish")
+@router.post("/api/manual-review/item/publish")
 def manual_review_publish(
     payload: ManualPublishRequest,
     id: str = Query(...),
@@ -2604,7 +2602,7 @@ def manual_review_publish(
     )
 
 
-@app.post("/api/manual-review/item/delete")
+@router.post("/api/manual-review/item/delete")
 def manual_review_delete(id: str = Query(...)) -> JSONResponse:
     item, item_path, review_root = _manual_review_item_or_404(id)
     result = _delete_review_file(item_path, review_root)
@@ -2628,40 +2626,48 @@ def manual_review_delete(id: str = Query(...)) -> JSONResponse:
     )
 
 
-@app.get("/")
+@router.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
-@app.get("/ops-review")
+@router.get("/ops-review")
 def ops_review_placeholder() -> FileResponse:
     return FileResponse(STATIC_DIR / "ops-review.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
-@app.get("/ops-review/item")
+@router.get("/ops-review/item")
 def ops_review_item_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "ops-review-item.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
-@app.get("/postprocessor")
+@router.get("/postprocessor")
 def postprocessor_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "postprocessor.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
-@app.get("/tailscale")
+@router.get("/tailscale")
 def tailscale_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "tailscale.html", headers=OPS_UI_NO_CACHE_HEADERS)
 
 
-@app.get("/logs")
+@router.get("/logs")
 def logs_placeholder() -> FileResponse:
     return FileResponse(STATIC_DIR / "logs.html", headers=OPS_UI_NO_CACHE_HEADERS)
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Anime Ops UI", lifespan=lifespan)
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    app.include_router(router)
+    app.middleware("http")(disable_browser_cache_for_ui_assets)
+    return app
 
 
 def main() -> None:
     import uvicorn
 
-    uvicorn.run("anime_ops_ui.main:app", host="0.0.0.0", port=3000, reload=False)
+    uvicorn.run(create_app(), host="0.0.0.0", port=3000)
 
 
 if __name__ == "__main__":
