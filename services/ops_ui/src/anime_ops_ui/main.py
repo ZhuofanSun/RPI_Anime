@@ -32,6 +32,11 @@ if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
 
 from anime_ops_ui.copy import text
 from anime_ops_ui.page_context import build_page_context
+from anime_ops_ui.services.log_service import list_log_events
+from anime_ops_ui.services.overview_service import build_service_summary
+from anime_ops_ui.services.postprocessor_service import build_postprocessor_snapshot
+from anime_ops_ui.services.review_service import get_manual_review_item, list_manual_review_items
+from anime_ops_ui.services.tailscale_service import build_tailscale_snapshot
 from anime_postprocessor.models import ParsedMedia, UnparsedMedia
 from anime_postprocessor.eventlog import append_event, clear_events, event_log_cap, event_log_path, read_events
 from anime_postprocessor.parser import normalize_title, parse_media_file
@@ -197,12 +202,6 @@ def _tailscale_ip_pair(value: Any) -> tuple[str, str]:
     ipv4 = str(value[0]) if value[0] else "-"
     ipv6 = str(value[1]) if len(value) > 1 and value[1] else "-"
     return ipv4, ipv6
-
-
-def _container_status_count(containers: dict[str, dict[str, Any]]) -> tuple[int, int]:
-    values = list(containers.values())
-    running_like = sum(1 for item in values if str(item.get("status", "")).lower() == "running")
-    return running_like, len(values)
 
 
 def _glances_base_url() -> str:
@@ -2097,10 +2096,7 @@ def build_overview() -> dict[str, Any]:
     tailscale_peers = ((tailscale or {}).get("Peer") or {}) if isinstance(tailscale, dict) else {}
     tailscale_peer_values = list(tailscale_peers.values()) if isinstance(tailscale_peers, dict) else []
     tailnet_online_peers = sum(1 for peer in tailscale_peer_values if peer.get("Online"))
-    running_services, total_services = _container_status_count(containers)
     tailscaled_online = bool(isinstance(tailscale, dict) and not tailscale_error)
-    total_service_units = total_services + 1
-    online_service_units = running_services + (1 if tailscaled_online else 0)
     cpu_percent = (quicklook or {}).get("cpu") if isinstance(quicklook, dict) else None
     memory_percent = (mem or {}).get("percent") if isinstance(mem, dict) else None
     cpu_temp_c = _extract_temperature(sensors_raw)
@@ -2159,11 +2155,7 @@ def build_overview() -> dict[str, Any]:
             "value": host_uptime,
             "detail": f"load {load_detail}",
         },
-        {
-            "label": "Services",
-            "value": f"{online_service_units} online",
-            "detail": f"{total_service_units} total · Docker + tailscaled",
-        },
+        build_service_summary(containers=containers, tailscale_running=tailscaled_online),
         {
             "label": "Anime Data",
             "value": _format_percent(disk.get("percent")),
@@ -2401,12 +2393,12 @@ def overview() -> JSONResponse:
 
 @router.get("/api/manual-review")
 def manual_review() -> JSONResponse:
-    return JSONResponse(build_manual_review_payload())
+    return JSONResponse(list_manual_review_items())
 
 
 @router.get("/api/manual-review/item")
 def manual_review_item(id: str = Query(...)) -> JSONResponse:
-    return JSONResponse(build_manual_review_item_payload(id))
+    return JSONResponse(get_manual_review_item(id))
 
 
 @router.get("/api/logs")
@@ -2416,24 +2408,17 @@ def logs_api(
     q: str | None = Query(default=None),
     limit: int = Query(default=300, ge=20, le=1500),
 ) -> JSONResponse:
-    return JSONResponse(
-        build_logs_payload(
-            level=level,
-            source=source,
-            search=q,
-            limit=limit,
-        )
-    )
+    return JSONResponse(list_log_events(level=level, source=source, search=q, limit=limit))
 
 
 @router.get("/api/tailscale")
 def tailscale_api() -> JSONResponse:
-    return JSONResponse(build_tailscale_payload())
+    return JSONResponse(build_tailscale_snapshot())
 
 
 @router.get("/api/postprocessor")
 def postprocessor_api() -> JSONResponse:
-    return JSONResponse(build_postprocessor_payload())
+    return JSONResponse(build_postprocessor_snapshot())
 
 
 @router.post("/api/tailscale/action")
