@@ -30,9 +30,9 @@ The repository combines off-the-shelf services with a custom control layer:
 
 The current UI focuses on a compact control surface and a weekly broadcast wall.
 
-![Dashboard top section](./docs/dash1.png)
+![Dashboard top section](./docs/dash1_new_en.png)
 
-![Dashboard lower section](./docs/dash2.png)
+![Dashboard lower section](./docs/dash2_new_en.png)
 
 ## Core Workflow
 

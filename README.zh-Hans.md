@@ -30,9 +30,9 @@
 
 当前界面重点是紧凑控制台和首页周放送表。
 
-![首页上半部分](./docs/dash1.png)
+![首页上半部分](./docs/dash1_new_zh.png)
 
-![首页下半部分](./docs/dash2.png)
+![首页下半部分](./docs/dash2_new_zh.png)
 
 ## 核心工作流
 
