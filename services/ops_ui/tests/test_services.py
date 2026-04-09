@@ -76,6 +76,73 @@ def test_build_summary_strip_counts_library_ready_schedule_items_across_visible_
     assert summary_strip[0]["answer"] == "9 ready in library"
 
 
+def test_build_overview_payload_uses_public_host_for_schedule_and_service_links(monkeypatch, tmp_path):
+    data_root = tmp_path / "anime-data"
+    collection_root = tmp_path / "anime-collection"
+    data_root.mkdir()
+    collection_root.mkdir()
+    (data_root / "library" / "seasonal").mkdir(parents=True)
+    (data_root / "downloads" / "Bangumi").mkdir(parents=True)
+    (data_root / "processing" / "manual_review").mkdir(parents=True)
+
+    monkeypatch.setattr(
+        main_module,
+        "_env",
+        lambda name, default: {
+            "ANIME_DATA_ROOT": str(data_root),
+            "ANIME_COLLECTION_ROOT": str(collection_root),
+            "HOMEPAGE_BASE_HOST": "sunzhuofan.local",
+            "TAILSCALE_SOCKET": "/var/run/tailscale/tailscaled.sock",
+            "AUTOBANGUMI_API_URL": "",
+        }.get(name, default),
+    )
+    monkeypatch.setattr(main_module, "_sample_history_once", lambda: None)
+    monkeypatch.setattr(main_module, "_safe_get_json", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (None, None))
+    monkeypatch.setattr(main_module, "_fan_state_snapshot", lambda: (None, None))
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+
+    captured: dict[str, str] = {}
+
+    def fake_phase4_snapshot(**kwargs):
+        captured["base_host"] = kwargs["base_host"]
+        return {
+            "weekly_schedule": {
+                "week_key": "2026-W15",
+                "today_weekday": 2,
+                "days": [
+                    {
+                        "weekday": index,
+                        "label": label,
+                        "is_today": index == 2,
+                        "items": [],
+                        "hidden_items": [],
+                        "has_hidden_items": False,
+                    }
+                    for index, label in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+                ],
+                "unknown": {
+                    "label": "Unknown",
+                    "hint": "Drag to assign a broadcast day",
+                    "items": [],
+                    "hidden_items": [],
+                    "has_hidden_items": False,
+                },
+            }
+        }
+
+    monkeypatch.setattr(overview_service_module, "build_phase4_schedule_snapshot", fake_phase4_snapshot)
+
+    payload = build_overview_payload(locale="en", public_host="100.88.77.66")
+
+    jellyfin_row = next(item for item in payload["service_rows"] if item["id"] == "jellyfin")
+
+    assert captured["base_host"] == "100.88.77.66"
+    assert payload["hero"]["host"] == "100.88.77.66"
+    assert jellyfin_row["href"] == "http://100.88.77.66:8096"
+
+
 def test_build_logs_payload_filters_by_source_level_and_search(monkeypatch):
     monkeypatch.setattr(
         main_module,

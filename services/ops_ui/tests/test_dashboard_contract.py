@@ -19,10 +19,10 @@ def _empty_weekly_days(*, today_weekday: int, locale: str = "zh-Hans") -> list[d
 
 
 def test_page_payload_routes_thread_locale_to_services(client, monkeypatch):
-    captured: dict[str, str | None] = {}
+    captured: dict[str, str | tuple[str | None, str | None] | None] = {}
 
-    def fake_overview(*, locale=None):
-        captured["overview"] = locale
+    def fake_overview(*, locale=None, public_host=None):
+        captured["overview"] = (locale, public_host)
         return {"ok": True}
 
     def fake_manual_review(*, locale=None):
@@ -57,7 +57,7 @@ def test_page_payload_routes_thread_locale_to_services(client, monkeypatch):
     monkeypatch.setattr(main_module, "build_postprocessor_payload_service", fake_postprocessor)
     monkeypatch.setattr(main_module, "build_tailscale_payload_service", fake_tailscale)
 
-    headers = {"accept-language": "en-US,en;q=0.9"}
+    headers = {"accept-language": "en-US,en;q=0.9", "host": "100.88.77.66:3000"}
     assert client.get("/api/overview", headers=headers).status_code == 200
     assert client.get("/api/manual-review", headers=headers).status_code == 200
     assert client.get("/api/manual-review/item?id=demo-item", headers=headers).status_code == 200
@@ -66,12 +66,38 @@ def test_page_payload_routes_thread_locale_to_services(client, monkeypatch):
     assert client.get("/api/tailscale", headers=headers).status_code == 200
 
     assert captured == {
-        "overview": "en",
+        "overview": ("en", "100.88.77.66"),
         "manual_review": "en",
         "manual_review_item": "en",
         "logs": "en",
         "postprocessor": "en",
         "tailscale": "en",
+    }
+
+
+def test_overview_route_prefers_forwarded_host_for_public_links(client, monkeypatch):
+    captured: dict[str, str | None] = {}
+
+    def fake_overview(*, locale=None, public_host=None):
+        captured["locale"] = locale
+        captured["public_host"] = public_host
+        return {"ok": True}
+
+    monkeypatch.setattr(main_module, "build_overview_payload_service", fake_overview)
+
+    response = client.get(
+        "/api/overview",
+        headers={
+            "accept-language": "en-US,en;q=0.9",
+            "host": "internal.local:3000",
+            "x-forwarded-host": "100.101.102.103:3000",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "locale": "en",
+        "public_host": "100.101.102.103",
     }
 
 
