@@ -29,10 +29,73 @@ const {
 let logsRefreshMs = 10000;
 let logsPayload = { items: [], levels: [], sources: [] };
 const initialLogsState = getQueryState(["source", "level", "q"]);
+const LOGS_FALLBACK_COPY = {
+  filters: {
+    all_sources: "All Sources",
+    all_levels: "All Levels",
+    details_summary: "Details",
+  },
+  meta: {
+    refresh_suffix: "s",
+    retention_badge: "Cap {count}",
+    list_meta: "Visible {visible} / Total {total}",
+  },
+  empty: {
+    title: "No logs match the current filters.",
+    detail: "Adjust the filters or wait for a new structured event to be written.",
+  },
+  status: {
+    unavailable_title: "Logs unavailable",
+    clear_failed_title: "Clear Failed",
+  },
+  clear: {
+    confirm: "Clear the structured event log? This removes the current Logs history from the workspace.",
+    success_title: "Logs Cleared",
+    success_message: "Cleared {count} structured log entries.",
+  },
+};
+
+function formatTemplate(template, values) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    String(template || "")
+  );
+}
+
+function logsCopy(payload) {
+  return {
+    filters: {
+      all_sources: payload.copy?.filters?.all_sources || LOGS_FALLBACK_COPY.filters.all_sources,
+      all_levels: payload.copy?.filters?.all_levels || LOGS_FALLBACK_COPY.filters.all_levels,
+      details_summary: payload.copy?.filters?.details_summary || LOGS_FALLBACK_COPY.filters.details_summary,
+    },
+    meta: {
+      refresh_suffix: payload.copy?.meta?.refresh_suffix || LOGS_FALLBACK_COPY.meta.refresh_suffix,
+      retention_badge: payload.copy?.meta?.retention_badge || LOGS_FALLBACK_COPY.meta.retention_badge,
+      list_meta: payload.copy?.meta?.list_meta || LOGS_FALLBACK_COPY.meta.list_meta,
+    },
+    empty: {
+      title: payload.copy?.empty?.title || LOGS_FALLBACK_COPY.empty.title,
+      detail: payload.copy?.empty?.detail || LOGS_FALLBACK_COPY.empty.detail,
+    },
+    status: {
+      unavailable_title:
+        payload.copy?.status?.unavailable_title || LOGS_FALLBACK_COPY.status.unavailable_title,
+      clear_failed_title:
+        payload.copy?.status?.clear_failed_title || LOGS_FALLBACK_COPY.status.clear_failed_title,
+    },
+    clear: {
+      confirm: payload.copy?.clear?.confirm || LOGS_FALLBACK_COPY.clear.confirm,
+      success_title: payload.copy?.clear?.success_title || LOGS_FALLBACK_COPY.clear.success_title,
+      success_message:
+        payload.copy?.clear?.success_message || LOGS_FALLBACK_COPY.clear.success_message,
+    },
+  };
+}
 
 function optionTemplate(values, label) {
   return [
-    `<option value="">全部${label}</option>`,
+    `<option value="">${escapeHtml(label)}</option>`,
     ...values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`),
   ].join("");
 }
@@ -50,12 +113,12 @@ function levelTone(level) {
   }
 }
 
-function logItemTemplate(item) {
+function logItemTemplate(item, copy) {
   const level = String(item.level || "info").toUpperCase();
   const source = String(item.source || "unknown");
   const action = String(item.action || "event");
   const details = item.details && Object.keys(item.details).length
-      ? `<details class="log-details"><summary>详细信息</summary><pre>${escapeHtml(JSON.stringify(item.details, null, 2))}</pre></details>`
+      ? `<details class="log-details"><summary>${escapeHtml(copy.filters.details_summary)}</summary><pre>${escapeHtml(JSON.stringify(item.details, null, 2))}</pre></details>`
     : "";
   return `
     <article class="log-entry ${levelTone(item.level)}">
@@ -76,20 +139,21 @@ function logItemTemplate(item) {
 }
 
 function renderLogs(payload) {
+  const copy = logsCopy(payload);
   logsPayload = payload;
   logsTitle.textContent = payload.title || "Logs";
   logsSubtitle.textContent = payload.subtitle || "";
   logsStorage.textContent = payload.storage_path || "-";
   logsUpdated.textContent = formatUpdatedLabel();
   logsRefreshMs = (payload.refresh_interval_seconds || 10) * 1000;
-  logsRefresh.textContent = `${Math.round(logsRefreshMs / 1000)}s`;
-  logsRetentionBadge.textContent = `上限 ${payload.retention_cap || "-"}`;
+  logsRefresh.textContent = `${Math.round(logsRefreshMs / 1000)}${copy.meta.refresh_suffix}`;
+  logsRetentionBadge.textContent = formatTemplate(copy.meta.retention_badge, { count: payload.retention_cap || "-" });
   logsSummary.innerHTML = (payload.summary_cards || []).map(metricTemplate).join("");
 
   const sourceValue = logsSourceFilter.value || initialLogsState.source;
   const levelValue = logsLevelFilter.value || initialLogsState.level;
-  logsSourceFilter.innerHTML = optionTemplate(payload.sources || [], "来源");
-  logsLevelFilter.innerHTML = optionTemplate(payload.levels || [], "等级");
+  logsSourceFilter.innerHTML = optionTemplate(payload.sources || [], copy.filters.all_sources);
+  logsLevelFilter.innerHTML = optionTemplate(payload.levels || [], copy.filters.all_levels);
   if (sourceValue && Array.from(logsSourceFilter.options).some((option) => option.value === sourceValue)) {
     logsSourceFilter.value = sourceValue;
   }
@@ -97,11 +161,14 @@ function renderLogs(payload) {
     logsLevelFilter.value = levelValue;
   }
 
-  logsListMeta.textContent = `可见 ${payload.items.length} / 总计 ${payload.total_count}`;
+  logsListMeta.textContent = formatTemplate(copy.meta.list_meta, {
+    visible: payload.items.length,
+    total: payload.total_count,
+  });
   if (!payload.items.length) {
-    logsList.innerHTML = renderEmptyState("当前没有匹配的日志。", "可以调整筛选条件，或者等待后台动作写入新的结构化事件。");
+    logsList.innerHTML = renderEmptyState(copy.empty.title, copy.empty.detail);
   } else {
-    logsList.innerHTML = payload.items.map(logItemTemplate).join("");
+    logsList.innerHTML = payload.items.map((item) => logItemTemplate(item, copy)).join("");
   }
 }
 
@@ -130,12 +197,13 @@ const logsPage = createPageBootstrap({
   render: renderLogs,
   getIntervalMs: () => logsRefreshMs,
   onError: (error) => {
-    setFlash(logsFlash, "error", "日志页不可用", error.message || String(error));
+    setFlash(logsFlash, "error", logsCopy(logsPayload).status.unavailable_title, error.message || String(error));
   },
 });
 
 async function clearLogs() {
-  if (!window.confirm("确认清理结构化日志？这个动作会清空当前 Logs 页里的历史记录。")) {
+  const copy = logsCopy(logsPayload);
+  if (!window.confirm(copy.clear.confirm)) {
     return;
   }
   clearFlash(logsFlash);
@@ -144,11 +212,16 @@ async function clearLogs() {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    const payload = await response.json();
-    setFlash(logsFlash, "success", "日志已清理", payload.message || "日志已清理。");
+    const result = await response.json();
+    setFlash(
+      logsFlash,
+      "success",
+      copy.clear.success_title,
+      formatTemplate(copy.clear.success_message, { count: result.cleared || 0 })
+    );
     await logsPage.tick();
   } catch (error) {
-    setFlash(logsFlash, "error", "清理失败", error.message || String(error));
+    setFlash(logsFlash, "error", copy.status.clear_failed_title, error.message || String(error));
   }
 }
 

@@ -26,6 +26,39 @@ const {
 
 let refreshIntervalMs = 8000;
 
+function overviewCopy(data) {
+  return {
+    schedule: {
+      tooltipLabels: {
+        titleRaw: data.copy?.schedule?.tooltip_labels?.title_raw || "Original title",
+        groupName: data.copy?.schedule?.tooltip_labels?.group_name || "Group",
+        source: data.copy?.schedule?.tooltip_labels?.source || "Source",
+        subtitle: data.copy?.schedule?.tooltip_labels?.subtitle || "Subtitles",
+        dpi: data.copy?.schedule?.tooltip_labels?.dpi || "Quality",
+        seasonLabel: data.copy?.schedule?.tooltip_labels?.season_label || "Season",
+      },
+      listSeparator: data.copy?.schedule?.list_separator || ", ",
+      titleFallback: data.copy?.schedule?.title_fallback || "Unknown",
+      libraryReady: data.copy?.schedule?.library_ready || "Added to library this week and ready to play",
+      reviewNotePrefix: data.copy?.schedule?.review_note_prefix || "Review note",
+      emptyDay: data.copy?.schedule?.empty_day || "No broadcast",
+      emptyWeek: data.copy?.schedule?.empty_week || "No weekly schedule yet.",
+      unknownLabelFallback: data.copy?.schedule?.unknown_label_fallback || "Unknown",
+      unknownEmpty: data.copy?.schedule?.unknown_empty || "No unscheduled entries.",
+      expandHidden: data.copy?.schedule?.expand_hidden || "Show +{count}",
+      collapseHidden: data.copy?.schedule?.collapse_hidden || "Collapse",
+    },
+    refreshAutoPrefix: data.copy?.refresh_auto_prefix || "Auto",
+    trendEmpty: data.copy?.trend_empty || "No history yet.",
+    diagnostics: {
+      empty: data.copy?.diagnostics?.empty || "All local data sources responded normally.",
+      sourceFallback: data.copy?.diagnostics?.source_fallback || "diagnostics",
+      messageFallback: data.copy?.diagnostics?.message_fallback || "unknown issue",
+      frontendSource: data.copy?.diagnostics?.frontend_source || "frontend",
+    },
+  };
+}
+
 function toneStatusClass(tone) {
   if (tone === "teal") return "status-running";
   if (tone === "amber") return "status-starting";
@@ -54,30 +87,30 @@ function posterInitials(title) {
   return Array.from(normalized).slice(0, 2).join("").toUpperCase();
 }
 
-function scheduleTooltipRows(item) {
+function scheduleTooltipRows(item, copy) {
   const rows = [
-    ["原题", item?.detail?.title_raw],
-    ["字幕组", item?.detail?.group_name],
-    ["来源", item?.detail?.source],
-    ["字幕", item?.detail?.subtitle],
-    ["画质", item?.detail?.dpi],
-    ["季度", item?.detail?.season_label],
+    [copy.schedule.tooltipLabels.titleRaw, item?.detail?.title_raw],
+    [copy.schedule.tooltipLabels.groupName, item?.detail?.group_name],
+    [copy.schedule.tooltipLabels.source, item?.detail?.source],
+    [copy.schedule.tooltipLabels.subtitle, item?.detail?.subtitle],
+    [copy.schedule.tooltipLabels.dpi, item?.detail?.dpi],
+    [copy.schedule.tooltipLabels.seasonLabel, item?.detail?.season_label],
   ];
   return rows.filter(([, value]) => Boolean(value));
 }
 
-function scheduleTooltipLabel(item) {
-  const title = item?.title || "Unknown";
-  const rows = scheduleTooltipRows(item);
-  const detailText = rows.map(([label, value]) => `${label} ${value}`).join("，");
-  const libraryText = item?.is_library_ready ? "本周已入库，可播放" : "";
-  const reviewText = item?.detail?.review_reason ? `审校提示 ${item.detail.review_reason}` : "";
-  return [title, detailText, libraryText, reviewText].filter(Boolean).join("，");
+function scheduleTooltipLabel(item, copy) {
+  const title = item?.title || copy.schedule.titleFallback;
+  const rows = scheduleTooltipRows(item, copy);
+  const detailText = rows.map(([label, value]) => `${label} ${value}`).join(copy.schedule.listSeparator);
+  const libraryText = item?.is_library_ready ? copy.schedule.libraryReady : "";
+  const reviewText = item?.detail?.review_reason ? `${copy.schedule.reviewNotePrefix} ${item.detail.review_reason}` : "";
+  return [title, detailText, libraryText, reviewText].filter(Boolean).join(copy.schedule.listSeparator);
 }
 
-function scheduleTooltipTemplate(item) {
-  const title = item?.title || "Unknown";
-  const rows = scheduleTooltipRows(item);
+function scheduleTooltipTemplate(item, copy) {
+  const title = item?.title || copy.schedule.titleFallback;
+  const rows = scheduleTooltipRows(item, copy);
   const rowsMarkup = rows.length
     ? `
       <dl class="schedule-poster-tooltip-meta">
@@ -95,10 +128,10 @@ function scheduleTooltipTemplate(item) {
     `
     : "";
   const libraryMarkup = item?.is_library_ready
-    ? '<p class="schedule-poster-tooltip-state">本周已入库，可播放</p>'
+    ? `<p class="schedule-poster-tooltip-state">${escapeHtml(copy.schedule.libraryReady)}</p>`
     : "";
   const reviewMarkup = item?.detail?.review_reason
-    ? `<p class="schedule-poster-tooltip-note">审校提示：${escapeHtml(item.detail.review_reason)}</p>`
+    ? `<p class="schedule-poster-tooltip-note">${escapeHtml(copy.schedule.reviewNotePrefix)}: ${escapeHtml(item.detail.review_reason)}</p>`
     : "";
 
   return `
@@ -111,11 +144,11 @@ function scheduleTooltipTemplate(item) {
   `;
 }
 
-function schedulePosterTemplate(item) {
-  const title = item?.title || "Unknown";
+function schedulePosterTemplate(item, copy) {
+  const title = item?.title || copy.schedule.titleFallback;
   const stateClass = item?.is_library_ready ? " is-library-ready" : "";
-  const tooltipMarkup = scheduleTooltipTemplate(item);
-  const ariaLabel = scheduleTooltipLabel(item) || title;
+  const tooltipMarkup = scheduleTooltipTemplate(item, copy);
+  const ariaLabel = scheduleTooltipLabel(item, copy) || title;
 
   return `
     <article class="schedule-poster-card${stateClass}" tabindex="0" aria-label="${escapeHtml(ariaLabel)}">
@@ -131,7 +164,7 @@ function schedulePosterTemplate(item) {
   `;
 }
 
-function scheduleDayColumnTemplate(day, todayWeekday) {
+function scheduleDayColumnTemplate(day, todayWeekday, copy) {
   const items = Array.isArray(day?.items) ? day.items : [];
   const hiddenItems = Array.isArray(day?.hidden_items) ? day.hidden_items : [];
   const hasHiddenItems = Boolean(day?.has_hidden_items && hiddenItems.length > 0);
@@ -148,8 +181,8 @@ function scheduleDayColumnTemplate(day, todayWeekday) {
       </div>
       ${
         items.length
-          ? `<div class="schedule-poster-grid">${items.map(schedulePosterTemplate).join("")}</div>`
-          : '<div class="broadcast-empty">无放送</div>'
+          ? `<div class="schedule-poster-grid">${items.map((item) => schedulePosterTemplate(item, copy)).join("")}</div>`
+          : `<div class="broadcast-empty">${escapeHtml(copy.schedule.emptyDay)}</div>`
       }
       ${
         hasHiddenItems
@@ -160,11 +193,11 @@ function scheduleDayColumnTemplate(day, todayWeekday) {
           data-schedule-toggle
           aria-controls="${hiddenId}"
           aria-expanded="false"
-          data-expand-label="展开 +${hiddenItems.length}"
-          data-collapse-label="收起"
-        >展开 +${hiddenItems.length}</button>
+          data-expand-label="${escapeHtml(copy.schedule.expandHidden.replace("{count}", hiddenItems.length))}"
+          data-collapse-label="${escapeHtml(copy.schedule.collapseHidden)}"
+        >${escapeHtml(copy.schedule.expandHidden.replace("{count}", hiddenItems.length))}</button>
         <div id="${hiddenId}" class="schedule-hidden-posters" hidden>
-          <div class="schedule-poster-grid">${hiddenItems.map(schedulePosterTemplate).join("")}</div>
+          <div class="schedule-poster-grid">${hiddenItems.map((item) => schedulePosterTemplate(item, copy)).join("")}</div>
         </div>
       `
           : ""
@@ -173,7 +206,7 @@ function scheduleDayColumnTemplate(day, todayWeekday) {
   `;
 }
 
-function unknownScheduleTemplate(unknown) {
+function unknownScheduleTemplate(unknown, copy) {
   const items = Array.isArray(unknown?.items) ? unknown.items : [];
   const hiddenItems = Array.isArray(unknown?.hidden_items) ? unknown.hidden_items : [];
   const visibleItems = items.slice(0, UNKNOWN_VISIBLE_LIMIT);
@@ -186,14 +219,14 @@ function unknownScheduleTemplate(unknown) {
   return `
     <div class="broadcast-unknown-head">
       <div class="broadcast-unknown-copy">
-        <strong>${escapeHtml(unknown?.label || "未知")}</strong>
+        <strong>${escapeHtml(unknown?.label || copy.schedule.unknownLabelFallback)}</strong>
       </div>
       <span class="broadcast-day-count">${total}</span>
     </div>
     ${
       visibleItems.length
-        ? `<div class="schedule-poster-grid schedule-poster-grid-unknown">${visibleItems.map(schedulePosterTemplate).join("")}</div>`
-        : '<div class="broadcast-empty">未知分组暂无条目。</div>'
+        ? `<div class="schedule-poster-grid schedule-poster-grid-unknown">${visibleItems.map((item) => schedulePosterTemplate(item, copy)).join("")}</div>`
+        : `<div class="broadcast-empty">${escapeHtml(copy.schedule.unknownEmpty)}</div>`
     }
     ${
       hasHiddenItems
@@ -204,11 +237,11 @@ function unknownScheduleTemplate(unknown) {
         data-schedule-toggle
         aria-controls="${hiddenId}"
         aria-expanded="false"
-        data-expand-label="展开 +${mergedHiddenItems.length}"
-        data-collapse-label="收起"
-      >展开 +${mergedHiddenItems.length}</button>
+        data-expand-label="${escapeHtml(copy.schedule.expandHidden.replace("{count}", mergedHiddenItems.length))}"
+        data-collapse-label="${escapeHtml(copy.schedule.collapseHidden)}"
+      >${escapeHtml(copy.schedule.expandHidden.replace("{count}", mergedHiddenItems.length))}</button>
       <div id="${hiddenId}" class="schedule-hidden-posters" hidden>
-        <div class="schedule-poster-grid schedule-poster-grid-unknown">${mergedHiddenItems.map(schedulePosterTemplate).join("")}</div>
+        <div class="schedule-poster-grid schedule-poster-grid-unknown">${mergedHiddenItems.map((item) => schedulePosterTemplate(item, copy)).join("")}</div>
       </div>
     `
         : ""
@@ -240,7 +273,7 @@ function bindScheduleToggles(container) {
     const isExpanded = toggle.getAttribute("aria-expanded") === "true";
     const nextExpanded = !isExpanded;
     toggle.setAttribute("aria-expanded", String(nextExpanded));
-    toggle.textContent = nextExpanded ? toggle.dataset.collapseLabel || "收起" : toggle.dataset.expandLabel || "展开";
+    toggle.textContent = nextExpanded ? toggle.dataset.collapseLabel || "Collapse" : toggle.dataset.expandLabel || "Show";
     target.hidden = !nextExpanded;
   });
 
@@ -290,11 +323,11 @@ function barsTemplate(bars) {
   `;
 }
 
-function trendTemplate(card) {
+function trendTemplate(card, copy) {
   const tone = card?.tone || "teal";
   const toneClass = ["teal", "amber", "ocean", "violet"].includes(tone) ? `trend-${tone}` : "trend-teal";
   const windowLabel = card?.window_label ? `<span class="trend-window">${escapeHtml(card.window_label)}</span>` : "";
-  let canvas = `<div class="trend-canvas trend-canvas-empty">No history yet.</div>`;
+  let canvas = `<div class="trend-canvas trend-canvas-empty">${escapeHtml(copy.trendEmpty)}</div>`;
 
   if (card?.chart_kind === "bars") {
     const bars = Array.isArray(card.bars) ? card.bars : [];
@@ -329,17 +362,17 @@ function trendTemplate(card) {
   `;
 }
 
-function diagnosticsTemplate(items) {
+function diagnosticsTemplate(items, copy) {
   if (!items.length) {
-    return `<div class="diagnostic-empty">本地数据源响应正常。</div>`;
+    return `<div class="diagnostic-empty">${escapeHtml(copy.diagnostics.empty)}</div>`;
   }
 
   return items
     .map(
       (item) => `
       <article class="diagnostic-item">
-        <span class="diagnostic-source">${escapeHtml(item?.source || "diagnostics")}</span>
-        <p class="diagnostic-message">${escapeHtml(item?.message || "unknown issue")}</p>
+        <span class="diagnostic-source">${escapeHtml(item?.source || copy.diagnostics.sourceFallback)}</span>
+        <p class="diagnostic-message">${escapeHtml(item?.message || copy.diagnostics.messageFallback)}</p>
       </article>
     `
     )
@@ -347,6 +380,7 @@ function diagnosticsTemplate(items) {
 }
 
 function renderOverview(data, { cachedAt } = {}) {
+  const copy = overviewCopy(data);
   if (dashboardHero) {
     dashboardHero.classList.remove("is-loading-state");
   }
@@ -365,7 +399,7 @@ function renderOverview(data, { cachedAt } = {}) {
   hostName.textContent = window.location.host || data.hero?.host || "-";
   lastUpdated.textContent = formatUpdatedLabel(cachedAt);
   refreshIntervalMs = (data.refresh_interval_seconds || 8) * 1000;
-  refreshIntervalLabel.textContent = `Auto · ${Math.round(refreshIntervalMs / 1000)}s`;
+  refreshIntervalLabel.textContent = `${copy.refreshAutoPrefix} · ${Math.round(refreshIntervalMs / 1000)}s`;
 
   const summaryItems = Array.isArray(data.summary_strip) ? data.summary_strip : [];
   summaryStrip.innerHTML = summaryItems.map(summaryItemTemplate).join("");
@@ -375,13 +409,13 @@ function renderOverview(data, { cachedAt } = {}) {
   const unknownSchedule = data.weekly_schedule?.unknown || {};
   if (weeklyScheduleRoot) {
     weeklyScheduleRoot.innerHTML = weeklyDays.length
-      ? weeklyDays.map((day) => scheduleDayColumnTemplate(day, todayWeekday)).join("")
-      : '<div class="broadcast-empty">暂无本周放送数据。</div>';
+      ? weeklyDays.map((day) => scheduleDayColumnTemplate(day, todayWeekday, copy)).join("")
+      : `<div class="broadcast-empty">${escapeHtml(copy.schedule.emptyWeek)}</div>`;
     bindScheduleToggles(weeklyScheduleRoot);
   }
   if (unknownScheduleRoot) {
     unknownScheduleRoot.classList.remove("is-loading-state");
-    unknownScheduleRoot.innerHTML = unknownScheduleTemplate(unknownSchedule);
+    unknownScheduleRoot.innerHTML = unknownScheduleTemplate(unknownSchedule, copy);
     bindScheduleToggles(unknownScheduleRoot);
   }
 
@@ -392,12 +426,12 @@ function renderOverview(data, { cachedAt } = {}) {
   statusGrid.innerHTML = statusCards.map(metricTemplate).join("");
 
   const trendCards = Array.isArray(data.trend_cards) ? data.trend_cards : [];
-  trendGrid.innerHTML = trendCards.map(trendTemplate).join("");
+  trendGrid.innerHTML = trendCards.map((card) => trendTemplate(card, copy)).join("");
 
   const diagnosticItems = Array.isArray(data.diagnostics) ? data.diagnostics : [];
   diagnostics.classList.remove("diagnostics-loading");
   diagnostics.classList.toggle("diagnostics-has-items", diagnosticItems.length > 0);
-  diagnostics.innerHTML = diagnosticsTemplate(diagnosticItems);
+  diagnostics.innerHTML = diagnosticsTemplate(diagnosticItems, copy);
 }
 
 const overviewPage = createPageBootstrap({
@@ -406,11 +440,10 @@ const overviewPage = createPageBootstrap({
   render: renderOverview,
   getIntervalMs: () => refreshIntervalMs,
   onError: (error) => {
+    const copy = overviewCopy({ copy: {} });
     diagnostics.classList.remove("diagnostics-loading");
     diagnostics.classList.add("diagnostics-has-items");
-    diagnostics.innerHTML = diagnosticsTemplate([
-      { source: "frontend", message: error.message || String(error) },
-    ]);
+    diagnostics.innerHTML = diagnosticsTemplate([{ source: copy.diagnostics.frontendSource, message: error.message || String(error) }], copy);
   },
 });
 

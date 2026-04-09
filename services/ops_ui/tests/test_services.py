@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from anime_ops_ui import main as main_module
 from anime_ops_ui.services import postprocessor_service as postprocessor_service_module
 from anime_ops_ui.services.log_service import build_logs_payload
@@ -18,6 +20,7 @@ def test_build_service_summary_counts_tailscaled():
             "qbittorrent": {"status": "exited"},
         },
         tailscale_running=True,
+        locale="en",
     )
 
     assert summary["value"] == "2 online"
@@ -37,33 +40,89 @@ def test_build_logs_payload_filters_by_source_level_and_search(monkeypatch):
     monkeypatch.setattr(main_module, "event_log_cap", lambda: 1500)
     monkeypatch.setattr(main_module, "event_log_path", lambda: "/tmp/events.json")
 
-    payload = build_logs_payload(source="ops-ui", level="error", search="boom", limit=100)
+    payload = build_logs_payload(source="ops-ui", level="error", search="boom", limit=100, locale="en")
 
     assert payload["matched_count"] == 1
     assert payload["items"][0]["action"] == "save"
     assert payload["summary_cards"][0]["value"] == "1"
     assert payload["storage_path"] == "/tmp/events.json"
+    assert payload["title"] == "Logs"
+    assert payload["summary_cards"][0]["label"] == "Visible"
+    assert payload["copy"]["filters"]["all_sources"] == "All Sources"
+    assert payload["copy"]["clear"]["success_message"] == "Cleared {count} structured log entries."
 
 
 def test_build_manual_review_payload_reads_temp_tree(monkeypatch, tmp_path):
     review_root = tmp_path / "manual_review"
-    episode_root = review_root / "bucket_a" / "My Series" / "Season 1"
+    episode_root = review_root / "unparsed" / "My Series" / "Season 1"
     episode_root.mkdir(parents=True)
     media_path = episode_root / "My Series S01E01.mkv"
     media_path.write_bytes(b"media")
 
     monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
 
-    payload = build_manual_review_payload()
+    payload = build_manual_review_payload(locale="en")
 
     assert payload["total_files"] == 1
     assert payload["summary_cards"][0]["value"] == "1"
-    assert payload["buckets"][0]["bucket"] == "bucket_a"
+    assert payload["buckets"][0]["bucket"] == "unparsed"
+    assert payload["buckets"][0]["label"] == "Unparsed"
     assert payload["items"][0]["series_name"] == "My Series"
+    assert payload["items"][0]["bucket_label"] == "Unparsed"
+    assert payload["items"][0]["reason"] == "Could not reliably parse title or season/episode"
+    assert payload["summary_cards"][0]["label"] == "Review Files"
+    assert payload["copy"]["filter_all"] == "All Buckets"
 
-    item_payload = build_manual_review_item_payload(payload["items"][0]["id"])
+    item_payload = build_manual_review_item_payload(payload["items"][0]["id"], locale="en")
     assert item_payload["item"]["filename"] == "My Series S01E01.mkv"
+    assert item_payload["item"]["bucket_label"] == "Unparsed"
+    assert item_payload["item"]["reason"] == "Could not reliably parse title or season/episode"
     assert item_payload["path"].endswith("My Series S01E01.mkv")
+    assert item_payload["breadcrumbs"][0]["label"] == "Dashboard"
+    assert item_payload["copy"]["actions"]["delete"]["confirm_title"] == "Delete File"
+
+    zh_payload = build_manual_review_payload(locale="zh-Hans")
+    assert zh_payload["title"] == "人工审核"
+    assert zh_payload["summary_cards"][0]["label"] == "待审文件"
+    assert zh_payload["buckets"][0]["bucket"] == "unparsed"
+    assert zh_payload["buckets"][0]["label"] == "无法解析"
+    assert zh_payload["items"][0]["bucket_label"] == "无法解析"
+    assert zh_payload["copy"]["filter_all"] == "全部分组"
+
+
+def test_build_manual_review_item_payload_localizes_unparseable_reason(monkeypatch, tmp_path):
+    review_root = tmp_path / "manual_review"
+    item_root = review_root / "unparsed" / "My Series" / "Season 1"
+    item_root.mkdir(parents=True)
+    media_path = item_root / "My Series S01E01.mkv"
+    media_path.write_bytes(b"episode")
+
+    monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
+    monkeypatch.setattr(
+        main_module,
+        "_build_auto_parse_payload",
+        lambda item_path, review_root: {
+            "status": "unparsed",
+            "reason": "cannot parse season/episode",
+            "target_path": None,
+            "target_exists": False,
+            "score_summary": None,
+            "parsed": None,
+        },
+    )
+    monkeypatch.setattr(
+        main_module,
+        "_manual_publish_defaults",
+        lambda item, auto_parse: {"title": "My Series", "season": 1, "episode": 1},
+    )
+
+    payload = build_manual_review_item_payload(
+        "unparsed__My Series__Season 1__My Series S01E01.mkv",
+        locale="en",
+    )
+
+    assert payload["auto_parse"]["status"] == "unparsed"
+    assert payload["auto_parse"]["reason"] == "Could not parse season or episode"
 
 
 def test_build_postprocessor_payload_composes_sections(monkeypatch, tmp_path):
@@ -127,17 +186,21 @@ def test_build_postprocessor_payload_composes_sections(monkeypatch, tmp_path):
     monkeypatch.setattr(
         main_module,
         "_should_process_group",
-        lambda *, state, completed_entries, now_ts, wait_timeout: (True, "ready now"),
+        lambda *, state, completed_entries, now_ts, wait_timeout: (True, "best candidate already completed"),
     )
     monkeypatch.setattr(main_module, "read_events", lambda limit=200: [{"source": "postprocessor", "message": "started"}])
     monkeypatch.setattr(main_module, "_count_media_files", lambda root: 0)
 
-    payload = build_postprocessor_payload()
+    payload = build_postprocessor_payload(locale="en")
 
     assert payload["summary_cards"][0]["value"] == "Running"
     assert payload["summary_cards"][1]["value"] == "1"
+    assert payload["worker_badge"] == "Running"
     assert payload["sections"][0]["title"] == "Ready On Next Tick"
     assert payload["sections"][0]["items"][0]["title"] == "dr-stone"
+    assert payload["sections"][0]["items"][0]["reason"] == "Ready because the top-scoring completed candidate is available"
+    assert payload["config_cards"][0]["label"] == "Source Root"
+    assert payload["copy"]["field_labels"]["best_overall"] == "Best Overall"
 
 
 def test_build_tailscale_payload_uses_socket_state(monkeypatch):
@@ -157,12 +220,15 @@ def test_build_tailscale_payload_uses_socket_state(monkeypatch):
     monkeypatch.setattr(main_module, "_tailscale_status", lambda socket_path: (tailscale_state, None))
     monkeypatch.setattr(main_module, "_tailscale_prefs", lambda socket_path: (prefs, None))
 
-    payload = build_tailscale_payload()
+    payload = build_tailscale_payload(locale="en")
 
     assert payload["status"]["backend_state"] == "Running"
     assert payload["status"]["reachable"] is True
     assert payload["summary_cards"][2]["value"] == "0"
     assert payload["current_node"]["control_action"] == "stop"
+    assert payload["control"]["label"] == "Stop Tailscale"
+    assert payload["copy"]["peer_fields"]["ipv6"] == "IPv6"
+    assert payload["copy"]["action"]["in_progress"] == "Running the Tailscale control action."
 
 
 def test_restart_service_now_returns_structured_manual_auth_signal_for_tailscale(monkeypatch):
@@ -257,19 +323,25 @@ def test_build_overview_payload_reports_service_summary(monkeypatch, tmp_path):
     monkeypatch.setattr(main_module, "_history_file", lambda: tmp_path / "history.json")
     monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
 
-    payload = build_overview_payload()
+    payload = build_overview_payload(locale="en")
 
     assert payload["page_key"] == "dashboard"
     assert payload["title"] == "RPI Anime Ops"
     assert payload["services"][0]["name"] == "Jellyfin"
     assert payload["system_cards"][4]["label"] == "Services"
+    assert payload["system_cards"][5]["detail"] == "Data disk is not mounted or readable"
     assert payload["queue_cards"][0]["value"] == "3"
     jellyfin = payload["services"][0]
-    assert jellyfin["description"] == "私人影音库与播放入口"
+    assert jellyfin["description"] == "Private library and playback entrypoint"
     assert jellyfin["meta"] == "Media server"
     assert jellyfin["uptime"] == "1h"
     assert jellyfin["restart_target"] == "jellyfin"
     assert jellyfin["restart_label"] == "Restart"
+    assert payload["queue_cards"][3]["detail"] == "Data disk unavailable"
+    assert payload["queue_cards"][4]["detail"] == "Data disk unavailable"
+    assert payload["network_cards"][2]["detail"] == "0 online"
+    assert payload["trend_cards"][2]["detail"] == "24h avg 15 B/s · all clients"
+    assert payload["trend_cards"][3]["detail"] == "7 day total · qBittorrent"
     assert {"label", "value", "detail"}.issubset(payload["queue_cards"][0].keys())
     ops_review_legacy = next(item for item in payload["services"] if item["id"] == "ops-review")
     assert ops_review_legacy["internal"] is True
@@ -289,15 +361,15 @@ def test_build_overview_payload_reports_service_summary(monkeypatch, tmp_path):
         "last_updated",
     }.issubset(payload.keys())
     assert payload["hero"]["title"] == "RPI Anime Ops"
-    assert payload["hero"]["eyebrow"] == "Control Surface"
+    assert payload["hero"]["eyebrow"] == "Control surface"
     assert payload["hero"]["host"] == "sunzhuofan.local"
     assert payload["summary_strip"][0] == {
-        "question": "今天有什么值得看",
-        "answer": "1 个下载中",
+        "question": "What is worth watching today?",
+        "answer": "1 active download",
         "tone": "teal",
     }
-    assert payload["summary_strip"][1]["question"] == "下载和入库链路是否正常"
-    assert payload["summary_strip"][2]["question"] == "设备和远程访问是否健康"
+    assert payload["summary_strip"][1]["question"] == "Is download and library ingest healthy?"
+    assert payload["summary_strip"][2]["question"] == "Are device health and remote access stable?"
     assert set(payload["summary_strip"][1].keys()) == {"question", "answer", "tone"}
     assert set(payload["summary_strip"][2].keys()) == {"question", "answer", "tone"}
     assert payload["pipeline_cards"] == payload["queue_cards"]
@@ -306,9 +378,15 @@ def test_build_overview_payload_reports_service_summary(monkeypatch, tmp_path):
     ops_review_row = next(item for item in payload["service_rows"] if item["id"] == "ops-review")
     assert ops_review_row["internal"] is True
     assert ops_review_row["href"].endswith("/ops-review")
-    assert ops_review_row["meta"] in {"0 files", "数据盘未挂载"}
-    assert ops_review_row["uptime"] == "审核工作台"
+    assert ops_review_row["meta"] == "Data disk unavailable"
+    assert ops_review_row["uptime"] == "Review workspace"
     assert ops_review_row["restart_target"] == "homepage"
     assert ops_review_row["restart_label"] == "Restart UI"
     assert ops_review_row["restart_requires_reload"] is True
     assert ops_review_row["restart_name"] == "Ops UI"
+    logs_service = next(item for item in payload["services"] if item["id"] == "logs")
+    assert logs_service["description"] == "Structured logs, source filtering, and cleanup"
+    logs_row = next(item for item in payload["service_rows"] if item["id"] == "logs")
+    assert logs_row["meta"] == "0 events"
+    assert logs_row["uptime"] == "cap 1500 events"
+    assert "today_focus" not in payload

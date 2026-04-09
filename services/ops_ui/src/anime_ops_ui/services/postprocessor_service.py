@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from anime_ops_ui.copy import payload_copy, postprocessor_group_reason
 from anime_postprocessor.models import ParsedMedia
 from anime_postprocessor.qb import QBClient
 from anime_postprocessor.selector import score_candidate
@@ -74,9 +75,10 @@ def _postprocessor_group_payload(
     }
 
 
-def build_postprocessor_payload() -> dict[str, Any]:
+def build_postprocessor_payload(*, locale: str | None = None) -> dict[str, Any]:
     from anime_ops_ui import main as main_module
 
+    copy = payload_copy("postprocessor", locale)
     paths = main_module._postprocessor_paths()
     source_root = paths["source_root"]
     target_root = paths["target_root"]
@@ -139,7 +141,7 @@ def build_postprocessor_payload() -> dict[str, Any]:
                             key=key,
                             state=state,
                             completed_entries=completed_entries,
-                            reason=reason,
+                            reason=postprocessor_group_reason(reason, locale),
                             status="ready",
                         )
                     )
@@ -149,7 +151,7 @@ def build_postprocessor_payload() -> dict[str, Any]:
                             key=key,
                             state=state,
                             completed_entries=completed_entries,
-                            reason=reason,
+                            reason=postprocessor_group_reason(reason, locale),
                             status="waiting",
                         )
                     )
@@ -159,7 +161,7 @@ def build_postprocessor_payload() -> dict[str, Any]:
                             key=key,
                             state=state,
                             completed_entries=completed_entries,
-                            reason=reason,
+                            reason=postprocessor_group_reason(reason, locale),
                             status="active",
                         )
                     )
@@ -169,7 +171,7 @@ def build_postprocessor_payload() -> dict[str, Any]:
                     {
                         "title": entry.torrent.name,
                         "status": "review",
-                        "reason": "已完成但无法解析，下一轮会送入 manual_review",
+                        "reason": copy["unparsed_reason"],
                         "media_count": len(entry.media_paths),
                         "path": str(entry.content_root),
                     }
@@ -185,76 +187,85 @@ def build_postprocessor_payload() -> dict[str, Any]:
 
     summary_cards = [
         {
-            "label": "Worker",
+            "label": copy["summary_cards"]["worker"]["label"],
             "value": str(worker_status).title(),
-            "detail": worker_uptime or "容器运行时长不可用",
+            "detail": worker_uptime or copy["summary_cards"]["worker"]["missing_uptime"],
         },
         {
-            "label": "Episode Groups",
+            "label": copy["summary_cards"]["groups"]["label"],
             "value": str(total_groups),
-            "detail": f"{len(ready_groups)} 组待处理 · {len(waiting_groups)} 组等待中",
+            "detail": copy["summary_cards"]["groups"]["detail"].format(ready=len(ready_groups), waiting=len(waiting_groups)),
         },
         {
-            "label": "Queue Tasks",
+            "label": copy["summary_cards"]["queue"]["label"],
             "value": str((qb_snapshot or {}).get("task_count", "-")) if qb_snapshot else "-",
-            "detail": f"{(qb_snapshot or {}).get('active_downloads', 0)} 个下载中 · {(qb_snapshot or {}).get('active_seeds', 0)} 个做种中" if qb_snapshot else "qB 不可用",
+            "detail": copy["summary_cards"]["queue"]["detail"].format(
+                downloads=(qb_snapshot or {}).get("active_downloads", 0),
+                seeds=(qb_snapshot or {}).get("active_seeds", 0),
+            ) if qb_snapshot else copy["summary_cards"]["queue"]["unavailable"],
         },
         {
-            "label": "Manual Review",
+            "label": copy["summary_cards"]["review"]["label"],
             "value": str(main_module._count_media_files(review_root)),
-            "detail": f"{len(unparsed_torrents)} 个已完成但未解析",
+            "detail": copy["summary_cards"]["review"]["detail"].format(count=len(unparsed_torrents)),
         },
     ]
 
     config_cards = [
         {
-            "label": "Source Root",
+            "label": copy["config_cards"]["source_root"]["label"],
             "value": str(source_root),
-            "detail": "下载暂存区",
+            "detail": copy["config_cards"]["source_root"]["detail"],
         },
         {
-            "label": "Target Root",
+            "label": copy["config_cards"]["target_root"]["label"],
             "value": str(target_root),
-            "detail": "Jellyfin 季度库",
+            "detail": copy["config_cards"]["target_root"]["detail"],
         },
         {
-            "label": "Review Root",
+            "label": copy["config_cards"]["review_root"]["label"],
             "value": str(review_root),
-            "detail": "人工审核队列",
+            "detail": copy["config_cards"]["review_root"]["detail"],
         },
         {
-            "label": "Policy",
+            "label": copy["config_cards"]["policy"]["label"],
             "value": category,
-            "detail": f"轮询 {poll_interval}s · 等待 {wait_timeout}s · 删除落选 {'开启' if delete_losers else '关闭'}",
+            "detail": copy["config_cards"]["policy"]["detail"].format(
+                poll=poll_interval,
+                wait=wait_timeout,
+                enabled=copy["delete_losers"]["enabled"] if delete_losers else copy["delete_losers"]["disabled"],
+            ),
         },
         {
-            "label": "Title Map",
+            "label": copy["config_cards"]["title_map"]["label"],
             "value": str(title_map),
-            "detail": "作品名映射与季号偏移",
+            "detail": copy["config_cards"]["title_map"]["detail"],
         },
     ]
 
     commands = [
         {
-            "label": "Watch Once",
-            "description": "手动触发一轮 watch 逻辑，最接近常驻服务实际行为。",
+            "label": copy["commands"]["watch_once"]["label"],
+            "description": copy["commands"]["watch_once"]["description"],
             "command": "docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm postprocessor watch --once",
         },
         {
-            "label": "Publish Dry Run",
-            "description": "查看当前下载区如果手动发布，会生成什么计划。",
+            "label": copy["commands"]["publish_dry_run"]["label"],
+            "description": copy["commands"]["publish_dry_run"]["description"],
             "command": "docker compose --env-file deploy/.env -f deploy/compose.yaml run --rm postprocessor publish",
         },
         {
-            "label": "Live Logs",
-            "description": "持续观察常驻 worker 当前每轮处理输出。",
+            "label": copy["commands"]["live_logs"]["label"],
+            "description": copy["commands"]["live_logs"]["description"],
             "command": "docker compose --env-file deploy/.env -f deploy/compose.yaml logs -f postprocessor",
         },
     ]
 
     return {
-        "title": "Postprocessor",
-        "subtitle": "下载完成后的选优、等待窗口、自动发布与 review 分流工作台。",
+        "title": copy["title"],
+        "subtitle": copy["subtitle"],
+        "copy": copy["page"],
+        "worker_badge": str(worker_status).title(),
         "refresh_interval_seconds": 15,
         "summary_cards": summary_cards,
         "config_cards": config_cards,
@@ -263,30 +274,30 @@ def build_postprocessor_payload() -> dict[str, Any]:
         "sections": [
             {
                 "id": "ready",
-                "title": "Ready On Next Tick",
-                "description": "已经满足处理条件，下一轮 watch 会直接接管并发布。",
-                "meta": f"{len(ready_groups)} groups",
+                "title": copy["sections"]["ready"]["title"],
+                "description": copy["sections"]["ready"]["description"],
+                "meta": copy["sections"]["ready"]["meta"].format(count=len(ready_groups)),
                 "items": ready_groups[:8],
             },
             {
                 "id": "waiting",
-                "title": "Waiting Window",
-                "description": "已有完成候选，但还在为更高优先级版本保留等待窗口。",
-                "meta": f"{len(waiting_groups)} groups",
+                "title": copy["sections"]["waiting"]["title"],
+                "description": copy["sections"]["waiting"]["description"],
+                "meta": copy["sections"]["waiting"]["meta"].format(count=len(waiting_groups)),
                 "items": waiting_groups[:8],
             },
             {
                 "id": "active",
-                "title": "Active Downloads",
-                "description": "当前还没有完成候选，继续等待下载完成。",
-                "meta": f"{len(active_groups)} groups",
+                "title": copy["sections"]["active"]["title"],
+                "description": copy["sections"]["active"]["description"],
+                "meta": copy["sections"]["active"]["meta"].format(count=len(active_groups)),
                 "items": active_groups[:8],
             },
             {
                 "id": "unparsed",
-                "title": "Completed But Unparsed",
-                "description": "已完成但无法解析的 torrent，下一轮会被送进 manual_review。",
-                "meta": f"{len(unparsed_torrents)} torrents",
+                "title": copy["sections"]["unparsed"]["title"],
+                "description": copy["sections"]["unparsed"]["description"],
+                "meta": copy["sections"]["unparsed"]["meta"].format(count=len(unparsed_torrents)),
                 "items": unparsed_torrents[:8],
             },
         ],
@@ -295,5 +306,5 @@ def build_postprocessor_payload() -> dict[str, Any]:
     }
 
 
-def build_postprocessor_snapshot() -> dict[str, Any]:
-    return build_postprocessor_payload()
+def build_postprocessor_snapshot(*, locale: str | None = None) -> dict[str, Any]:
+    return build_postprocessor_payload(locale=locale)

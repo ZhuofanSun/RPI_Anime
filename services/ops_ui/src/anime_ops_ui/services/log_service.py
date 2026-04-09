@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from anime_ops_ui.copy import payload_copy
+
 
 def build_logs_payload(
     *,
@@ -10,9 +12,12 @@ def build_logs_payload(
     source: str | None = None,
     search: str | None = None,
     limit: int = 300,
+    locale: str | None = None,
 ) -> dict[str, Any]:
     from anime_ops_ui import main as main_module
 
+    copy = payload_copy("logs", locale)
+    summary_copy = copy["summary_cards"]
     raw_events = main_module.read_events()
     keyword = (search or "").strip().lower()
     filtered = []
@@ -45,30 +50,31 @@ def build_logs_payload(
 
     summary_cards = [
         {
-            "label": "Visible",
+            "label": summary_copy["visible"]["label"],
             "value": str(len(visible)),
-            "detail": f"{len(filtered)} 条匹配 / 共 {len(raw_events)} 条",
+            "detail": summary_copy["visible"]["detail"].format(matched=len(filtered), total=len(raw_events)),
         },
         {
-            "label": "Sources",
+            "label": summary_copy["sources"]["label"],
             "value": str(len(sources)),
-            "detail": ", ".join(sources[:3]) if sources else "暂无来源",
+            "detail": ", ".join(sources[:3]) if sources else summary_copy["sources"]["empty"],
         },
         {
-            "label": "Errors",
+            "label": summary_copy["errors"]["label"],
             "value": str(level_counts.get("error", 0)),
-            "detail": f"{level_counts.get('warning', 0)} 条 warning",
+            "detail": summary_copy["errors"]["detail"].format(warnings=level_counts.get("warning", 0)),
         },
         {
-            "label": "Retention",
+            "label": summary_copy["retention"]["label"],
             "value": str(main_module.event_log_cap()),
             "detail": str(main_module.event_log_path()),
         },
     ]
 
     return {
-        "title": "Logs",
-        "subtitle": "项目侧结构化事件日志，优先覆盖自动处理、人工审核与运维动作。",
+        "title": copy["title"],
+        "subtitle": copy["subtitle"],
+        "copy": copy["page"],
         "refresh_interval_seconds": 10,
         "summary_cards": summary_cards,
         "levels": levels,
@@ -88,5 +94,6 @@ def list_log_events(
     level: str | None = None,
     search: str | None = None,
     limit: int = 300,
+    locale: str | None = None,
 ) -> dict[str, Any]:
-    return build_logs_payload(source=source, level=level, search=search, limit=limit)
+    return build_logs_payload(source=source, level=level, search=search, limit=limit, locale=locale)

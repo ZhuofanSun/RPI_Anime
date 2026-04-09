@@ -3,8 +3,8 @@ from anime_ops_ui.navigation import EXTERNAL_SERVICES, INTERNAL_PAGES, SERVICE_A
 from anime_ops_ui.services import overview_service
 
 
-def _empty_weekly_days(*, today_weekday: int) -> list[dict]:
-    labels = ["一", "二", "三", "四", "五", "六", "日"]
+def _empty_weekly_days(*, today_weekday: int, locale: str = "zh-Hans") -> list[dict]:
+    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] if locale == "en" else ["一", "二", "三", "四", "五", "六", "日"]
     return [
         {
             "weekday": index,
@@ -16,6 +16,63 @@ def _empty_weekly_days(*, today_weekday: int) -> list[dict]:
         }
         for index, label in enumerate(labels)
     ]
+
+
+def test_page_payload_routes_thread_locale_to_services(client, monkeypatch):
+    captured: dict[str, str | None] = {}
+
+    def fake_overview(*, locale=None):
+        captured["overview"] = locale
+        return {"ok": True}
+
+    def fake_manual_review(*, locale=None):
+        captured["manual_review"] = locale
+        return {"ok": True}
+
+    def fake_manual_review_item(item_id, *, locale=None):
+        captured["manual_review_item"] = locale
+        assert item_id == "demo-item"
+        return {"ok": True}
+
+    def fake_logs(*, level=None, source=None, search=None, limit=300, locale=None):
+        captured["logs"] = locale
+        assert level is None
+        assert source is None
+        assert search is None
+        assert limit == 300
+        return {"ok": True}
+
+    def fake_postprocessor(*, locale=None):
+        captured["postprocessor"] = locale
+        return {"ok": True}
+
+    def fake_tailscale(*, locale=None):
+        captured["tailscale"] = locale
+        return {"ok": True}
+
+    monkeypatch.setattr(main_module, "build_overview_payload_service", fake_overview)
+    monkeypatch.setattr(main_module, "build_manual_review_payload_service", fake_manual_review)
+    monkeypatch.setattr(main_module, "build_manual_review_item_payload_service", fake_manual_review_item)
+    monkeypatch.setattr(main_module, "build_logs_payload_service", fake_logs)
+    monkeypatch.setattr(main_module, "build_postprocessor_payload_service", fake_postprocessor)
+    monkeypatch.setattr(main_module, "build_tailscale_payload_service", fake_tailscale)
+
+    headers = {"accept-language": "en-US,en;q=0.9"}
+    assert client.get("/api/overview", headers=headers).status_code == 200
+    assert client.get("/api/manual-review", headers=headers).status_code == 200
+    assert client.get("/api/manual-review/item?id=demo-item", headers=headers).status_code == 200
+    assert client.get("/api/logs", headers=headers).status_code == 200
+    assert client.get("/api/postprocessor", headers=headers).status_code == 200
+    assert client.get("/api/tailscale", headers=headers).status_code == 200
+
+    assert captured == {
+        "overview": "en",
+        "manual_review": "en",
+        "manual_review_item": "en",
+        "logs": "en",
+        "postprocessor": "en",
+        "tailscale": "en",
+    }
 
 
 def test_navigation_api_contract_returns_internal_external_and_actions(client, monkeypatch, tmp_path):
@@ -162,32 +219,13 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
         overview_service,
         "build_phase4_schedule_snapshot",
         lambda **kwargs: {
-            "today_focus": {
-                "items": [
-                    {
-                        "id": 101,
-                        "title": "示例番剧",
-                        "poster_url": None,
-                        "is_library_ready": True,
-                        "detail": {
-                            "title_raw": "Sample Show",
-                            "group_name": "ANi",
-                            "source": "Baha",
-                            "subtitle": "CHT",
-                            "dpi": "1080P",
-                            "season_label": "S01",
-                            "review_reason": None,
-                        },
-                    }
-                ]
-            },
             "weekly_schedule": {
                 "week_key": "2026-W15",
                 "today_weekday": 2,
-                "days": _empty_weekly_days(today_weekday=2),
+                "days": _empty_weekly_days(today_weekday=2, locale="en"),
                 "unknown": {
-                    "label": "未知",
-                    "hint": "拖拽以设置放送日",
+                    "label": "Unknown",
+                    "hint": "Drag to assign a broadcast day",
                     "items": [],
                     "hidden_items": [],
                     "has_hidden_items": False,
@@ -197,7 +235,7 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
         raising=False,
     )
 
-    response = client.get("/api/overview")
+    response = client.get("/api/overview", headers={"accept-language": "en-US,en;q=0.9"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -214,18 +252,18 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
         "last_updated",
     }.issubset(payload.keys())
     assert payload["hero"]["title"] == "RPI Anime Ops"
-    assert payload["hero"]["eyebrow"] == "Control Surface"
+    assert payload["hero"]["eyebrow"] == "Control surface"
     assert isinstance(payload["summary_strip"], list)
-    assert payload["summary_strip"][0]["question"] == "今天有什么值得看"
-    assert payload["summary_strip"][1]["question"] == "下载和入库链路是否正常"
-    assert payload["summary_strip"][2]["question"] == "设备和远程访问是否健康"
+    assert payload["summary_strip"][0]["question"] == "What is worth watching today?"
+    assert payload["summary_strip"][1]["question"] == "Is download and library ingest healthy?"
+    assert payload["summary_strip"][2]["question"] == "Are device health and remote access stable?"
     assert set(payload["summary_strip"][0].keys()) == {"question", "answer", "tone"}
     assert "services" in payload
     assert "queue_cards" in payload
-    assert "today_focus" in payload
+    assert "today_focus" not in payload
     assert "weekly_schedule" in payload
     assert len(payload["weekly_schedule"]["days"]) == 7
-    assert payload["weekly_schedule"]["unknown"]["label"] == "未知"
+    assert payload["weekly_schedule"]["unknown"]["label"] == "Unknown"
 
 
 def test_overview_api_contract_phase4_failure_adds_diagnostic_and_fallback_schedule(client, monkeypatch):
@@ -240,11 +278,13 @@ def test_overview_api_contract_phase4_failure_adds_diagnostic_and_fallback_sched
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("phase4 unavailable")),
     )
 
-    response = client.get("/api/overview")
+    response = client.get("/api/overview", headers={"accept-language": "en-US,en;q=0.9"})
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["today_focus"]["items"] == []
+    assert "today_focus" not in payload
     assert len(payload["weekly_schedule"]["days"]) == 7
     assert [item["weekday"] for item in payload["weekly_schedule"]["days"]] == [0, 1, 2, 3, 4, 5, 6]
+    assert payload["weekly_schedule"]["days"][0]["label"] == "Mon"
+    assert payload["weekly_schedule"]["unknown"]["label"] == "Unknown"
     assert any(item.get("source") == "phase4-schedule" for item in payload["diagnostics"])

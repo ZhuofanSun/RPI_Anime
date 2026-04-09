@@ -3,10 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from anime_ops_ui.copy import payload_copy
 
-def build_tailscale_payload() -> dict[str, Any]:
+
+def build_tailscale_payload(*, locale: str | None = None) -> dict[str, Any]:
     from anime_ops_ui import main as main_module
 
+    copy = payload_copy("tailscale", locale)
     base_host = main_module._env("HOMEPAGE_BASE_HOST", __import__("socket").gethostname())
     tailscale_socket = main_module._env("TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock")
     tailscale, tailscale_error = main_module._tailscale_status(tailscale_socket)
@@ -22,48 +25,48 @@ def build_tailscale_payload() -> dict[str, Any]:
     dns_name = main_module._strip_trailing_dot(self_info.get("DNSName"))
     self_online = bool(self_info.get("Online"))
     want_running = bool((prefs or {}).get("WantRunning")) if isinstance(prefs, dict) else backend_state == "Running"
-    reachability = "Online" if self_online else ("Stopped" if not want_running else "Offline")
+    reachability = copy["reachability"]["online"] if self_online else (copy["reachability"]["stopped"] if not want_running else copy["reachability"]["offline"])
     logged_out = bool((prefs or {}).get("LoggedOut")) if isinstance(prefs, dict) else backend_state in {"NeedsLogin", "NoState"}
     machinekey_error = any("machinekey" in str(message).lower() for message in health_messages)
     control_action = "stop" if want_running else "start"
-    control_label = "关闭 Tailscale" if control_action == "stop" else "开启 Tailscale"
+    control_label = copy["control"]["stop_label"] if control_action == "stop" else copy["control"]["start_label"]
     if control_action == "stop":
-        control_detail = "仅停止 tailnet 连接，保留当前节点授权与配置。"
+        control_detail = copy["control"]["stop_detail"]
     elif machinekey_error:
-        control_detail = "当前本地 state 已损坏，需要先重建宿主机 Tailscale 状态。"
+        control_detail = copy["control"]["machinekey_detail"]
     elif backend_state in {"NeedsLogin", "NoState"} or logged_out:
-        control_detail = "启动 backend 后会进入登录态，需要在树莓派终端或网页登录完成授权。"
+        control_detail = copy["control"]["login_detail"]
     else:
-        control_detail = "恢复 tailnet backend 与远程访问链路。"
+        control_detail = copy["control"]["resume_detail"]
     if self_online:
-        self_note = "当前节点已在线，可通过 Tailscale IP 或 MagicDNS 从其他设备访问。"
+        self_note = copy["self_note"]["online"]
     elif machinekey_error:
-        self_note = "当前节点的本地 state 已损坏。请先完整重建 /var/lib/tailscale，然后再重新登录。"
+        self_note = copy["self_note"]["machinekey"]
     elif backend_state in {"NeedsLogin", "NoState"} or logged_out:
-        self_note = "当前节点已经脱离 tailnet，会话需要重新登录后才能恢复。"
+        self_note = copy["self_note"]["logged_out"]
     elif not want_running:
-        self_note = "当前节点已关闭 Tailscale 网络连接，但授权仍保留，可随时重新开启。"
+        self_note = copy["self_note"]["stopped"]
     else:
-        self_note = "后台进程仍在运行，但控制面或 peer 可达性异常，节点当前不可用。"
+        self_note = copy["self_note"]["offline"]
 
     summary_cards = [
         {
-            "label": "Backend",
+            "label": copy["summary_cards"]["backend"]["label"],
             "value": backend_state,
-            "detail": "只读取本机 socket",
+            "detail": copy["summary_cards"]["backend"]["detail"],
         },
         {
-            "label": "Reachability",
+            "label": copy["summary_cards"]["reachability"]["label"],
             "value": reachability,
-            "detail": "控制面与 Peer 连通性",
+            "detail": copy["summary_cards"]["reachability"]["detail"],
         },
         {
-            "label": "Peers",
+            "label": copy["summary_cards"]["peers"]["label"],
             "value": str(len(peer_values)),
-            "detail": f"{online_peer_count} 台在线 · {exit_node_candidates} 台可做出口节点",
+            "detail": copy["summary_cards"]["peers"]["detail"].format(online=online_peer_count, exit_nodes=exit_node_candidates),
         },
         {
-            "label": "Tailnet IP",
+            "label": copy["summary_cards"]["tailnet_ip"]["label"],
             "value": tail_ip,
             "detail": dns_name,
         },
@@ -71,32 +74,32 @@ def build_tailscale_payload() -> dict[str, Any]:
 
     self_cards = [
         {
-            "label": "Host",
+            "label": copy["self_cards"]["host"]["label"],
             "value": self_info.get("HostName") or base_host,
             "detail": dns_name,
         },
         {
-            "label": "Reachability",
-            "value": "Yes" if self_online else "No",
-            "detail": "可从 tailnet 访问" if self_online else "当前无法从 tailnet 访问",
+            "label": copy["self_cards"]["reachability"]["label"],
+            "value": copy["self_cards"]["reachability"]["yes"] if self_online else copy["self_cards"]["reachability"]["no"],
+            "detail": copy["self_cards"]["reachability"]["yes_detail"] if self_online else copy["self_cards"]["reachability"]["no_detail"],
         },
         {
-            "label": "IPv4",
+            "label": copy["self_cards"]["ipv4"]["label"],
             "value": tail_ip,
-            "detail": "主 tailnet 地址",
+            "detail": copy["self_cards"]["ipv4"]["detail"],
         },
         {
-            "label": "IPv6",
+            "label": copy["self_cards"]["ipv6"]["label"],
             "value": ipv6,
-            "detail": "次 tailnet 地址",
+            "detail": copy["self_cards"]["ipv6"]["detail"],
         },
         {
-            "label": "Current Addr",
+            "label": copy["self_cards"]["current_addr"]["label"],
             "value": main_module._strip_trailing_dot(self_info.get("CurAddr")),
-            "detail": f"relay {self_info.get('Relay', '-')}",
+            "detail": copy["self_cards"]["current_addr"]["detail"].format(relay=self_info.get("Relay", "-")),
         },
         {
-            "label": "Traffic",
+            "label": copy["self_cards"]["traffic"]["label"],
             "value": f"{main_module._format_bytes(self_info.get('RxBytes', 0))} ↓",
             "detail": f"{main_module._format_bytes(self_info.get('TxBytes', 0))} ↑",
         },
@@ -156,13 +159,14 @@ def build_tailscale_payload() -> dict[str, Any]:
         diagnostics.append(
             {
                 "source": "tailscale",
-                "message": "检测到 machinekey 相关错误，本机 state 可能损坏。",
+                "message": copy["diagnostics"]["machinekey"],
             }
         )
 
     return {
-        "title": "Tailscale",
-        "subtitle": "本地 tailnet 状态与远程访问链路。",
+        "title": copy["title"],
+        "subtitle": copy["subtitle"],
+        "copy": copy["page"],
         "refresh_interval_seconds": 15,
         "socket_path": tailscale_socket,
         "backend_state": backend_state,
@@ -210,8 +214,8 @@ def build_tailscale_payload() -> dict[str, Any]:
     }
 
 
-def build_tailscale_snapshot() -> dict[str, Any]:
-    return build_tailscale_payload()
+def build_tailscale_snapshot(*, locale: str | None = None) -> dict[str, Any]:
+    return build_tailscale_payload(locale=locale)
 
 
 def _format_peer_time(value: str | None) -> str:

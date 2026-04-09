@@ -1537,8 +1537,8 @@ def healthz() -> dict[str, bool]:
 
 
 @router.get("/api/overview")
-def overview() -> JSONResponse:
-    return JSONResponse(build_overview_payload_service())
+def overview(request: Request) -> JSONResponse:
+    return JSONResponse(build_overview_payload_service(locale=resolve_locale(request)))
 
 
 @router.get("/api/navigation")
@@ -1547,36 +1547,37 @@ def navigation_api(request: Request) -> JSONResponse:
 
 
 @router.get("/api/manual-review")
-def manual_review() -> JSONResponse:
-    return JSONResponse(build_manual_review_payload_service())
+def manual_review(request: Request) -> JSONResponse:
+    return JSONResponse(build_manual_review_payload_service(locale=resolve_locale(request)))
 
 
 @router.get("/api/manual-review/item")
-def manual_review_item(id: str = Query(...)) -> JSONResponse:
+def manual_review_item(request: Request, id: str = Query(...)) -> JSONResponse:
     try:
-        return JSONResponse(build_manual_review_item_payload_service(id))
+        return JSONResponse(build_manual_review_item_payload_service(id, locale=resolve_locale(request)))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="manual review file not found") from exc
 
 
 @router.get("/api/logs")
 def logs_api(
+    request: Request,
     level: str | None = Query(default=None),
     source: str | None = Query(default=None),
     q: str | None = Query(default=None),
     limit: int = Query(default=300, ge=20, le=1500),
 ) -> JSONResponse:
-    return JSONResponse(build_logs_payload_service(level=level, source=source, search=q, limit=limit))
+    return JSONResponse(build_logs_payload_service(level=level, source=source, search=q, limit=limit, locale=resolve_locale(request)))
 
 
 @router.get("/api/tailscale")
-def tailscale_api() -> JSONResponse:
-    return JSONResponse(build_tailscale_payload_service())
+def tailscale_api(request: Request) -> JSONResponse:
+    return JSONResponse(build_tailscale_payload_service(locale=resolve_locale(request)))
 
 
 @router.get("/api/postprocessor")
-def postprocessor_api() -> JSONResponse:
-    return JSONResponse(build_postprocessor_payload_service())
+def postprocessor_api(request: Request) -> JSONResponse:
+    return JSONResponse(build_postprocessor_payload_service(locale=resolve_locale(request)))
 
 
 @router.post("/api/tailscale/action")

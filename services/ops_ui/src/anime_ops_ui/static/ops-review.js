@@ -25,11 +25,77 @@ const {
 
 let reviewRefreshMs = 15000;
 let reviewPayload = { buckets: [], items: [], summary_cards: [] };
+const REVIEW_LIST_FALLBACKS = {
+  en: {
+    filter_all: "All Buckets",
+    meta: "{visible} / {total} files",
+    labels: {
+      season: "Season",
+      reason: "Reason",
+      extension: "Extension",
+      hint: "Hint",
+      filename: "Filename",
+      relative_path: "Relative Path",
+    },
+    actions: { view_detail: "View Detail" },
+    flash: { default_title: "Action Complete" },
+    empty: {
+      filtered_title: "No files match the current filters.",
+      filtered_detail: "Adjust the bucket or keyword to show files again.",
+      idle_title: "No files need manual review right now.",
+      idle_detail: "When the pipeline is healthy, unexpected files will appear here automatically.",
+    },
+    status: {
+      load_failed_title: "Failed to load the manual review queue.",
+      api_unavailable: "API unavailable",
+    },
+  },
+};
 const initialReviewState = getQueryState(["bucket", "q"]);
+let reviewCurrentCopy = REVIEW_LIST_FALLBACKS.en;
 
-function bucketOptionsTemplate(buckets) {
+function formatTemplate(template, values) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    String(template || "")
+  );
+}
+
+function reviewListCopy(payload) {
+  const fallback = REVIEW_LIST_FALLBACKS.en;
+  return {
+    filter_all: payload.copy?.filter_all || fallback.filter_all,
+    meta: payload.copy?.meta || fallback.meta,
+    labels: {
+      season: payload.copy?.labels?.season || fallback.labels.season,
+      reason: payload.copy?.labels?.reason || fallback.labels.reason,
+      extension: payload.copy?.labels?.extension || fallback.labels.extension,
+      hint: payload.copy?.labels?.hint || fallback.labels.hint,
+      filename: payload.copy?.labels?.filename || fallback.labels.filename,
+      relative_path: payload.copy?.labels?.relative_path || fallback.labels.relative_path,
+    },
+    actions: {
+      view_detail: payload.copy?.actions?.view_detail || fallback.actions.view_detail,
+    },
+    flash: {
+      default_title: payload.copy?.flash?.default_title || fallback.flash.default_title,
+    },
+    empty: {
+      filtered_title: payload.copy?.empty?.filtered_title || fallback.empty.filtered_title,
+      filtered_detail: payload.copy?.empty?.filtered_detail || fallback.empty.filtered_detail,
+      idle_title: payload.copy?.empty?.idle_title || fallback.empty.idle_title,
+      idle_detail: payload.copy?.empty?.idle_detail || fallback.empty.idle_detail,
+    },
+    status: {
+      load_failed_title: payload.copy?.status?.load_failed_title || fallback.status.load_failed_title,
+      api_unavailable: payload.copy?.status?.api_unavailable || fallback.status.api_unavailable,
+    },
+  };
+}
+
+function bucketOptionsTemplate(buckets, copy) {
   return [
-    `<option value="">全部分组</option>`,
+    `<option value="">${copy.filter_all}</option>`,
     ...buckets.map((bucket) => `<option value="${bucket.bucket}">${bucket.label} · ${bucket.count}</option>`),
   ].join("");
 }
@@ -48,12 +114,12 @@ function bucketChipsTemplate(buckets, activeBucket) {
     .join("");
 }
 
-function reviewItemTemplate(item) {
+function reviewItemTemplate(item, copy) {
   return `
     <article class="review-item">
       <div class="review-item-top">
         <div class="review-item-heading">
-          <span class="review-item-bucket">${item.bucket}</span>
+          <span class="review-item-bucket">${item.bucket_label || item.bucket}</span>
           <h3>${item.series_name}</h3>
         </div>
         <div class="review-item-side">
@@ -63,34 +129,34 @@ function reviewItemTemplate(item) {
       </div>
       <div class="review-item-grid">
         <div>
-          <span class="review-item-label">Season</span>
+          <span class="review-item-label">${copy.labels.season}</span>
           <span class="review-item-value">${item.season_label}</span>
         </div>
         <div>
-          <span class="review-item-label">Reason</span>
+          <span class="review-item-label">${copy.labels.reason}</span>
           <span class="review-item-value">${item.reason}</span>
         </div>
         <div>
-          <span class="review-item-label">Extension</span>
+          <span class="review-item-label">${copy.labels.extension}</span>
           <span class="review-item-value">${item.extension}</span>
         </div>
         <div>
-          <span class="review-item-label">Hint</span>
+          <span class="review-item-label">${copy.labels.hint}</span>
           <span class="review-item-value">${item.folder_hint}</span>
         </div>
       </div>
       <div class="review-item-paths">
         <div>
-          <span class="review-item-label">Filename</span>
+          <span class="review-item-label">${copy.labels.filename}</span>
           <code>${item.filename}</code>
         </div>
         <div>
-          <span class="review-item-label">Relative Path</span>
+          <span class="review-item-label">${copy.labels.relative_path}</span>
           <code>${item.relative_path}</code>
         </div>
       </div>
       <div class="review-item-actions">
-        <a class="ghost-link" href="/ops-review/item?id=${encodeURIComponent(item.id)}">查看详情</a>
+        <a class="ghost-link" href="/ops-review/item?id=${encodeURIComponent(item.id)}">${copy.actions.view_detail}</a>
       </div>
     </article>
   `;
@@ -113,13 +179,14 @@ function flashTemplate(flash) {
   const tone = flash.tone === "error" ? "flash-error" : "flash-success";
   return `
     <div class="flash-banner ${tone}">
-      <strong>${flash.title || "操作已完成"}</strong>
+      <strong>${flash.title || reviewCurrentCopy.flash.default_title}</strong>
       <span>${flash.message || ""}</span>
     </div>
   `;
 }
 
 function applyFilters() {
+  const copy = reviewListCopy(reviewPayload);
   const activeBucket = reviewBucketFilter.value;
   const keyword = (reviewSearch.value || "").trim().toLowerCase();
   const filteredItems = (reviewPayload.items || []).filter((item) => {
@@ -132,18 +199,21 @@ function applyFilters() {
       .includes(keyword);
   });
 
-  reviewListMeta.textContent = `${filteredItems.length} / ${(reviewPayload.items || []).length} files`;
+  reviewListMeta.textContent = formatTemplate(copy.meta, {
+    visible: filteredItems.length,
+    total: (reviewPayload.items || []).length,
+  });
 
   if (!filteredItems.length) {
     const emptyTitle = (reviewPayload.items || []).length
-      ? "当前筛选条件下没有匹配文件。"
-      : "当前没有待处理文件。";
+      ? copy.empty.filtered_title
+      : copy.empty.idle_title;
     const emptyDetail = (reviewPayload.items || []).length
-      ? "调整 bucket 或关键字后会重新显示列表。"
-      : "下载链路运行正常时，这里会在出现异常文件后自动补进队列。";
+      ? copy.empty.filtered_detail
+      : copy.empty.idle_detail;
     reviewList.innerHTML = renderEmptyState(emptyTitle, emptyDetail);
   } else {
-    reviewList.innerHTML = filteredItems.map(reviewItemTemplate).join("");
+    reviewList.innerHTML = filteredItems.map((item) => reviewItemTemplate(item, copy)).join("");
   }
 
   reviewBucketChips.innerHTML = bucketChipsTemplate(reviewPayload.buckets || [], activeBucket);
@@ -164,6 +234,7 @@ function applyFilters() {
 }
 
 function renderReview(payload, { cachedAt } = {}) {
+  reviewCurrentCopy = reviewListCopy(payload);
   const currentBucket = reviewBucketFilter.value || initialReviewState.bucket;
   reviewPayload = payload;
   reviewTitle.textContent = payload.title || "Ops Review";
@@ -173,7 +244,7 @@ function renderReview(payload, { cachedAt } = {}) {
   reviewRefreshMs = (payload.refresh_interval_seconds || 15) * 1000;
   reviewRefresh.textContent = `${Math.round(reviewRefreshMs / 1000)}s`;
   reviewSummary.innerHTML = (payload.summary_cards || []).map(metricTemplate).join("");
-  reviewBucketFilter.innerHTML = bucketOptionsTemplate(payload.buckets || []);
+  reviewBucketFilter.innerHTML = bucketOptionsTemplate(payload.buckets || [], reviewCurrentCopy);
   if (currentBucket && Array.from(reviewBucketFilter.options).some((option) => option.value === currentBucket)) {
     reviewBucketFilter.value = currentBucket;
   }
@@ -186,8 +257,12 @@ const reviewPage = createPageBootstrap({
   render: renderReview,
   getIntervalMs: () => reviewRefreshMs,
   onError: (error) => {
-    reviewList.innerHTML = renderEmptyState("加载人工审核队列失败。", error.message || String(error), "review-empty-error");
-    reviewListMeta.textContent = "API 不可用";
+    reviewList.innerHTML = renderEmptyState(
+      reviewCurrentCopy.status.load_failed_title,
+      error.message || String(error),
+      "review-empty-error"
+    );
+    reviewListMeta.textContent = reviewCurrentCopy.status.api_unavailable;
   },
 });
 

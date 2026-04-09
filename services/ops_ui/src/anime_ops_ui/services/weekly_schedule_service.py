@@ -6,13 +6,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from anime_ops_ui.copy import payload_copy
 from anime_postprocessor.parser import normalize_title
 from anime_postprocessor.title_map import load_title_map
 
 from .autobangumi_client import AutoBangumiClient
 
-
-DAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"]
 _SEASON_FOLDER_PATTERN = re.compile(r"^season\s*\d+$", re.IGNORECASE)
 _EPISODE_CODE_PATTERN = re.compile(r"\bs\d{1,2}e\d{1,3}\b", re.IGNORECASE)
 _IGNORED_PATH_TOKENS = {"library", "seasonal"}
@@ -244,7 +243,9 @@ def build_weekly_schedule_payload(
     now: datetime,
     state_root: Path,
     visible_limit: int = 4,
+    locale: str | None = None,
 ) -> dict[str, Any]:
+    copy = payload_copy("weekly_schedule", locale)
     state_root.mkdir(parents=True, exist_ok=True)
     week_key = _week_key(now)
     try:
@@ -266,7 +267,7 @@ def build_weekly_schedule_payload(
         if bangumi_id is None:
             continue
 
-        title = item.get("official_title") or item.get("title_raw") or item.get("title") or "Unknown"
+        title = item.get("official_title") or item.get("title_raw") or item.get("title") or copy["title_fallback"]
 
         card = {
             "id": bangumi_id,
@@ -288,7 +289,7 @@ def build_weekly_schedule_payload(
         days.append(
             {
                 "weekday": weekday,
-                "label": DAY_LABELS[weekday],
+                "label": copy["day_labels"][weekday],
                 "is_today": weekday == today_weekday,
                 "items": items[:safe_limit] if safe_limit else [],
                 "hidden_items": items[safe_limit:] if safe_limit else items[:],
@@ -301,8 +302,8 @@ def build_weekly_schedule_payload(
         "today_weekday": today_weekday,
         "days": days,
         "unknown": {
-            "label": "未知",
-            "hint": "拖拽以设置放送日",
+            "label": copy["unknown_label"],
+            "hint": copy["unknown_hint"],
             "items": unknown_items,
             "hidden_items": [],
             "has_hidden_items": False,
@@ -322,6 +323,7 @@ def build_phase4_schedule_snapshot(
     now: datetime,
     events: list[dict[str, Any]],
     visible_limit: int = 4,
+    locale: str | None = None,
 ) -> dict[str, Any]:
     client = AutoBangumiClient(
         base_url=autobangumi_base_url,
@@ -349,13 +351,8 @@ def build_phase4_schedule_snapshot(
         now=now,
         state_root=state_root,
         visible_limit=visible_limit,
-    )
-
-    today_items = next(
-        (day["items"] + day["hidden_items"] for day in schedule["days"] if day["weekday"] == schedule["today_weekday"]),
-        [],
+        locale=locale,
     )
     return {
-        "today_focus": {"items": today_items[:6]},
         "weekly_schedule": schedule,
     }

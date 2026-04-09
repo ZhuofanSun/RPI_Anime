@@ -21,8 +21,8 @@ from anime_ops_ui.services.review_service import build_manual_review_item_payloa
 from anime_ops_ui.services.tailscale_service import build_tailscale_payload
 
 
-def _empty_weekly_days(*, today_weekday: int) -> list[dict]:
-    labels = ["一", "二", "三", "四", "五", "六", "日"]
+def _empty_weekly_days(*, today_weekday: int, locale: str = "zh-Hans") -> list[dict]:
+    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] if locale == "en" else ["一", "二", "三", "四", "五", "六", "日"]
     return [
         {
             "weekday": index,
@@ -188,7 +188,9 @@ def test_manual_review_item_payload_matches_page_contract(monkeypatch, tmp_path)
         lambda item, auto_parse: {"title": "My Series", "season": 1, "episode": 1},
     )
 
-    payload = build_manual_review_item_payload("unparsed__My Series__Season 1__My Series S01E01.mkv")
+    payload = build_manual_review_item_payload("unparsed__My Series__Season 1__My Series S01E01.mkv", locale="en")
+    assert payload["item"]["bucket_label"] == "Unparsed"
+    assert payload["copy"]["actions"]["retry_parse"]["title"] == "Retry Parse"
     _assert_payload_matches_page_contract(
         payload=payload,
         script_name="ops-review-item.js",
@@ -204,8 +206,36 @@ def test_manual_review_payload_matches_page_contract(monkeypatch, tmp_path):
 
     monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
 
-    payload = build_manual_review_payload()
+    payload = build_manual_review_payload(locale="en")
+    assert payload["items"][0]["bucket_label"] == "Review"
+    assert payload["copy"]["filter_all"] == "All Buckets"
     _assert_payload_matches_page_contract(payload=payload, script_name="ops-review.js")
+
+
+def test_review_scripts_consume_localized_payload_copy():
+    list_script = _script_text("ops-review.js")
+    detail_script = _script_text("ops-review-item.js")
+
+    assert "payload.copy?.filter_all" in list_script
+    assert "payload.copy?.labels?.season" in list_script
+    assert "payload.copy?.actions?.view_detail" in list_script
+    assert "payload.copy?.empty?.filtered_title" in list_script
+    assert "payload.copy?.status?.load_failed_title" in list_script
+    assert "item.bucket_label" in list_script
+    assert "全部分组" not in list_script
+    assert "查看详情" not in list_script
+    assert "当前筛选条件下没有匹配文件。" not in list_script
+    assert "加载人工审核队列失败。" not in list_script
+
+    assert "payload.copy?.summary?.size" in detail_script
+    assert "payload.copy?.meta_labels?.reason" in detail_script
+    assert "payload.copy?.actions?.retry_parse?.title" in detail_script
+    assert "payload.copy?.actions?.delete?.confirm_title" in detail_script
+    assert "payload.copy?.status?.missing_id_title" in detail_script
+    assert "item.bucket_label" in detail_script
+    assert "重试解析" not in detail_script
+    assert "删除文件" not in detail_script
+    assert "加载审核项详情失败。" not in detail_script
 
 
 def test_logs_payload_matches_page_contract(monkeypatch):
@@ -217,7 +247,9 @@ def test_logs_payload_matches_page_contract(monkeypatch):
     monkeypatch.setattr(main_module, "event_log_cap", lambda: 100)
     monkeypatch.setattr(main_module, "event_log_path", lambda: Path("/tmp/events.json"))
 
-    payload = build_logs_payload()
+    payload = build_logs_payload(locale="en")
+    assert payload["copy"]["filters"]["all_sources"] == "All Sources"
+    assert payload["copy"]["clear"]["success_title"] == "Logs Cleared"
     _assert_payload_matches_page_contract(
         payload=payload,
         script_name="logs.js",
@@ -249,8 +281,33 @@ def test_postprocessor_payload_matches_page_contract(monkeypatch, tmp_path):
     monkeypatch.setattr(main_module, "read_events", lambda limit=200: [])
     monkeypatch.setattr(main_module, "_count_media_files", lambda root: 0)
 
-    payload = build_postprocessor_payload()
+    payload = build_postprocessor_payload(locale="en")
+    assert payload["copy"]["field_labels"]["best_overall"] == "Best Overall"
+    assert "worker_badge" in payload
     _assert_payload_matches_page_contract(payload=payload, script_name="postprocessor.js")
+
+
+def test_workspace_scripts_consume_localized_payload_copy():
+    logs_script = _script_text("logs.js")
+    postprocessor_script = _script_text("postprocessor.js")
+    tailscale_script = _script_text("tailscale.js")
+
+    assert "payload.copy?.filters?.all_sources" in logs_script
+    assert "payload.copy?.clear?.confirm" in logs_script
+    assert "payload.copy?.status?.unavailable_title" in logs_script
+    assert "当前没有匹配的日志。" not in logs_script
+    assert "日志页不可用" not in logs_script
+
+    assert "payload.copy?.field_labels?.best_overall" in postprocessor_script
+    assert "payload.copy?.meta?.command_label" in postprocessor_script
+    assert "payload.worker_badge" in postprocessor_script
+    assert "还没有 postprocessor 事件。" not in postprocessor_script
+
+    assert "payload.copy?.peer_fields?.ipv6" in tailscale_script
+    assert "payload.copy?.action?.in_progress" in tailscale_script
+    assert "payload.status?.reachable" in tailscale_script
+    assert "当前没有 peer。" not in tailscale_script
+    assert "Open Login Link" not in tailscale_script
 
 
 def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp_path):
@@ -344,10 +401,10 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     monkeypatch.setattr(main_module, "_count_series_dirs", lambda root: 0)
     monkeypatch.setattr(main_module, "_history_file", lambda: tmp_path / "history.json")
     monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
-    weekly_days = _empty_weekly_days(today_weekday=2)
+    weekly_days = _empty_weekly_days(today_weekday=2, locale="en")
     weekly_days[2] = {
         "weekday": 2,
-        "label": "三",
+        "label": "Wed",
         "is_today": True,
         "items": [_schedule_item(item_id=101, title="示例番剧", poster_url=None)],
         "hidden_items": [
@@ -374,14 +431,13 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     def fake_phase4_snapshot(**kwargs):
         captured_phase4_kwargs.update(kwargs)
         return {
-            "today_focus": {"items": [_schedule_item(item_id=101, title="示例番剧", poster_url=None)]},
             "weekly_schedule": {
                 "week_key": "2026-W15",
                 "today_weekday": 2,
                 "days": weekly_days,
                 "unknown": {
-                    "label": "未知",
-                    "hint": "拖拽以设置放送日",
+                    "label": "Unknown",
+                    "hint": "Drag to assign a broadcast day",
                     "items": [
                         _schedule_item(
                             item_id=201,
@@ -411,7 +467,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
         raising=False,
     )
 
-    payload = build_overview_payload()
+    payload = build_overview_payload(locale="en")
     app_contract_paths = _contract_paths("app.js", root_var="data")
 
     assert {
@@ -421,6 +477,28 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
         "hero.status_label",
         "hero.host",
         "summary_strip",
+        "copy.schedule.empty_day",
+        "copy.schedule.empty_week",
+        "copy.schedule.unknown_empty",
+        "copy.schedule.unknown_label_fallback",
+        "copy.schedule.expand_hidden",
+        "copy.schedule.collapse_hidden",
+        "copy.schedule.list_separator",
+        "copy.schedule.title_fallback",
+        "copy.schedule.library_ready",
+        "copy.schedule.review_note_prefix",
+        "copy.schedule.tooltip_labels.title_raw",
+        "copy.schedule.tooltip_labels.group_name",
+        "copy.schedule.tooltip_labels.source",
+        "copy.schedule.tooltip_labels.subtitle",
+        "copy.schedule.tooltip_labels.dpi",
+        "copy.schedule.tooltip_labels.season_label",
+        "copy.refresh_auto_prefix",
+        "copy.trend_empty",
+        "copy.diagnostics.empty",
+        "copy.diagnostics.source_fallback",
+        "copy.diagnostics.message_fallback",
+        "copy.diagnostics.frontend_source",
         "weekly_schedule.today_weekday",
         "weekly_schedule.days",
         "weekly_schedule.unknown",
@@ -437,7 +515,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert "host" not in app_contract_paths
     assert "service_rows" not in app_contract_paths
     assert "stack_control" not in app_contract_paths
-    assert "today_focus.items" not in app_contract_paths
+    assert "today_focus" not in app_contract_paths
 
     _assert_payload_matches_page_contract(
         payload=payload,
@@ -455,6 +533,10 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert isinstance(payload["service_rows"], list) and payload["service_rows"]
     assert isinstance(payload["stack_control"], dict)
     assert captured_phase4_kwargs["autobangumi_base_url"] == "http://autobangumi:7892"
+    assert payload["copy"]["schedule"]["empty_day"] == "No broadcast"
+    assert payload["copy"]["schedule"]["library_ready"] == "Added to library this week and ready to play"
+    assert payload["copy"]["diagnostics"]["frontend_source"] == "frontend"
+    assert "today_focus" not in payload
 
     assert len(payload["weekly_schedule"]["days"]) == 7
     today_day = next(day for day in payload["weekly_schedule"]["days"] if day["weekday"] == 2)
@@ -462,7 +544,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(today_day["items"][0].keys())
     assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(today_day["hidden_items"][0].keys())
 
-    assert payload["weekly_schedule"]["unknown"]["label"] == "未知"
+    assert payload["weekly_schedule"]["unknown"]["label"] == "Unknown"
     assert {"label", "hint", "items", "hidden_items", "has_hidden_items"}.issubset(payload["weekly_schedule"]["unknown"].keys())
     assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(
         payload["weekly_schedule"]["unknown"]["items"][0].keys()
@@ -470,6 +552,37 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(
         payload["weekly_schedule"]["unknown"]["hidden_items"][0].keys()
     )
+
+    zh_payload = build_overview_payload(locale="zh-Hans")
+    assert zh_payload["copy"]["schedule"]["title_fallback"] == "未知"
+
+
+def test_overview_payload_localizes_schedule_title_fallback_for_zh_hans(monkeypatch, tmp_path):
+    data_root = tmp_path / "anime-data"
+    collection_root = tmp_path / "anime-collection"
+    data_root.mkdir()
+    collection_root.mkdir()
+    (data_root / "library" / "seasonal").mkdir(parents=True)
+    (data_root / "downloads" / "Bangumi").mkdir(parents=True)
+    (data_root / "processing" / "manual_review").mkdir(parents=True)
+
+    monkeypatch.setattr(main_module, "_env", lambda name, default: {
+        "ANIME_DATA_ROOT": str(data_root),
+        "ANIME_COLLECTION_ROOT": str(collection_root),
+        "HOMEPAGE_BASE_HOST": "sunzhuofan.local",
+        "TAILSCALE_SOCKET": "/var/run/tailscale/tailscaled.sock",
+        "AUTOBANGUMI_API_URL": "",
+    }.get(name, default))
+    monkeypatch.setattr(main_module, "_sample_history_once", lambda: None)
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    monkeypatch.setattr(main_module, "_safe_get_json", lambda url, *, timeout=5: (None, "offline"))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda socket_path: (None, "offline"))
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (None, "offline"))
+
+    payload = build_overview_payload(locale="zh-Hans")
+
+    assert payload["copy"]["schedule"]["title_fallback"] == "未知"
+    assert payload["copy"]["schedule"]["unknown_label_fallback"] == "未知"
 
 
 def test_overview_app_script_schedule_contract_reads_nested_fields_and_caps_unknown_bucket():
@@ -494,12 +607,32 @@ def test_overview_app_script_schedule_contract_reads_nested_fields_and_caps_unkn
     assert "unknown?.items" in script
     assert "unknown?.hidden_items" in script
     assert "unknown?.has_hidden_items" in script
+    assert "data.copy?.schedule?.tooltip_labels?.title_raw" in script
+    assert "data.copy?.schedule?.library_ready" in script
+    assert "data.copy?.schedule?.review_note_prefix" in script
+    assert "data.copy?.schedule?.empty_day" in script
+    assert "data.copy?.schedule?.unknown_empty" in script
+    assert "data.copy?.schedule?.unknown_label_fallback" in script
+    assert "data.copy?.schedule?.expand_hidden" in script
+    assert "data.copy?.schedule?.collapse_hidden" in script
+    assert "data.copy?.schedule?.list_separator" in script
+    assert "data.copy?.trend_empty" in script
+    assert "data.copy?.diagnostics?.empty" in script
+    assert "data.copy?.diagnostics?.frontend_source" in script
 
     assert "UNKNOWN_VISIBLE_LIMIT" in script
     assert ".slice(0, UNKNOWN_VISIBLE_LIMIT)" in script
     assert ".slice(UNKNOWN_VISIBLE_LIMIT)" in script
     assert "item?.badges" not in script
     assert "ID ${item.id}" not in script
+    assert "本周已入库，可播放" not in script
+    assert "审校提示" not in script
+    assert "原题" not in script
+    assert "字幕组" not in script
+    assert "无放送" not in script
+    assert "未知分组暂无条目。" not in script
+    assert "，" not in script
+    assert 'unknown?.label || "未知"' not in script
 
 
 def test_overview_schedule_styles_keep_unknown_row_compact_and_library_highlight_strong():
@@ -540,14 +673,13 @@ def test_overview_payload_logs_count_uses_uncapped_events_while_phase4_uses_limi
     def fake_phase4(**kwargs):
         phase4_events_count["value"] = len(kwargs["events"])
         return {
-            "today_focus": {"items": []},
             "weekly_schedule": {
                 "week_key": "2026-W15",
                 "today_weekday": 2,
-                "days": _empty_weekly_days(today_weekday=2),
+                "days": _empty_weekly_days(today_weekday=2, locale="en"),
                 "unknown": {
-                    "label": "未知",
-                    "hint": "拖拽以设置放送日",
+                    "label": "Unknown",
+                    "hint": "Drag to assign a broadcast day",
                     "items": [],
                     "hidden_items": [],
                     "has_hidden_items": False,
@@ -557,7 +689,7 @@ def test_overview_payload_logs_count_uses_uncapped_events_while_phase4_uses_limi
 
     monkeypatch.setattr(overview_service, "build_phase4_schedule_snapshot", fake_phase4)
 
-    payload = build_overview_payload()
+    payload = build_overview_payload(locale="en")
 
     logs_service = next(item for item in payload["services"] if item["id"] == "logs")
     assert phase4_events_count["value"] == 300

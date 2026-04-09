@@ -4,8 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from anime_ops_ui.copy import payload_copy, review_auto_parse_reason, review_bucket_label, review_bucket_reason
 
-def _review_item_from_path(path: Path, review_root: Path) -> dict[str, Any]:
+
+def _review_item_from_path(path: Path, review_root: Path, *, locale: str | None = None) -> dict[str, Any]:
     from anime_ops_ui import main as main_module
 
     relative = path.relative_to(review_root)
@@ -22,7 +24,8 @@ def _review_item_from_path(path: Path, review_root: Path) -> dict[str, Any]:
     return {
         "id": str(relative).replace("/", "__"),
         "bucket": bucket,
-        "reason": main_module._review_bucket_reason(bucket),
+        "bucket_label": review_bucket_label(bucket, locale),
+        "reason": review_bucket_reason(bucket, locale),
         "relative_path": str(relative),
         "filename": path.name,
         "stem": path.stem,
@@ -37,35 +40,37 @@ def _review_item_from_path(path: Path, review_root: Path) -> dict[str, Any]:
     }
 
 
-def _manual_review_items(review_root: Path) -> list[dict[str, Any]]:
+def _manual_review_items(review_root: Path, *, locale: str | None = None) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     if not review_root.exists():
         return items
     for path in sorted(review_root.rglob("*")):
         if path.is_file() and path.suffix.lower() in {".mkv", ".mp4", ".avi", ".m4v", ".ts"}:
-            items.append(_review_item_from_path(path, review_root))
+            items.append(_review_item_from_path(path, review_root, locale=locale))
     items.sort(key=lambda item: item["modified_at"], reverse=True)
     return items
 
 
-def _review_siblings(item_path: Path, review_root: Path) -> list[dict[str, Any]]:
+def _review_siblings(item_path: Path, review_root: Path, *, locale: str | None = None) -> list[dict[str, Any]]:
     from anime_ops_ui import main as main_module
 
     siblings = []
     for path in sorted(item_path.parent.iterdir()):
         if not path.is_file() or path.suffix.lower() not in main_module.MEDIA_EXTENSIONS:
             continue
-        sibling = _review_item_from_path(path, review_root)
+        sibling = _review_item_from_path(path, review_root, locale=locale)
         sibling["is_current"] = path == item_path
         siblings.append(sibling)
     return siblings
 
 
-def build_manual_review_payload() -> dict[str, Any]:
+def build_manual_review_payload(*, locale: str | None = None) -> dict[str, Any]:
     from anime_ops_ui import main as main_module
 
+    copy = payload_copy("review", locale)
+    summary_copy = copy["summary_cards"]
     review_root = main_module._manual_review_root()
-    items = _manual_review_items(review_root)
+    items = _manual_review_items(review_root, locale=locale)
     bucket_stats: dict[str, dict[str, Any]] = {}
     total_bytes = 0
     series_names: set[str] = set()
@@ -83,7 +88,7 @@ def build_manual_review_payload() -> dict[str, Any]:
     buckets = [
         {
             "bucket": bucket,
-            "label": bucket.replace("_", " ").title(),
+            "label": review_bucket_label(bucket, locale),
             "count": stats["count"],
             "size_bytes": stats["size_bytes"],
             "size_label": main_module._format_bytes(stats["size_bytes"]),
@@ -93,30 +98,31 @@ def build_manual_review_payload() -> dict[str, Any]:
 
     summary_cards = [
         {
-            "label": "Review Files",
+            "label": summary_copy["files"]["label"],
             "value": str(len(items)),
-            "detail": "待处理媒体文件",
+            "detail": summary_copy["files"]["detail"],
         },
         {
-            "label": "Total Size",
+            "label": summary_copy["size"]["label"],
             "value": main_module._format_bytes(total_bytes),
             "detail": str(review_root),
         },
         {
-            "label": "Series",
+            "label": summary_copy["series"]["label"],
             "value": str(len(series_names)),
-            "detail": "不同作品目录",
+            "detail": summary_copy["series"]["detail"],
         },
         {
-            "label": "Buckets",
+            "label": summary_copy["buckets"]["label"],
             "value": str(len(buckets)),
-            "detail": ", ".join(bucket["label"] for bucket in buckets[:3]) if buckets else "当前没有分组",
+            "detail": ", ".join(bucket["label"] for bucket in buckets[:3]) if buckets else summary_copy["buckets"]["empty"],
         },
     ]
 
     return {
-        "title": "Ops Review",
-        "subtitle": "人工审核队列与未自动入库文件清单",
+        "title": copy["title"],
+        "subtitle": copy["subtitle"],
+        "copy": copy["list"],
         "refresh_interval_seconds": 15,
         "root": str(review_root),
         "summary_cards": summary_cards,
@@ -129,20 +135,31 @@ def build_manual_review_payload() -> dict[str, Any]:
     }
 
 
-def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
+def build_manual_review_item_payload(item_id: str, *, locale: str | None = None) -> dict[str, Any]:
     from anime_ops_ui import main as main_module
 
+    copy = payload_copy("review", locale)
     review_root = main_module._manual_review_root()
-    items = _manual_review_items(review_root)
+    items = _manual_review_items(review_root, locale=locale)
     item = next((entry for entry in items if entry["id"] == item_id), None)
     if item is None:
         raise KeyError(item_id)
     item_path = review_root / item["relative_path"]
     auto_parse = main_module._build_auto_parse_payload(item_path, review_root)
+    auto_parse_reason = review_auto_parse_reason(
+        auto_parse.get("reason") if isinstance(auto_parse, dict) else None,
+        locale,
+    )
+    if isinstance(auto_parse, dict):
+        auto_parse = {
+            **auto_parse,
+            "reason": auto_parse_reason,
+        }
     manual_publish_defaults = main_module._manual_publish_defaults(item, auto_parse)
     return {
-        "title": "Review Detail",
+        "title": copy["detail_title"],
         "subtitle": item["filename"],
+        "copy": copy["detail"],
         "refresh_interval_seconds": 15,
         "item": item,
         "root": str(review_root),
@@ -150,19 +167,19 @@ def build_manual_review_item_payload(item_id: str) -> dict[str, Any]:
         "content_type": "media",
         "auto_parse": auto_parse,
         "manual_publish_defaults": manual_publish_defaults,
-        "siblings": _review_siblings(item_path, review_root),
+        "siblings": _review_siblings(item_path, review_root, locale=locale),
         "breadcrumbs": [
-            {"label": "Dashboard", "href": "/"},
-            {"label": "Ops Review", "href": "/ops-review"},
+            {"label": copy["breadcrumbs"]["dashboard"], "href": "/"},
+            {"label": copy["breadcrumbs"]["review"], "href": "/ops-review"},
             {"label": item["filename"]},
         ],
         "last_updated": datetime.now().isoformat(timespec="seconds"),
     }
 
 
-def list_manual_review_items() -> dict[str, Any]:
-    return build_manual_review_payload()
+def list_manual_review_items(*, locale: str | None = None) -> dict[str, Any]:
+    return build_manual_review_payload(locale=locale)
 
 
-def get_manual_review_item(item_id: str) -> dict[str, Any]:
-    return build_manual_review_item_payload(item_id)
+def get_manual_review_item(item_id: str, *, locale: str | None = None) -> dict[str, Any]:
+    return build_manual_review_item_payload(item_id, locale=locale)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from anime_ops_ui.copy import payload_copy
+
 
 def build_dashboard_hero(
     *,
@@ -11,14 +13,20 @@ def build_dashboard_hero(
     diagnostics: list[dict[str, Any]],
     tailnet_online: bool,
     host: str | None = None,
+    locale: str | None = None,
 ) -> dict[str, Any]:
+    copy = payload_copy("overview", locale)["hero"]
     blocking_count = len([item for item in diagnostics if item.get("source") != "fan-control"])
     status_tone = "teal" if blocking_count == 0 else "rose"
-    status_label = "Stable" if blocking_count == 0 else f"{blocking_count} 个风险待处理"
+    status_label = copy["status_stable"] if blocking_count == 0 else copy["status_risks"].format(count=blocking_count)
     return {
-        "eyebrow": "Control Surface",
+        "eyebrow": copy["eyebrow"],
         "title": title,
-        "summary": f"{active_downloads} 个下载中 · {review_count} 个待审核 · {'Tailnet 在线' if tailnet_online else 'Tailnet 异常'}",
+        "summary": copy["summary"].format(
+            downloads=active_downloads,
+            reviews=review_count,
+            tailnet=copy["tailnet_online"] if tailnet_online else copy["tailnet_issue"],
+        ),
         "status_tone": status_tone,
         "status_label": status_label,
         "host": host,
@@ -30,21 +38,23 @@ def build_summary_strip(
     active_downloads: int,
     review_count: int,
     diagnostics: list[dict[str, Any]],
+    locale: str | None = None,
 ) -> list[dict[str, Any]]:
+    copy = payload_copy("overview", locale)["summary_strip"]
     return [
         {
-            "question": "今天有什么值得看",
-            "answer": f"{active_downloads} 个下载中",
+            "question": copy["watch_question"],
+            "answer": copy["watch_answer"].format(count=active_downloads),
             "tone": "teal",
         },
         {
-            "question": "下载和入库链路是否正常",
-            "answer": f"{review_count} 个待审核",
+            "question": copy["ingest_question"],
+            "answer": copy["ingest_answer"].format(count=review_count),
             "tone": "amber" if review_count else "teal",
         },
         {
-            "question": "设备和远程访问是否健康",
-            "answer": "有异常" if diagnostics else "运行稳定",
+            "question": copy["health_question"],
+            "answer": copy["health_issue"] if diagnostics else copy["health_ok"],
             "tone": "rose" if diagnostics else "teal",
         },
     ]

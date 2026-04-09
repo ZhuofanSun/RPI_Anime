@@ -63,10 +63,11 @@ def test_weekly_schedule_groups_items_today_unknown_with_library_highlight_and_t
         now=now,
         state_root=tmp_path,
         visible_limit=1,
+        locale="en",
     )
 
     assert payload["today_weekday"] == now.weekday()
-    assert [item["label"] for item in payload["days"]] == ["一", "二", "三", "四", "五", "六", "日"]
+    assert [item["label"] for item in payload["days"]] == ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     assert len(payload["days"]) == 7
 
     today = payload["days"][now.weekday()]
@@ -86,14 +87,40 @@ def test_weekly_schedule_groups_items_today_unknown_with_library_highlight_and_t
     assert today["hidden_items"][0]["title"] == "相反的你和我"
     assert today["hidden_items"][0]["is_library_ready"] is False
 
-    assert payload["unknown"]["label"] == "未知"
-    assert payload["unknown"]["hint"] == "拖拽以设置放送日"
+    assert payload["unknown"]["label"] == "Unknown"
+    assert payload["unknown"]["hint"] == "Drag to assign a broadcast day"
     assert payload["unknown"]["items"][0]["title"] == "关于我转生变成史莱姆这档事"
     assert payload["unknown"]["items"][0]["is_library_ready"] is False
     assert payload["unknown"]["items"][0]["detail"]["review_reason"] == "季度偏移待确认"
 
     state = json.loads((tmp_path / "weekly_schedule_state.json").read_text(encoding="utf-8"))
     assert state["week_key"] == payload["week_key"]
+
+
+def test_weekly_schedule_localizes_missing_title_fallback(tmp_path):
+    now = datetime(2026, 4, 8, 9, 0, tzinfo=ZoneInfo("America/Toronto"))
+
+    zh_payload = build_weekly_schedule_payload(
+        bangumi_items=[{"id": 41, "air_weekday": now.weekday(), "poster_link": None}],
+        base_host="sunzhuofan.local",
+        autobangumi_port=7892,
+        library_ids=set(),
+        now=now,
+        state_root=tmp_path / "zh",
+        locale="zh-Hans",
+    )
+    en_payload = build_weekly_schedule_payload(
+        bangumi_items=[{"id": 42, "air_weekday": now.weekday(), "poster_link": None}],
+        base_host="sunzhuofan.local",
+        autobangumi_port=7892,
+        library_ids=set(),
+        now=now,
+        state_root=tmp_path / "en",
+        locale="en",
+    )
+
+    assert zh_payload["days"][now.weekday()]["items"][0]["title"] == "未知"
+    assert en_payload["days"][now.weekday()]["items"][0]["title"] == "Unknown"
 
 
 def test_weekly_schedule_rewrites_state_when_iso_week_changes(tmp_path):
@@ -104,6 +131,7 @@ def test_weekly_schedule_rewrites_state_when_iso_week_changes(tmp_path):
         library_ids=set(),
         now=datetime(2026, 4, 8, 9, 0, tzinfo=ZoneInfo("America/Toronto")),
         state_root=tmp_path,
+        locale="en",
     )
     first_state = json.loads((tmp_path / "weekly_schedule_state.json").read_text(encoding="utf-8"))
 
@@ -114,6 +142,7 @@ def test_weekly_schedule_rewrites_state_when_iso_week_changes(tmp_path):
         library_ids=set(),
         now=datetime(2026, 4, 13, 9, 0, tzinfo=ZoneInfo("America/Toronto")),
         state_root=tmp_path,
+        locale="en",
     )
     second_state = json.loads((tmp_path / "weekly_schedule_state.json").read_text(encoding="utf-8"))
 
@@ -210,9 +239,10 @@ aliases = ["尖帽子的魔法工房"]
                 },
             },
         ],
+        locale="en",
     )
 
-    today_item = payload["today_focus"]["items"][0]
+    today_item = payload["weekly_schedule"]["days"][now.weekday()]["items"][0]
     assert today_item["id"] == 9
     assert today_item["is_library_ready"] is True
     assert today_item["detail"]["title_raw"] == "Witch Hat Atelier"
@@ -267,9 +297,10 @@ def test_phase4_snapshot_counts_lib_from_ops_review_publish_event(tmp_path, monk
                 },
             }
         ],
+        locale="en",
     )
 
-    today_item = payload["today_focus"]["items"][0]
+    today_item = payload["weekly_schedule"]["days"][now.weekday()]["items"][0]
     assert today_item["id"] == 22
     assert today_item["is_library_ready"] is True
 
@@ -320,10 +351,11 @@ def test_phase4_snapshot_ignores_malformed_needs_review_ids(tmp_path, monkeypatc
         state_root=tmp_path / "ops-ui-state",
         now=now,
         events=[],
+        locale="en",
     )
 
-    assert payload["today_focus"]["items"][0]["id"] == 101
-    assert payload["today_focus"]["items"][0]["is_library_ready"] is False
+    assert payload["weekly_schedule"]["days"][now.weekday()]["items"][0]["id"] == 101
+    assert payload["weekly_schedule"]["days"][now.weekday()]["items"][0]["is_library_ready"] is False
 
 
 def test_phase4_snapshot_skips_ambiguous_lib_target_matches(tmp_path, monkeypatch):
@@ -377,11 +409,12 @@ def test_phase4_snapshot_skips_ambiguous_lib_target_matches(tmp_path, monkeypatc
                 },
             }
         ],
+        locale="en",
     )
 
     library_state = {
         item["id"]: item["is_library_ready"]
-        for item in payload["today_focus"]["items"]
+        for item in payload["weekly_schedule"]["days"][now.weekday()]["items"]
     }
     assert library_state[201] is False
     assert library_state[202] is False
@@ -410,6 +443,7 @@ def test_weekly_schedule_state_write_failure_is_best_effort(tmp_path, monkeypatc
         library_ids=set(),
         now=now,
         state_root=tmp_path,
+        locale="en",
     )
 
     assert payload["today_weekday"] == now.weekday()
