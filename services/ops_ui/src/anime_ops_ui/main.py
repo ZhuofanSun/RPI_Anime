@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import requests
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
@@ -110,6 +111,37 @@ def _env_int(name: str, default: int) -> int:
 
 def _service_link(host: str, port: int) -> str:
     return f"http://{host}:{port}"
+
+
+def _host_without_port(value: str | None) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    candidate = raw.split(",", 1)[0].strip()
+    if not candidate:
+        return None
+    parsed = urlsplit(f"//{candidate}")
+    return parsed.hostname or None
+
+
+def _public_host(request: Request | None = None) -> str:
+    fallback = _env("HOMEPAGE_BASE_HOST", socket.gethostname())
+    if request is None:
+        return fallback
+
+    forwarded_host = _host_without_port(request.headers.get("x-forwarded-host"))
+    if forwarded_host:
+        return forwarded_host
+
+    host_header = _host_without_port(request.headers.get("host"))
+    if host_header:
+        return host_header
+
+    request_host = getattr(request.url, "hostname", None)
+    if request_host:
+        return request_host
+
+    return fallback
 
 
 def _safe_get_json(url: str, *, timeout: int = 5) -> tuple[dict[str, Any] | list[Any] | None, str | None]:
@@ -1542,7 +1574,12 @@ def healthz() -> dict[str, bool]:
 
 @router.get("/api/overview")
 def overview(request: Request) -> JSONResponse:
-    return JSONResponse(build_overview_payload_service(locale=resolve_locale(request)))
+    return JSONResponse(
+        build_overview_payload_service(
+            locale=resolve_locale(request),
+            public_host=_public_host(request),
+        )
+    )
 
 
 @router.get("/api/navigation")

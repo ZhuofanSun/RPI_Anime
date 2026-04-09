@@ -23,7 +23,7 @@ def build_service_summary(*, containers: dict[str, dict[str, Any]], tailscale_ru
     }
 
 
-def build_overview_payload(*, locale: str | None = None) -> dict[str, Any]:
+def build_overview_payload(*, locale: str | None = None, public_host: str | None = None) -> dict[str, Any]:
     from anime_ops_ui import main as main_module
 
     overview_copy = payload_copy("overview", locale)
@@ -38,7 +38,7 @@ def build_overview_payload(*, locale: str | None = None) -> dict[str, Any]:
 
     anime_data_root = main_module.Path(main_module._env("ANIME_DATA_ROOT", "/srv/anime-data"))
     anime_collection_root = main_module.Path(main_module._env("ANIME_COLLECTION_ROOT", "/srv/anime-collection"))
-    base_host = main_module._env("HOMEPAGE_BASE_HOST", main_module.socket.gethostname())
+    base_host = str(public_host or main_module._env("HOMEPAGE_BASE_HOST", main_module.socket.gethostname())).strip()
     autobangumi_port = int(main_module._env("AUTOBANGUMI_PORT", "7892"))
     jellyfin_port = int(main_module._env("JELLYFIN_PORT", "8096"))
     autobangumi_base_url = main_module._env("AUTOBANGUMI_API_URL", "").strip() or f"http://autobangumi:{autobangumi_port}"
@@ -522,5 +522,5 @@ def build_overview_payload(*, locale: str | None = None) -> dict[str, Any]:
     }
 
 
-def build_overview(*, locale: str | None = None) -> dict[str, Any]:
-    return build_overview_payload(locale=locale)
+def build_overview(*, locale: str | None = None, public_host: str | None = None) -> dict[str, Any]:
+    return build_overview_payload(locale=locale, public_host=public_host)
