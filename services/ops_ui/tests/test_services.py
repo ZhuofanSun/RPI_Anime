@@ -6,6 +6,8 @@ import pytest
 
 from anime_ops_ui import main as main_module
 from anime_ops_ui.services import postprocessor_service as postprocessor_service_module
+from anime_ops_ui.services import overview_service as overview_service_module
+from anime_ops_ui.services.dashboard_sections import build_summary_strip
 from anime_ops_ui.services.log_service import build_logs_payload
 from anime_ops_ui.services.overview_service import build_overview_payload, build_service_summary
 from anime_ops_ui.services.postprocessor_service import build_postprocessor_payload
@@ -25,6 +27,53 @@ def test_build_service_summary_counts_tailscaled():
 
     assert summary["value"] == "2 online"
     assert summary["detail"] == "3 total · Docker + tailscaled"
+
+
+def test_build_summary_strip_counts_library_ready_schedule_items_across_visible_hidden_and_unknown():
+    summary_strip = build_summary_strip(
+        active_downloads=7,
+        review_count=2,
+        diagnostics=[],
+        weekly_schedule={
+            "days": [
+                {
+                    "items": [{"is_library_ready": True}, {"is_library_ready": False}],
+                    "hidden_items": [{"is_library_ready": True}],
+                },
+                {
+                    "items": [],
+                    "hidden_items": [{"is_library_ready": True}, {"is_library_ready": True}],
+                },
+                {
+                    "items": [{"is_library_ready": False}],
+                    "hidden_items": [],
+                },
+                {
+                    "items": [],
+                    "hidden_items": [],
+                },
+                {
+                    "items": [{"is_library_ready": True}],
+                    "hidden_items": [{"is_library_ready": False}],
+                },
+                {
+                    "items": [],
+                    "hidden_items": [],
+                },
+                {
+                    "items": [{"is_library_ready": True}],
+                    "hidden_items": [{"is_library_ready": True}],
+                },
+            ],
+            "unknown": {
+                "items": [{"is_library_ready": True}, {"is_library_ready": False}],
+                "hidden_items": [{"is_library_ready": True}],
+            },
+        },
+        locale="en",
+    )
+
+    assert summary_strip[0]["answer"] == "9 active download"
 
 
 def test_build_logs_payload_filters_by_source_level_and_search(monkeypatch):
@@ -326,6 +375,81 @@ def test_build_overview_payload_reports_service_summary(monkeypatch, tmp_path):
     monkeypatch.setattr(main_module, "_count_series_dirs", lambda root: 0)
     monkeypatch.setattr(main_module, "_history_file", lambda: tmp_path / "history.json")
     monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    monkeypatch.setattr(
+        overview_service_module,
+        "build_phase4_schedule_snapshot",
+        lambda **kwargs: {
+            "weekly_schedule": {
+                "week_key": "2026-W15",
+                "today_weekday": 2,
+                "days": [
+                    {
+                        "weekday": 0,
+                        "label": "Mon",
+                        "is_today": False,
+                        "items": [{"is_library_ready": True}],
+                        "hidden_items": [],
+                        "has_hidden_items": False,
+                    },
+                    {
+                        "weekday": 1,
+                        "label": "Tue",
+                        "is_today": False,
+                        "items": [],
+                        "hidden_items": [{"is_library_ready": True}],
+                        "has_hidden_items": True,
+                    },
+                    {
+                        "weekday": 2,
+                        "label": "Wed",
+                        "is_today": True,
+                        "items": [],
+                        "hidden_items": [],
+                        "has_hidden_items": False,
+                    },
+                    {
+                        "weekday": 3,
+                        "label": "Thu",
+                        "is_today": False,
+                        "items": [],
+                        "hidden_items": [],
+                        "has_hidden_items": False,
+                    },
+                    {
+                        "weekday": 4,
+                        "label": "Fri",
+                        "is_today": False,
+                        "items": [],
+                        "hidden_items": [],
+                        "has_hidden_items": False,
+                    },
+                    {
+                        "weekday": 5,
+                        "label": "Sat",
+                        "is_today": False,
+                        "items": [],
+                        "hidden_items": [],
+                        "has_hidden_items": False,
+                    },
+                    {
+                        "weekday": 6,
+                        "label": "Sun",
+                        "is_today": False,
+                        "items": [],
+                        "hidden_items": [],
+                        "has_hidden_items": False,
+                    },
+                ],
+                "unknown": {
+                    "label": "Unknown",
+                    "hint": "Drag to assign a broadcast day",
+                    "items": [{"is_library_ready": True}],
+                    "hidden_items": [],
+                    "has_hidden_items": False,
+                },
+            },
+        },
+    )
 
     payload = build_overview_payload(locale="en")
 
@@ -369,7 +493,7 @@ def test_build_overview_payload_reports_service_summary(monkeypatch, tmp_path):
     assert payload["hero"]["host"] == "sunzhuofan.local"
     assert payload["summary_strip"][0] == {
         "question": "What is worth watching today?",
-        "answer": "1 active download",
+        "answer": "3 active download",
         "tone": "teal",
     }
     assert payload["summary_strip"][1]["question"] == "Is download and library ingest healthy?"

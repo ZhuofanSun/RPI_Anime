@@ -470,6 +470,7 @@ def build_overview_payload(*, locale: str | None = None) -> dict[str, Any]:
         active_downloads=active_downloads,
         review_count=review_count,
         diagnostics=diagnostics,
+        weekly_schedule=phase4["weekly_schedule"],
         locale=locale,
     )
     service_rows = build_service_rows(services=services)

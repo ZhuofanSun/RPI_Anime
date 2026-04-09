@@ -215,6 +215,12 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
     monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (None, None))
     monkeypatch.setattr(main_module, "_fan_state_snapshot", lambda: (None, None))
     monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+
+    days = _empty_weekly_days(today_weekday=2, locale="en")
+    days[0]["items"] = [{"is_library_ready": True}, {"is_library_ready": False}]
+    days[1]["hidden_items"] = [{"is_library_ready": True}]
+    days[1]["has_hidden_items"] = True
+
     monkeypatch.setattr(
         overview_service,
         "build_phase4_schedule_snapshot",
@@ -222,15 +228,15 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
             "weekly_schedule": {
                 "week_key": "2026-W15",
                 "today_weekday": 2,
-                "days": _empty_weekly_days(today_weekday=2, locale="en"),
+                "days": days,
                 "unknown": {
                     "label": "Unknown",
                     "hint": "Drag to assign a broadcast day",
-                    "items": [],
+                    "items": [{"is_library_ready": True}, {"is_library_ready": True}],
                     "hidden_items": [],
                     "has_hidden_items": False,
                 },
-            },
+            }
         },
         raising=False,
     )
@@ -255,6 +261,7 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
     assert payload["hero"]["eyebrow"] == "Control surface"
     assert isinstance(payload["summary_strip"], list)
     assert payload["summary_strip"][0]["question"] == "What is worth watching today?"
+    assert payload["summary_strip"][0]["answer"] == "4 active download"
     assert payload["summary_strip"][1]["question"] == "Is download and library ingest healthy?"
     assert payload["summary_strip"][2]["question"] == "Are device health and remote access stable?"
     assert set(payload["summary_strip"][0].keys()) == {"question", "answer", "tone"}

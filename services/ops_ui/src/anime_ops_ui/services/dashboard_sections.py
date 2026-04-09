@@ -5,6 +5,27 @@ from typing import Any
 from anime_ops_ui.copy import payload_copy
 
 
+def _count_library_ready_items(weekly_schedule: dict[str, Any] | None) -> int:
+    if not isinstance(weekly_schedule, dict):
+        return 0
+
+    total = 0
+    for day in weekly_schedule.get("days", []):
+        if not isinstance(day, dict):
+            continue
+        for item in list(day.get("items", [])) + list(day.get("hidden_items", [])):
+            if isinstance(item, dict) and item.get("is_library_ready"):
+                total += 1
+
+    unknown = weekly_schedule.get("unknown", {})
+    if isinstance(unknown, dict):
+        for item in list(unknown.get("items", [])) + list(unknown.get("hidden_items", [])):
+            if isinstance(item, dict) and item.get("is_library_ready"):
+                total += 1
+
+    return total
+
+
 def build_dashboard_hero(
     *,
     title: str,
@@ -38,13 +59,15 @@ def build_summary_strip(
     active_downloads: int,
     review_count: int,
     diagnostics: list[dict[str, Any]],
+    weekly_schedule: dict[str, Any] | None = None,
     locale: str | None = None,
 ) -> list[dict[str, Any]]:
     copy = payload_copy("overview", locale)["summary_strip"]
+    watch_count = active_downloads if weekly_schedule is None else _count_library_ready_items(weekly_schedule)
     return [
         {
             "question": copy["watch_question"],
-            "answer": copy["watch_answer"].format(count=active_downloads),
+            "answer": copy["watch_answer"].format(count=watch_count),
             "tone": "teal",
         },
         {
