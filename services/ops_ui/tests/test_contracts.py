@@ -836,6 +836,14 @@ def test_workspace_templates_reuse_shared_preferences_include():
         assert "theme-toggle-icon" not in template
 
 
+def test_shared_preferences_styles_support_segmented_controls_and_reduced_motion():
+    css = _style_text("base.css") + _style_text("components.css") + _style_text("layout.css")
+
+    assert "@media (prefers-reduced-motion: reduce)" in css
+    assert ".segmented-control" in css
+    assert ".segmented-button.is-active" in css
+
+
 def test_language_script_writes_cookie_and_reloads():
     if shutil.which("node") is None:
         pytest.skip("node is required for language.js runtime contract coverage")
