@@ -49,7 +49,7 @@ services:
         max-file: "3"
 
   glances:
-    image: nicolargo/glances:latest-full
+    image: nicolargo/glances@sha256:b4b0f059fa8064a0e8dae5530ce9334834ab07205269cfbf405d16b4d40c0c66
     container_name: glances
     pid: host
     ports:
@@ -67,7 +67,7 @@ services:
         max-file: "3"
 
   jellyfin:
-    image: ghcr.io/jellyfin/jellyfin:latest
+    image: ghcr.io/jellyfin/jellyfin@sha256:2b93aa3830dcd0aab7185c635e20edef1f8dc5d2e999768baf1724e88c078004
     container_name: jellyfin
     user: "${PUID}:${PGID}"
     ports:
@@ -89,7 +89,7 @@ services:
         max-file: "3"
 
   qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
+    image: lscr.io/linuxserver/qbittorrent@sha256:474ef1f1c63fc060236e85cd6ec4a3232aea5a0d7a033c6bab9911039933f147
     container_name: qbittorrent
     ports:
       - "${QBITTORRENT_WEBUI_PORT}:8080/tcp"
@@ -113,7 +113,7 @@ services:
         max-file: "3"
 
   autobangumi:
-    image: ghcr.io/estrellaxd/auto_bangumi:latest
+    image: ghcr.io/estrellaxd/auto_bangumi@sha256:fbe2b52ea3aa64384f9741739e910043364f6e0aa44c214ab107db25612d1754
     container_name: autobangumi
     ports:
       - "${AUTOBANGUMI_PORT}:7892/tcp"

@@ -22,9 +22,13 @@ ssh "${PI_HOST}" "sudo mkdir -p '${PI_REMOTE_ROOT}' && sudo chown -R '${PI_REMOT
 rsync -az --delete \
   --exclude '.git/' \
   --exclude '.venv/' \
+  --exclude '.superpowers/' \
   --exclude '__pycache__/' \
   --exclude '*.pyc' \
   --exclude '.DS_Store' \
+  --exclude 'backups/' \
+  --exclude 'docs/superpowers/' \
+  --exclude 'docs/*_new_*.png' \
   --exclude 'deploy/.env' \
   "${PROJECT_ROOT}/" \
   "${PI_HOST}:${PI_REMOTE_ROOT}/"

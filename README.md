@@ -7,10 +7,10 @@ It started as an anime stack, but the workflow is broad enough for other subscri
 
 The repository combines off-the-shelf services with a custom control layer:
 
-- `AutoBangumi` for RSS subscriptions and release tracking
-- `qBittorrent` for download execution
+- [AutoBangumi](https://github.com/EstrellaXD/Auto_Bangumi) for RSS subscriptions and release tracking
+- [qBittorrent](https://github.com/qbittorrent/qBittorrent) for download execution
 - a custom `postprocessor` for version selection, renaming, publishing, and review fallback
-- `Jellyfin` for library browsing and playback
+- [Jellyfin](https://github.com/jellyfin/jellyfin) for library browsing and playback
 - a custom `ops-ui` for dashboard, review queue, logs, service controls, and weekly broadcast tracking
 
 ## What It Does
@@ -20,15 +20,15 @@ The repository combines off-the-shelf services with a custom control layer:
 - Publishes clean files into the library and generates `.nfo` metadata
 - Sends uncertain cases into a manual review area instead of polluting the media library
 - Exposes the whole workflow through a lightweight operations dashboard
-- Supports local network and tailnet access through `Tailscale`
+- Supports local network and tailnet access through [Tailscale](https://github.com/tailscale/tailscale)
 
 ## Dashboard Snapshot
 
 The current UI focuses on a compact control surface and a weekly broadcast wall.
 
-![Dashboard top section](./docs/dash1_new_en.png)
+![Dashboard top section](./docs/dash1.png)
 
-![Dashboard lower section](./docs/dash2_new_en.png)
+![Dashboard lower section](./docs/dash2.png)
 
 ## Core Workflow
 
@@ -56,11 +56,11 @@ flowchart LR
 | --- | --- | --- |
 | `ops-ui` | Dashboard, review queue, logs, postprocessor and Tailscale pages | Docker |
 | `postprocessor` | File selection, renaming, metadata generation, publish/review split | Docker |
-| `Jellyfin` | Media library and playback | Docker |
-| `qBittorrent` | Download execution and queue management | Docker |
-| `AutoBangumi` | RSS subscriptions and bangumi tracking | Docker |
+| [Jellyfin](https://github.com/jellyfin/jellyfin) | Media library and playback | Docker |
+| [qBittorrent](https://github.com/qbittorrent/qBittorrent) | Download execution and queue management | Docker |
+| [AutoBangumi](https://github.com/EstrellaXD/Auto_Bangumi) | RSS subscriptions and bangumi tracking | Docker |
 | `Glances` | Host metrics for the dashboard | Docker |
-| `Tailscale` | Remote access without public exposure | Host |
+| [Tailscale](https://github.com/tailscale/tailscale) | Remote access without public exposure | Host |
 | `anime-fan-control` | PWM fan control tied to host temperature | Host |
 
 ## Repository Layout

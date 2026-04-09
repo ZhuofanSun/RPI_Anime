@@ -16,6 +16,7 @@ deploy/ACCESS.local.md
 tmp/
 dist/
 build/
+backups/
 .worktrees/
 .superpowers/
 docs/superpowers/

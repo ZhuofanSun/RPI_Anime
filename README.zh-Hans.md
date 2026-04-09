@@ -7,10 +7,10 @@
 
 这个仓库把现成服务和自定义逻辑拼成一套完整系统：
 
-- `AutoBangumi` 负责 RSS 订阅和放送跟踪
-- `qBittorrent` 负责下载执行
+- [AutoBangumi](https://github.com/EstrellaXD/Auto_Bangumi) 负责 RSS 订阅和放送跟踪
+- [qBittorrent](https://github.com/qbittorrent/qBittorrent) 负责下载执行
 - 自定义 `postprocessor` 负责选优、重命名、发布和人工审核分流
-- `Jellyfin` 负责媒体库和播放
+- [Jellyfin](https://github.com/jellyfin/jellyfin) 负责媒体库和播放
 - 自定义 `ops-ui` 负责总览、审核队列、日志、服务控制和周放送表
 
 ## 这个项目在做什么
@@ -20,15 +20,15 @@
 - 把干净文件发布进媒体库，并生成 `.nfo` 元数据
 - 识别不稳或不适合自动入库的内容进入人工审核区
 - 通过一个轻量化运维界面统一查看整条链路
-- 结合 `Tailscale` 提供局域网外访问能力
+- 结合 [Tailscale](https://github.com/tailscale/tailscale) 提供局域网外访问能力
 
 ## 界面概览
 
 当前界面重点是紧凑控制台和首页周放送表。
 
-![首页上半部分](./docs/dash1_new_zh.png)
+![首页上半部分](./docs/dash1.png)
 
-![首页下半部分](./docs/dash2_new_zh.png)
+![首页下半部分](./docs/dash2.png)
 
 ## 核心工作流
 
@@ -56,11 +56,11 @@ flowchart LR
 | --- | --- | --- |
 | `ops-ui` | 总览、审核队列、日志、Postprocessor 和 Tailscale 页面 | Docker |
 | `postprocessor` | 选优、重命名、元数据生成、发布/审核分流 | Docker |
-| `Jellyfin` | 媒体库和播放 | Docker |
-| `qBittorrent` | 下载执行和队列管理 | Docker |
-| `AutoBangumi` | RSS 订阅和番剧跟踪 | Docker |
+| [Jellyfin](https://github.com/jellyfin/jellyfin) | 媒体库和播放 | Docker |
+| [qBittorrent](https://github.com/qbittorrent/qBittorrent) | 下载执行和队列管理 | Docker |
+| [AutoBangumi](https://github.com/EstrellaXD/Auto_Bangumi) | RSS 订阅和番剧跟踪 | Docker |
 | `Glances` | 给 dashboard 提供宿主机指标 | Docker |
-| `Tailscale` | 不暴露公网端口的远程访问 | 宿主机 |
+| [Tailscale](https://github.com/tailscale/tailscale) | 不暴露公网端口的远程访问 | 宿主机 |
 | `anime-fan-control` | 随温度调节的 PWM 风扇控制 | 宿主机 |
 
 ## 仓库结构
