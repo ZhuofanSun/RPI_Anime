@@ -11,7 +11,7 @@ def test_dashboard_uses_shared_shell(client):
     response = client.get("/")
     body = response.text
     assert "app-shell" in body
-    assert "Dashboard" in body
+    assert "总览" in body
     assert "审核队列" in body
     assert "Jellyfin" in body
 
@@ -61,6 +61,24 @@ def test_all_shell_pages_render_shared_preferences_once(client):
         assert "theme-toggle-icon" not in body
         assert "☀" not in body
         assert "☾" not in body
+
+
+def test_workspace_pages_localize_english_server_rendered_copy(client):
+    expectations = {
+        "/": ("Broadcast Wall", "一周放送墙"),
+        "/ops-review": ("Queue Overview", "队列概览"),
+        "/ops-review/item": ("File Details", "文件详情"),
+        "/logs": ("Log Overview", "日志概览"),
+        "/postprocessor": ("Operational Snapshot", "运行概览"),
+        "/tailscale": ("Peer List", "Peer 列表"),
+    }
+
+    for path, (expected, unexpected) in expectations.items():
+        response = client.get(path, headers={"accept-language": "en-US,en;q=0.9"})
+        body = response.text
+        assert response.status_code == 200
+        assert expected in body
+        assert unexpected not in body
 
 
 def test_dashboard_shell_contains_bootstrap_roots(client):

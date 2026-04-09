@@ -8,28 +8,28 @@
   <header class="hero">
     <div class="hero-copy">
       <div class="hero-nav">
-        <a class="ghost-link ghost-link-subtle" href="/">← 返回 Dashboard</a>
+        <a class="ghost-link ghost-link-subtle" href="/">{{ template_copy.nav.back }}</a>
         <div class="hero-links">
-          <a class="hero-link" href="/">Dashboard</a>
+          <a class="hero-link" href="/">{{ template_copy.nav.home }}</a>
           <span class="hero-link-sep">/</span>
-          <span class="hero-link-current">Tailscale</span>
+          <span class="hero-link-current">{{ template_copy.nav.current }}</span>
         </div>
       </div>
-      <div class="eyebrow">Tailscale</div>
-      <h1 id="tailscale-title">Tailscale</h1>
-      <p id="tailscale-subtitle">本地 tailnet 状态、peer 列表和节点可达性诊断。</p>
+      <div class="eyebrow">{{ template_copy.hero.eyebrow }}</div>
+      <h1 id="tailscale-title">{{ template_copy.hero.title }}</h1>
+      <p id="tailscale-subtitle">{{ template_copy.hero.subtitle }}</p>
     </div>
     <div class="hero-meta">
       <div class="meta-pill">
-        <span class="meta-label">Socket</span>
+        <span class="meta-label">{{ template_copy.hero.socket_label }}</span>
         <span class="meta-value meta-value-compact" id="tailscale-socket">-</span>
       </div>
       <div class="meta-pill">
-        <span class="meta-label">Updated</span>
+        <span class="meta-label">{{ template_copy.hero.updated_label }}</span>
         <span class="meta-value" id="tailscale-updated">-</span>
       </div>
       <div class="meta-pill meta-pill-subtle">
-        <span class="meta-label">Auto Refresh</span>
+        <span class="meta-label">{{ template_copy.hero.refresh_label }}</span>
         <span class="meta-value" id="tailscale-refresh">15s</span>
       </div>
       {% include "_preferences_controls.html" %}
@@ -42,8 +42,8 @@
     <section class="panel panel-wide">
       <div class="panel-head panel-head-compact">
         <div class="panel-heading">
-          <h2>Peer 列表</h2>
-          <p>按在线优先排序，显示每台设备的系统、尾网地址、最近写入和 key 到期时间。</p>
+          <h2>{{ template_copy.panels.peers.title }}</h2>
+          <p>{{ template_copy.panels.peers.description }}</p>
         </div>
         <span id="tailscale-peer-meta" class="panel-badge panel-badge-muted">-</span>
       </div>
@@ -72,8 +72,8 @@
     <section class="panel panel-wide">
       <div class="panel-head panel-head-compact">
         <div class="panel-heading">
-          <h2>状态概览</h2>
-          <p>只读取本机 Tailscale LocalAPI，不依赖官方云接口。</p>
+          <h2>{{ template_copy.panels.overview.title }}</h2>
+          <p>{{ template_copy.panels.overview.description }}</p>
         </div>
         <span id="tailscale-backend-badge" class="panel-badge panel-badge-muted">-</span>
       </div>
@@ -91,17 +91,17 @@
     <section class="panel panel-wide">
       <div class="panel-head panel-head-compact">
         <div class="panel-heading">
-          <h2>本机节点</h2>
-          <p>当前这台树莓派在 tailnet 里的身份、地址和有效期。</p>
+          <h2>{{ template_copy.panels.current_node.title }}</h2>
+          <p>{{ template_copy.panels.current_node.description }}</p>
         </div>
         <div class="tailscale-control-strip">
           <span id="tailscale-self-badge" class="panel-badge panel-badge-muted">-</span>
           <button id="tailscale-toggle-button" class="action-button action-button-compact" type="button" disabled>
-            开启 Tailscale
+            {{ template_copy.panels.current_node.action }}
           </button>
         </div>
       </div>
-      <p id="tailscale-self-note" class="panel-note">本机节点摘要会在这里显示。</p>
+      <p id="tailscale-self-note" class="panel-note">{{ template_copy.panels.current_node.note }}</p>
       <div id="tailscale-action-status" class="flash-stack" aria-live="polite"></div>
       <div id="tailscale-self" class="metric-grid tailscale-self-grid">
         {% for _ in range(4) %}

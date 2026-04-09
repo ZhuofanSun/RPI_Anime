@@ -448,6 +448,15 @@ PAYLOAD_COPY = {
                     "message_fallback": "Unavailable",
                     "unavailable_title": "Postprocessor 不可用",
                 },
+                "worker_status": {
+                    "running": "运行中",
+                    "restarting": "重启中",
+                    "paused": "已暂停",
+                    "exited": "已退出",
+                    "created": "已创建",
+                    "dead": "已终止",
+                    "unknown": "未知",
+                },
             },
             "sections": {
                 "ready": {"title": "Ready On Next Tick", "description": "已经满足处理条件，下一轮 watch 会直接接管并发布。", "meta": "{count} groups"},
@@ -879,6 +888,15 @@ PAYLOAD_COPY = {
                     "message_fallback": "Unavailable",
                     "unavailable_title": "Postprocessor unavailable",
                 },
+                "worker_status": {
+                    "running": "Running",
+                    "restarting": "Restarting",
+                    "paused": "Paused",
+                    "exited": "Exited",
+                    "created": "Created",
+                    "dead": "Dead",
+                    "unknown": "Unknown",
+                },
             },
             "sections": {
                 "ready": {"title": "Ready On Next Tick", "description": "These groups already meet processing conditions and will be published on the next watch pass.", "meta": "{count} groups"},
@@ -969,6 +987,456 @@ PAYLOAD_COPY = {
     },
 }
 
+POSTPROCESSOR_WORKER_STATUS = {
+    "zh-Hans": {
+        "running": "运行中",
+        "restarting": "重启中",
+        "paused": "已暂停",
+        "exited": "已退出",
+        "created": "已创建",
+        "dead": "已终止",
+        "unknown": "未知",
+    },
+    "en": {
+        "running": "Running",
+        "restarting": "Restarting",
+        "paused": "Paused",
+        "exited": "Exited",
+        "created": "Created",
+        "dead": "Dead",
+        "unknown": "Unknown",
+    },
+}
+
+PAGE_TEMPLATE_COPY = {
+    "zh-Hans": {
+        "dashboard": {
+            "page_title": "总览",
+            "hero": {
+                "eyebrow": "控制台总览",
+                "summary": "树莓派私人影音库控制台",
+                "health_label": "状态",
+                "host_label": "主机",
+                "updated_label": "更新时间",
+                "refresh_label": "自动刷新",
+            },
+            "panels": {
+                "broadcast_wall": {
+                    "title": "Broadcast Wall",
+                    "description": "一周放送墙，按星期聚合并保留未知分组。",
+                },
+                "pipeline": {
+                    "title": "Pipeline",
+                    "description": "下载与入库链路核心指标。",
+                },
+                "host_network": {
+                    "title": "Host + Network",
+                    "description": "主机与远程访问状态汇总。",
+                },
+                "trends": {
+                    "title": "Trends",
+                    "description": "过去 24 小时折线与近 7 日下载柱状图。",
+                },
+                "diagnostics": {
+                    "title": "Diagnostics",
+                    "description": "仅在存在异常时突出显示，正常时保持安静。",
+                    "loading": "正在连接本地数据源并刷新面板。",
+                },
+            },
+        },
+        "ops_review": {
+            "page_title": "人工审核",
+            "nav": {
+                "back": "← 返回 Dashboard",
+                "home": "Dashboard",
+                "current": "Ops Review",
+            },
+            "hero": {
+                "eyebrow": "Ops Review",
+                "title": "Ops Review",
+                "subtitle": "人工审核队列与未自动入库文件清单",
+                "root_label": "Root",
+                "updated_label": "更新时间",
+                "refresh_label": "自动刷新",
+            },
+            "panels": {
+                "overview": {
+                    "title": "队列概览",
+                    "description": "当前 `manual_review` 的积压规模、体积和分桶分布。",
+                    "badge": "详情动作",
+                    "note": "列表页保持只读，具体的重试解析、手动发布和删除动作放在详情页里执行。",
+                },
+                "filters": {
+                    "title": "筛选",
+                    "description": "先缩小范围，再进入详情页确认上下文和后续动作。",
+                    "bucket_label": "Bucket",
+                    "bucket_default": "All buckets",
+                    "search_label": "Search",
+                    "search_placeholder": "搜索番名、文件名或路径…",
+                },
+                "list": {
+                    "title": "待处理文件",
+                    "description": "按系列、原因和路径查看当前待确认文件。",
+                },
+            },
+        },
+        "ops_review_item": {
+            "page_title": "审核详情",
+            "nav": {"back": "← 返回 Ops Review"},
+            "hero": {
+                "eyebrow": "审核项详情",
+                "title": "审核项详情",
+                "subtitle": "正在加载文件详情",
+                "bucket_label": "Bucket",
+                "updated_label": "更新时间",
+                "refresh_label": "自动刷新",
+            },
+            "panels": {
+                "details": {
+                    "title": "文件详情",
+                    "description": "第二版先把上下文做完整，危险动作后接。",
+                },
+                "paths": {
+                    "title": "路径与原因",
+                    "description": "当前文件的来源位置和留在人工审核区的原因。",
+                },
+                "siblings": {
+                    "title": "同目录文件",
+                    "description": "用于确认这一集是不是还有别的版本或分片。",
+                },
+                "actions": {
+                    "title": "执行动作",
+                    "description": "优先用自动解析；不稳定时再手动确认剧名、季号和集号。",
+                },
+            },
+        },
+        "logs": {
+            "page_title": "日志",
+            "nav": {
+                "back": "← 返回 Dashboard",
+                "home": "Dashboard",
+                "current": "Logs",
+            },
+            "hero": {
+                "eyebrow": "Logs",
+                "title": "Logs",
+                "subtitle": "项目侧结构化事件日志",
+                "storage_label": "Storage",
+                "updated_label": "更新时间",
+                "refresh_label": "自动刷新",
+            },
+            "panels": {
+                "overview": {
+                    "title": "日志概览",
+                    "description": "来源、等级和保留上限都按结构化字段存储，便于后续继续接服务动作。",
+                    "retention_badge": "上限 -",
+                },
+                "filters": {
+                    "title": "筛选与清理",
+                    "description": "按来源、等级和关键字筛选，列表自动每 10 秒刷新一次。",
+                    "clear_button": "清理日志",
+                    "source_label": "Source",
+                    "source_default": "All sources",
+                    "level_label": "Level",
+                    "level_default": "All levels",
+                    "search_label": "Search",
+                    "search_placeholder": "搜索动作、消息或 details…",
+                },
+                "events": {
+                    "title": "事件列表",
+                    "description": "颜色区分重要等级，来源和动作字段帮助定位是哪边触发的日志。",
+                },
+            },
+        },
+        "postprocessor": {
+            "page_title": "Postprocessor",
+            "nav": {
+                "back": "← 返回 Dashboard",
+                "home": "Dashboard",
+                "current": "Postprocessor",
+            },
+            "hero": {
+                "eyebrow": "Postprocessor",
+                "title": "Postprocessor",
+                "subtitle": "下载完成后的选优、等待窗口、自动发布与 review 分流工作台。",
+                "worker_label": "Worker",
+                "updated_label": "更新时间",
+                "refresh_label": "自动刷新",
+            },
+            "panels": {
+                "overview": {
+                    "title": "运行概览",
+                    "description": "当前 worker 状态、队列规模、等待窗口和人工审核积压。",
+                },
+                "config": {
+                    "title": "路径与策略",
+                    "description": "这页显示的根路径和策略，直接对应常驻 watch 使用的配置。",
+                    "badge": "只读",
+                },
+                "commands": {
+                    "title": "手动入口",
+                    "description": "先给安全命令入口，不直接在页面里执行会改文件的动作。",
+                    "logs": "Logs",
+                    "review": "Ops Review",
+                },
+                "queue": {
+                    "title": "当前队列",
+                    "description": "和真实 watch 逻辑一致的分组快照：已就绪、等待窗口、仍在下载、已完成但未解析。",
+                },
+                "events": {
+                    "title": "最近事件",
+                    "description": "只看 `postprocessor` 自己写入的结构化事件，方便判断最近一轮到底做了什么。",
+                },
+            },
+        },
+        "tailscale": {
+            "page_title": "Tailscale",
+            "nav": {
+                "back": "← 返回 Dashboard",
+                "home": "Dashboard",
+                "current": "Tailscale",
+            },
+            "hero": {
+                "eyebrow": "Tailscale",
+                "title": "Tailscale",
+                "subtitle": "本地 tailnet 状态、peer 列表和节点可达性诊断。",
+                "socket_label": "Socket",
+                "updated_label": "更新时间",
+                "refresh_label": "自动刷新",
+            },
+            "panels": {
+                "peers": {
+                    "title": "Peer 列表",
+                    "description": "按在线优先排序，显示每台设备的系统、尾网地址、最近写入和 key 到期时间。",
+                },
+                "overview": {
+                    "title": "状态概览",
+                    "description": "只读取本机 Tailscale LocalAPI，不依赖官方云接口。",
+                },
+                "current_node": {
+                    "title": "本机节点",
+                    "description": "当前这台树莓派在 tailnet 里的身份、地址和有效期。",
+                    "action": "开启 Tailscale",
+                    "note": "本机节点摘要会在这里显示。",
+                },
+            },
+        },
+    },
+    "en": {
+        "dashboard": {
+            "page_title": "Dashboard",
+            "hero": {
+                "eyebrow": "Control Surface",
+                "summary": "Private anime ops console on Raspberry Pi",
+                "health_label": "Health",
+                "host_label": "Host",
+                "updated_label": "Updated",
+                "refresh_label": "Auto Refresh",
+            },
+            "panels": {
+                "broadcast_wall": {
+                    "title": "Broadcast Wall",
+                    "description": "View a week of broadcasts, grouped by weekday with an Unknown row.",
+                },
+                "pipeline": {
+                    "title": "Pipeline",
+                    "description": "Core metrics for downloads, review, and library ingestion.",
+                },
+                "host_network": {
+                    "title": "Host + Network",
+                    "description": "Host health and remote access status at a glance.",
+                },
+                "trends": {
+                    "title": "Trends",
+                    "description": "24-hour lines and 7-day download bars.",
+                },
+                "diagnostics": {
+                    "title": "Diagnostics",
+                    "description": "Only gets loud when something is wrong.",
+                    "loading": "Connecting to local data sources and refreshing panels.",
+                },
+            },
+        },
+        "ops_review": {
+            "page_title": "Ops Review",
+            "nav": {
+                "back": "← Back to Dashboard",
+                "home": "Dashboard",
+                "current": "Ops Review",
+            },
+            "hero": {
+                "eyebrow": "Ops Review",
+                "title": "Ops Review",
+                "subtitle": "Manual review queue and files that were not ingested automatically",
+                "root_label": "Root",
+                "updated_label": "Updated",
+                "refresh_label": "Auto Refresh",
+            },
+            "panels": {
+                "overview": {
+                    "title": "Queue Overview",
+                    "description": "Backlog size, storage, and bucket distribution for manual_review.",
+                    "badge": "Detail Actions",
+                    "note": "The list stays read-only. Retry parse, manual publish, and delete live on the detail page.",
+                },
+                "filters": {
+                    "title": "Filters",
+                    "description": "Narrow the queue first, then open the detail view for context and actions.",
+                    "bucket_label": "Bucket",
+                    "bucket_default": "All Buckets",
+                    "search_label": "Search",
+                    "search_placeholder": "Search title, filename, or path…",
+                },
+                "list": {
+                    "title": "Pending Files",
+                    "description": "Browse the current queue by series, reason, and path.",
+                },
+            },
+        },
+        "ops_review_item": {
+            "page_title": "Review Detail",
+            "nav": {"back": "← Back to Ops Review"},
+            "hero": {
+                "eyebrow": "Review Item",
+                "title": "Review Item",
+                "subtitle": "Loading file details",
+                "bucket_label": "Bucket",
+                "updated_label": "Updated",
+                "refresh_label": "Auto Refresh",
+            },
+            "panels": {
+                "details": {
+                    "title": "File Details",
+                    "description": "Context first. Destructive actions stay separate.",
+                },
+                "paths": {
+                    "title": "Paths + Reason",
+                    "description": "Where this file came from and why it remained in manual_review.",
+                },
+                "siblings": {
+                    "title": "Sibling Files",
+                    "description": "Use this to confirm alternate versions or split parts.",
+                },
+                "actions": {
+                    "title": "Actions",
+                    "description": "Try auto-parse first. Fall back to manual title, season, and episode when needed.",
+                },
+            },
+        },
+        "logs": {
+            "page_title": "Logs",
+            "nav": {
+                "back": "← Back to Dashboard",
+                "home": "Dashboard",
+                "current": "Logs",
+            },
+            "hero": {
+                "eyebrow": "Logs",
+                "title": "Logs",
+                "subtitle": "Structured event log for project-side operations",
+                "storage_label": "Storage",
+                "updated_label": "Updated",
+                "refresh_label": "Auto Refresh",
+            },
+            "panels": {
+                "overview": {
+                    "title": "Log Overview",
+                    "description": "Source, level, and retention are stored as structured fields for debugging and automation.",
+                    "retention_badge": "Cap -",
+                },
+                "filters": {
+                    "title": "Filters + Clear",
+                    "description": "Filter by source, level, and keyword. The list refreshes every 10 seconds.",
+                    "clear_button": "Clear Logs",
+                    "source_label": "Source",
+                    "source_default": "All Sources",
+                    "level_label": "Level",
+                    "level_default": "All Levels",
+                    "search_label": "Search",
+                    "search_placeholder": "Search action, message, or details…",
+                },
+                "events": {
+                    "title": "Event List",
+                    "description": "Color carries severity; source and action help pinpoint where the event came from.",
+                },
+            },
+        },
+        "postprocessor": {
+            "page_title": "Postprocessor",
+            "nav": {
+                "back": "← Back to Dashboard",
+                "home": "Dashboard",
+                "current": "Postprocessor",
+            },
+            "hero": {
+                "eyebrow": "Postprocessor",
+                "title": "Postprocessor",
+                "subtitle": "Workspace for post-download selection, wait windows, automatic publish, and review routing.",
+                "worker_label": "Worker",
+                "updated_label": "Updated",
+                "refresh_label": "Auto Refresh",
+            },
+            "panels": {
+                "overview": {
+                    "title": "Operational Snapshot",
+                    "description": "Worker status, queue volume, wait windows, and manual review backlog.",
+                },
+                "config": {
+                    "title": "Paths + Policy",
+                    "description": "The roots and policy used by the long-running watch worker.",
+                    "badge": "Read Only",
+                },
+                "commands": {
+                    "title": "Manual Entry Points",
+                    "description": "Expose safe commands here instead of running file-mutating actions in the page.",
+                    "logs": "Logs",
+                    "review": "Ops Review",
+                },
+                "queue": {
+                    "title": "Current Queue",
+                    "description": "A snapshot of the real watch grouping: ready, waiting, active, and completed-but-unparsed.",
+                },
+                "events": {
+                    "title": "Recent Events",
+                    "description": "Only structured events written by postprocessor itself, so the last pass is easy to inspect.",
+                },
+            },
+        },
+        "tailscale": {
+            "page_title": "Tailscale",
+            "nav": {
+                "back": "← Back to Dashboard",
+                "home": "Dashboard",
+                "current": "Tailscale",
+            },
+            "hero": {
+                "eyebrow": "Tailscale",
+                "title": "Tailscale",
+                "subtitle": "Local tailnet status, peers, and node reachability diagnostics.",
+                "socket_label": "Socket",
+                "updated_label": "Updated",
+                "refresh_label": "Auto Refresh",
+            },
+            "panels": {
+                "peers": {
+                    "title": "Peer List",
+                    "description": "Sorted by online status, with OS, tailnet addresses, recent write time, and key expiry.",
+                },
+                "overview": {
+                    "title": "Status Overview",
+                    "description": "Reads only the local Tailscale LocalAPI. No cloud API required.",
+                },
+                "current_node": {
+                    "title": "Current Node",
+                    "description": "Identity, addresses, and expiry details for this Raspberry Pi on the tailnet.",
+                    "action": "Start Tailscale",
+                    "note": "The current node summary will appear here.",
+                },
+            },
+        },
+    },
+}
+
 
 def text(key: str, locale: str | None = None) -> str:
     return COPY[i18n.normalize_locale(locale or i18n.DEFAULT_LOCALE)][key]
@@ -982,6 +1450,11 @@ def shell_copy(locale: str | None = None) -> dict:
 def client_copy(locale: str | None = None) -> dict:
     normalized = i18n.normalize_locale(locale or i18n.DEFAULT_LOCALE)
     return copy.deepcopy(CLIENT_COPY[normalized])
+
+
+def template_copy(template_name: str, locale: str | None = None) -> dict:
+    normalized = i18n.normalize_locale(locale or i18n.DEFAULT_LOCALE)
+    return copy.deepcopy(PAGE_TEMPLATE_COPY[normalized][template_name])
 
 
 def payload_copy(section: str, locale: str | None = None) -> dict:
@@ -1011,6 +1484,15 @@ def review_auto_parse_reason(reason: str | None, locale: str | None = None) -> s
     if reason == "empty title after cleanup":
         return reasons["empty_title_after_cleanup"]
     return reasons["fallback"].format(reason=reason)
+
+
+def postprocessor_worker_status(status: str | None, locale: str | None = None) -> str:
+    normalized = i18n.normalize_locale(locale or i18n.DEFAULT_LOCALE)
+    key = str(status or "unknown").strip().lower()
+    translated = POSTPROCESSOR_WORKER_STATUS[normalized].get(key)
+    if translated:
+        return translated
+    return key.replace("_", " ").title() if key else POSTPROCESSOR_WORKER_STATUS[normalized]["unknown"]
 
 
 def postprocessor_group_reason(reason: str, locale: str | None = None) -> str:

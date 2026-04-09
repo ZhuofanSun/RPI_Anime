@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from anime_ops_ui.copy import payload_copy, postprocessor_group_reason
+from anime_ops_ui.copy import payload_copy, postprocessor_group_reason, postprocessor_worker_status
 from anime_postprocessor.models import ParsedMedia
 from anime_postprocessor.qb import QBClient
 from anime_postprocessor.selector import score_candidate
@@ -185,10 +185,12 @@ def build_postprocessor_payload(*, locale: str | None = None) -> dict[str, Any]:
         if str(item.get("source")) == "postprocessor"
     ][:12]
 
+    worker_status_label = postprocessor_worker_status(worker_status, locale)
+
     summary_cards = [
         {
             "label": copy["summary_cards"]["worker"]["label"],
-            "value": str(worker_status).title(),
+            "value": worker_status_label,
             "detail": worker_uptime or copy["summary_cards"]["worker"]["missing_uptime"],
         },
         {
@@ -265,7 +267,7 @@ def build_postprocessor_payload(*, locale: str | None = None) -> dict[str, Any]:
         "title": copy["title"],
         "subtitle": copy["subtitle"],
         "copy": copy["page"],
-        "worker_badge": str(worker_status).title(),
+        "worker_badge": worker_status_label,
         "refresh_interval_seconds": 15,
         "summary_cards": summary_cards,
         "config_cards": config_cards,

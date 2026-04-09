@@ -202,6 +202,10 @@ def test_build_postprocessor_payload_composes_sections(monkeypatch, tmp_path):
     assert payload["config_cards"][0]["label"] == "Source Root"
     assert payload["copy"]["field_labels"]["best_overall"] == "Best Overall"
 
+    payload_zh = build_postprocessor_payload(locale="zh-Hans")
+    assert payload_zh["summary_cards"][0]["value"] == "运行中"
+    assert payload_zh["worker_badge"] == "运行中"
+
 
 def test_build_tailscale_payload_uses_socket_state(monkeypatch):
     tailscale_state = {

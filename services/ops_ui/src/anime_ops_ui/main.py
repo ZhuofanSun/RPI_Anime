@@ -30,7 +30,7 @@ POSTPROCESSOR_SRC = REPO_ROOT / "services" / "postprocessor" / "src"
 if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
     sys.path.insert(0, str(POSTPROCESSOR_SRC))
 
-from anime_ops_ui.copy import text
+from anime_ops_ui.copy import template_copy, text
 from anime_ops_ui.i18n import resolve_locale
 from anime_ops_ui.page_context import build_page_context
 from anime_ops_ui.services.log_service import build_logs_payload as build_logs_payload_service
@@ -82,7 +82,11 @@ class ServiceRestartRequest(BaseModel):
 
 
 def render_page(request: Request, template_name: str, page_key: str, title: str):
-    context = build_page_context(page_key, title, locale=resolve_locale(request))
+    locale = resolve_locale(request)
+    context = build_page_context(page_key, title, locale=locale)
+    page_template_copy = template_copy(template_name.removesuffix(".html"), locale=locale)
+    context["template_copy"] = page_template_copy
+    context["page_title"] = page_template_copy.get("page_title", context["page_title"])
     return TEMPLATES.TemplateResponse(
         request,
         template_name,

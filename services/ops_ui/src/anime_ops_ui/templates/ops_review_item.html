@@ -8,24 +8,24 @@
   <header class="hero">
     <div class="hero-copy">
       <div class="hero-nav">
-        <a class="ghost-link ghost-link-subtle" href="/ops-review">← 返回 Ops Review</a>
+        <a class="ghost-link ghost-link-subtle" href="/ops-review">{{ template_copy.nav.back }}</a>
         <div class="hero-links" id="review-item-breadcrumbs"></div>
       </div>
-      <div class="eyebrow">审核项详情</div>
-      <h1 id="review-item-title">审核项详情</h1>
-      <p id="review-item-subtitle">正在加载文件详情</p>
+      <div class="eyebrow">{{ template_copy.hero.eyebrow }}</div>
+      <h1 id="review-item-title">{{ template_copy.hero.title }}</h1>
+      <p id="review-item-subtitle">{{ template_copy.hero.subtitle }}</p>
     </div>
     <div class="hero-meta">
       <div class="meta-pill">
-        <span class="meta-label">Bucket</span>
+        <span class="meta-label">{{ template_copy.hero.bucket_label }}</span>
         <span class="meta-value" id="review-item-bucket">-</span>
       </div>
       <div class="meta-pill">
-        <span class="meta-label">Updated</span>
+        <span class="meta-label">{{ template_copy.hero.updated_label }}</span>
         <span class="meta-value" id="review-item-updated">-</span>
       </div>
       <div class="meta-pill meta-pill-subtle">
-        <span class="meta-label">Auto Refresh</span>
+        <span class="meta-label">{{ template_copy.hero.refresh_label }}</span>
         <span class="meta-value" id="review-item-refresh">15s</span>
       </div>
       {% include "_preferences_controls.html" %}
@@ -35,32 +35,32 @@
   <div class="content-grid">
     <section class="panel panel-wide">
       <div class="panel-head">
-        <h2>文件详情</h2>
-        <p>第二版先把上下文做完整，危险动作后接。</p>
+        <h2>{{ template_copy.panels.details.title }}</h2>
+        <p>{{ template_copy.panels.details.description }}</p>
       </div>
       <div id="review-item-summary" class="metric-grid metric-grid-wide"></div>
     </section>
 
     <section class="panel">
       <div class="panel-head">
-        <h2>路径与原因</h2>
-        <p>当前文件的来源位置和留在人工审核区的原因。</p>
+        <h2>{{ template_copy.panels.paths.title }}</h2>
+        <p>{{ template_copy.panels.paths.description }}</p>
       </div>
       <div id="review-item-meta" class="review-detail-stack"></div>
     </section>
 
     <section class="panel">
       <div class="panel-head">
-        <h2>同目录文件</h2>
-        <p>用于确认这一集是不是还有别的版本或分片。</p>
+        <h2>{{ template_copy.panels.siblings.title }}</h2>
+        <p>{{ template_copy.panels.siblings.description }}</p>
       </div>
       <div id="review-item-siblings" class="review-sibling-list"></div>
     </section>
 
     <section class="panel panel-wide">
       <div class="panel-head">
-        <h2>执行动作</h2>
-        <p>优先用自动解析；不稳定时再手动确认剧名、季号和集号。</p>
+        <h2>{{ template_copy.panels.actions.title }}</h2>
+        <p>{{ template_copy.panels.actions.description }}</p>
       </div>
       <div id="review-item-action-status" class="flash-stack" aria-live="polite"></div>
       <div id="review-item-actions" class="review-action-grid"></div>

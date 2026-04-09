@@ -7,13 +7,13 @@
 <div class="page-shell dashboard-page-shell">
   <section id="dashboard-hero" class="dashboard-hero is-loading-state">
     <div class="dashboard-hero-main">
-      <div id="dashboard-hero-eyebrow" class="eyebrow">Control Surface</div>
+      <div id="dashboard-hero-eyebrow" class="eyebrow">{{ template_copy.hero.eyebrow }}</div>
       <h1 id="dashboard-hero-title">RPI Anime Ops</h1>
-      <p id="dashboard-hero-summary">树莓派私人影音库控制台</p>
+      <p id="dashboard-hero-summary">{{ template_copy.hero.summary }}</p>
     </div>
     <div class="dashboard-hero-side">
       <div class="dashboard-hero-status">
-        <span class="meta-label">Health</span>
+        <span class="meta-label">{{ template_copy.hero.health_label }}</span>
         <span id="dashboard-hero-status-pill" class="status-pill status-running">
           <span class="status-dot"></span>
           <span id="dashboard-hero-status-label">Stable</span>
@@ -21,15 +21,15 @@
       </div>
       <div class="hero-meta">
         <div class="meta-pill">
-          <span class="meta-label">Host</span>
+          <span class="meta-label">{{ template_copy.hero.host_label }}</span>
           <span class="meta-value" id="host-name">-</span>
         </div>
         <div class="meta-pill">
-          <span class="meta-label">Updated</span>
+          <span class="meta-label">{{ template_copy.hero.updated_label }}</span>
           <span class="meta-value" id="last-updated">-</span>
         </div>
         <div class="meta-pill meta-pill-subtle">
-          <span class="meta-label">Auto Refresh</span>
+          <span class="meta-label">{{ template_copy.hero.refresh_label }}</span>
           <span class="meta-value" id="refresh-interval">8s</span>
         </div>
         {% include "_preferences_controls.html" %}
@@ -49,8 +49,8 @@
   <div class="content-grid dashboard-content-grid">
     <section class="panel panel-wide broadcast-wall">
       <div class="panel-head">
-        <h2>Broadcast Wall</h2>
-        <p>一周放送墙，按星期聚合并保留未知分组。</p>
+        <h2>{{ template_copy.panels.broadcast_wall.title }}</h2>
+        <p>{{ template_copy.panels.broadcast_wall.description }}</p>
       </div>
       <div id="dashboard-weekly-schedule" class="broadcast-wall-grid">
         {% for _ in range(7) %}
@@ -79,8 +79,8 @@
 
     <section class="panel">
       <div class="panel-head">
-        <h2>Pipeline</h2>
-        <p>下载与入库链路核心指标。</p>
+        <h2>{{ template_copy.panels.pipeline.title }}</h2>
+        <p>{{ template_copy.panels.pipeline.description }}</p>
       </div>
       <div id="dashboard-pipeline-grid" class="metric-grid dashboard-metric-grid">
         {% for _ in range(3) %}
@@ -95,8 +95,8 @@
 
     <section class="panel">
       <div class="panel-head">
-        <h2>Host + Network</h2>
-        <p>主机与远程访问状态汇总。</p>
+        <h2>{{ template_copy.panels.host_network.title }}</h2>
+        <p>{{ template_copy.panels.host_network.description }}</p>
       </div>
       <div id="dashboard-status-grid" class="metric-grid dashboard-metric-grid">
         {% for _ in range(6) %}
@@ -111,8 +111,8 @@
 
     <section class="panel panel-wide">
       <div class="panel-head">
-        <h2>Trends</h2>
-        <p>过去 24 小时折线与近 7 日下载柱状图。</p>
+        <h2>{{ template_copy.panels.trends.title }}</h2>
+        <p>{{ template_copy.panels.trends.description }}</p>
       </div>
       <div id="dashboard-trend-grid" class="trend-grid">
         {% for _ in range(4) %}
@@ -129,11 +129,11 @@
 
     <section class="panel panel-wide">
       <div class="panel-head">
-        <h2>Diagnostics</h2>
-        <p>仅在存在异常时突出显示，正常时保持安静。</p>
+        <h2>{{ template_copy.panels.diagnostics.title }}</h2>
+        <p>{{ template_copy.panels.diagnostics.description }}</p>
       </div>
       <div id="diagnostics" class="diagnostics diagnostics-loading">
-        <div class="diagnostic-empty is-loading-state">正在连接本地数据源并刷新面板。</div>
+        <div class="diagnostic-empty is-loading-state">{{ template_copy.panels.diagnostics.loading }}</div>
       </div>
     </section>
   </div>
