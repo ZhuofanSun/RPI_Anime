@@ -19,5 +19,4 @@ build/
 .worktrees/
 .superpowers/
 docs/superpowers/
-docs/*_new_*.png
 docs/.DS_Store
