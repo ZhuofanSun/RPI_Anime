@@ -73,7 +73,7 @@ def test_build_summary_strip_counts_library_ready_schedule_items_across_visible_
         locale="en",
     )
 
-    assert summary_strip[0]["answer"] == "9 active download"
+    assert summary_strip[0]["answer"] == "9 ready in library"
 
 
 def test_build_logs_payload_filters_by_source_level_and_search(monkeypatch):
@@ -493,7 +493,7 @@ def test_build_overview_payload_reports_service_summary(monkeypatch, tmp_path):
     assert payload["hero"]["host"] == "sunzhuofan.local"
     assert payload["summary_strip"][0] == {
         "question": "What is worth watching today?",
-        "answer": "3 active download",
+        "answer": "3 ready in library",
         "tone": "teal",
     }
     assert payload["summary_strip"][1]["question"] == "Is download and library ingest healthy?"

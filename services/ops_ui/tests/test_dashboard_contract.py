@@ -261,7 +261,7 @@ def test_overview_api_contract_exposes_phase3_sections(client, monkeypatch):
     assert payload["hero"]["eyebrow"] == "Control surface"
     assert isinstance(payload["summary_strip"], list)
     assert payload["summary_strip"][0]["question"] == "What is worth watching today?"
-    assert payload["summary_strip"][0]["answer"] == "4 active download"
+    assert payload["summary_strip"][0]["answer"] == "4 ready in library"
     assert payload["summary_strip"][1]["question"] == "Is download and library ingest healthy?"
     assert payload["summary_strip"][2]["question"] == "Are device health and remote access stable?"
     assert set(payload["summary_strip"][0].keys()) == {"question", "answer", "tone"}

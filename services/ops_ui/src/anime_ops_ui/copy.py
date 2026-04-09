@@ -117,7 +117,7 @@ PAYLOAD_COPY = {
             },
             "summary_strip": {
                 "watch_question": "今天有什么值得看",
-                "watch_answer": "{count} 个下载中",
+                "watch_answer": "{count} 部已入库，可播放",
                 "ingest_question": "下载和入库链路是否正常",
                 "ingest_answer": "{count} 个待审核",
                 "health_question": "设备和远程访问是否健康",
@@ -557,7 +557,7 @@ PAYLOAD_COPY = {
             },
             "summary_strip": {
                 "watch_question": "What is worth watching today?",
-                "watch_answer": "{count} active download",
+                "watch_answer": "{count} ready in library",
                 "ingest_question": "Is download and library ingest healthy?",
                 "ingest_answer": "{count} items in review",
                 "health_question": "Are device health and remote access stable?",
