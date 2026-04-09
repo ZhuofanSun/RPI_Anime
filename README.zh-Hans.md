@@ -13,6 +13,10 @@
 - [Jellyfin](https://github.com/jellyfin/jellyfin) 负责媒体库和播放
 - 自定义 `ops-ui` 负责总览、审核队列、日志、服务控制和周放送表
 
+## [石墩子](https://github.com/professor-lee/StoneBadge/tree/main)
+
+![RPI Anime 的石墩子](https://stone.professorlee.work/api/stone/ZhuofanSun/RPI_Anime)
+
 ## 这个项目在做什么
 
 - 从 RSS 订阅把新内容送进下载队列

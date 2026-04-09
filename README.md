@@ -13,6 +13,10 @@ The repository combines off-the-shelf services with a custom control layer:
 - [Jellyfin](https://github.com/jellyfin/jellyfin) for library browsing and playback
 - a custom `ops-ui` for dashboard, review queue, logs, service controls, and weekly broadcast tracking
 
+## [Stone Badge](https://github.com/professor-lee/StoneBadge/tree/main)
+
+![Stone Badge for RPI Anime](https://stone.professorlee.work/api/stone/ZhuofanSun/RPI_Anime)
+
 ## What It Does
 
 - Pulls new items from RSS subscriptions into the download queue
