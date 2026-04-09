@@ -95,6 +95,8 @@ def test_dashboard_shell_contains_bootstrap_roots(client):
     assert 'id="dashboard-weekly-schedule"' in body
     assert 'id="dashboard-unknown-schedule"' in body
     assert "broadcast-wall" in body
+    assert 'id="last-updated"' not in body
+    assert 'id="refresh-interval"' not in body
     assert 'id="dashboard-pipeline-grid"' in body
     assert 'id="dashboard-status-grid"' in body
     assert 'id="dashboard-trend-grid"' in body
@@ -105,6 +107,16 @@ def test_dashboard_shell_contains_bootstrap_roots(client):
     assert body.index('id="dashboard-trend-grid"') < body.index('id="dashboard-status-grid"')
     assert body.index('id="dashboard-status-grid"') < body.index('id="dashboard-pipeline-grid"')
     assert body.index('id="dashboard-pipeline-grid"') < body.index('id="diagnostics"')
+
+
+def test_workspace_pages_remove_back_link_and_breadcrumb_header(client):
+    for path in ["/ops-review", "/ops-review/item", "/logs", "/postprocessor", "/tailscale"]:
+        response = client.get(path)
+        body = response.text
+        assert response.status_code == 200
+        assert "ghost-link ghost-link-subtle" not in body
+        assert "hero-nav" not in body
+        assert "hero-link-current" not in body
 
 
 def test_dashboard_shell_contains_navigation_hydration_hooks(client):

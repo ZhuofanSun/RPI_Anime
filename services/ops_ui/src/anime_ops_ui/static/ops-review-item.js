@@ -500,7 +500,9 @@ function renderReviewItem(payload) {
   reviewItemUpdated.textContent = formatUpdatedLabel();
   reviewItemRefreshMs = (payload.refresh_interval_seconds || 15) * 1000;
   reviewItemRefresh.textContent = `${Math.round(reviewItemRefreshMs / 1000)}s`;
-  reviewItemBreadcrumbs.innerHTML = breadcrumbTemplate(payload.breadcrumbs || []);
+  if (reviewItemBreadcrumbs) {
+    reviewItemBreadcrumbs.innerHTML = breadcrumbTemplate(payload.breadcrumbs || []);
+  }
   reviewItemSummary.innerHTML = [
     { label: copy.summary.size, value: item.size_label, detail: item.extension },
     { label: copy.summary.series, value: item.series_name, detail: item.season_label },

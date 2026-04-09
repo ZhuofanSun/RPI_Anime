@@ -20,7 +20,6 @@ const {
   createPageBootstrap,
   escapeHtml,
   fetchJson,
-  formatUpdatedLabel,
   metricTemplate,
 } = window.AnimeOpsCore;
 
@@ -419,10 +418,16 @@ function renderOverview(data, { cachedAt } = {}) {
     heroStatusLabel.textContent = data.hero?.status_label || "Unknown";
   }
 
-  hostName.textContent = window.location.host || data.hero?.host || "-";
-  lastUpdated.textContent = formatUpdatedLabel(cachedAt);
+  if (hostName) {
+    hostName.textContent = data.hero?.host || window.location.hostname || window.location.host || "-";
+  }
   refreshIntervalMs = (data.refresh_interval_seconds || 8) * 1000;
-  refreshIntervalLabel.textContent = `${copy.refreshAutoPrefix} · ${Math.round(refreshIntervalMs / 1000)}s`;
+  if (lastUpdated) {
+    lastUpdated.textContent = cachedAt || "-";
+  }
+  if (refreshIntervalLabel) {
+    refreshIntervalLabel.textContent = `${copy.refreshAutoPrefix} · ${Math.round(refreshIntervalMs / 1000)}s`;
+  }
 
   const summaryItems = Array.isArray(data.summary_strip) ? data.summary_strip : [];
   summaryStrip.innerHTML = summaryItems.map(summaryItemTemplate).join("");

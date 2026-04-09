@@ -19,18 +19,10 @@
           <span id="dashboard-hero-status-label">Stable</span>
         </span>
       </div>
-      <div class="hero-meta">
-        <div class="meta-pill">
+      <div class="dashboard-hero-toolbar">
+        <div class="meta-pill meta-pill-inline">
           <span class="meta-label">{{ template_copy.hero.host_label }}</span>
           <span class="meta-value" id="host-name">-</span>
-        </div>
-        <div class="meta-pill">
-          <span class="meta-label">{{ template_copy.hero.updated_label }}</span>
-          <span class="meta-value" id="last-updated">-</span>
-        </div>
-        <div class="meta-pill meta-pill-subtle">
-          <span class="meta-label">{{ template_copy.hero.refresh_label }}</span>
-          <span class="meta-value" id="refresh-interval">8s</span>
         </div>
         {% include "_preferences_controls.html" %}
       </div>
@@ -77,7 +69,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel panel-wide">
       <div class="panel-head">
         <h2>{{ template_copy.panels.trends.title }}</h2>
         <p>{{ template_copy.panels.trends.description }}</p>
@@ -111,7 +103,7 @@
       </div>
     </section>
 
-    <section class="panel panel-wide">
+    <section class="panel">
       <div class="panel-head">
         <h2>{{ template_copy.panels.pipeline.title }}</h2>
         <p>{{ template_copy.panels.pipeline.description }}</p>

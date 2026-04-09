@@ -246,7 +246,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 28px;
+  gap: 16px 20px;
   min-width: min(100%, 460px);
 }
 
@@ -302,6 +302,10 @@
   flex-direction: column;
   gap: 4px;
   min-width: 132px;
+}
+
+.meta-pill-inline {
+  min-width: auto;
 }
 
 .meta-label {
