@@ -32,6 +32,10 @@ def test_shared_shell_localizes_english_shell_markup_and_bootstrap_copy(client):
     assert "Controls" in body
     assert "Preferences" in body
     assert 'data-preferences-controls' in body
+    assert body.count('class="preferences-group"') == 2
+    assert body.count('class="segmented-control"') == 2
+    assert "preferences-header" not in body
+    assert "preferences-row" not in body
     assert 'data-theme-option="light"' in body
     assert 'data-theme-option="dark"' in body
     assert 'data-language-option="zh-Hans"' in body
@@ -97,6 +101,10 @@ def test_dashboard_shell_contains_bootstrap_roots(client):
     assert 'id="services-grid"' not in body
     assert 'id="dashboard-service-rows"' not in body
     assert 'id="restart-stack-button"' not in body
+    assert body.index('id="dashboard-weekly-schedule"') < body.index('id="dashboard-trend-grid"')
+    assert body.index('id="dashboard-trend-grid"') < body.index('id="dashboard-status-grid"')
+    assert body.index('id="dashboard-status-grid"') < body.index('id="dashboard-pipeline-grid"')
+    assert body.index('id="dashboard-pipeline-grid"') < body.index('id="diagnostics"')
 
 
 def test_dashboard_shell_contains_navigation_hydration_hooks(client):

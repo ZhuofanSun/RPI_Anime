@@ -1,27 +1,26 @@
 <section class="preferences-controls" data-preferences-controls aria-label="{{ shell_copy.preferences.title }}">
-  <div class="preferences-header">
-    <span class="preferences-title">{{ shell_copy.preferences.title }}</span>
-  </div>
-  <div class="preferences-row">
-    <span class="preferences-label">{{ shell_copy.preferences.theme }}</span>
-    <div class="segmented-control" role="group" aria-label="{{ shell_copy.preferences.theme }}">
-      <button class="segmented-button" type="button" data-theme-option="light" aria-pressed="false">
-        {{ client_copy.theme.light }}
-      </button>
-      <button class="segmented-button" type="button" data-theme-option="dark" aria-pressed="false">
-        {{ client_copy.theme.dark }}
-      </button>
+  <div class="preferences-groups">
+    <div class="preferences-group">
+      <span class="preferences-label">{{ shell_copy.preferences.theme }}</span>
+      <div class="segmented-control" role="group" aria-label="{{ shell_copy.preferences.theme }}">
+        <button class="segmented-button" type="button" data-theme-option="light" aria-pressed="false">
+          {{ client_copy.theme.light }}
+        </button>
+        <button class="segmented-button" type="button" data-theme-option="dark" aria-pressed="false">
+          {{ client_copy.theme.dark }}
+        </button>
+      </div>
     </div>
-  </div>
-  <div class="preferences-row">
-    <span class="preferences-label">{{ shell_copy.preferences.language }}</span>
-    <div class="segmented-control" role="group" aria-label="{{ shell_copy.preferences.language }}">
-      <button class="segmented-button" type="button" data-language-option="zh-Hans" aria-pressed="{{ 'true' if locale == 'zh-Hans' else 'false' }}">
-        {{ client_copy.language['zh-Hans'] }}
-      </button>
-      <button class="segmented-button" type="button" data-language-option="en" aria-pressed="{{ 'true' if locale == 'en' else 'false' }}">
-        {{ client_copy.language.en }}
-      </button>
+    <div class="preferences-group">
+      <span class="preferences-label">{{ shell_copy.preferences.language }}</span>
+      <div class="segmented-control" role="group" aria-label="{{ shell_copy.preferences.language }}">
+        <button class="segmented-button" type="button" data-language-option="zh-Hans" aria-pressed="{{ 'true' if locale == 'zh-Hans' else 'false' }}">
+          {{ client_copy.language['zh-Hans'] }}
+        </button>
+        <button class="segmented-button" type="button" data-language-option="en" aria-pressed="{{ 'true' if locale == 'en' else 'false' }}">
+          {{ client_copy.language.en }}
+        </button>
+      </div>
     </div>
   </div>
 </section>

@@ -1,18 +1,23 @@
 .preferences-controls {
-  display: grid;
-  gap: 10px;
-  min-width: min(100%, 320px);
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--panel-strong), var(--panel-soft));
-  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 10px 12px;
+  min-width: min(100%, 332px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
-.preferences-header {
+.preferences-groups {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  width: 100%;
+  margin-left: auto;
 }
 
 .preferences-title,
@@ -38,19 +43,19 @@
   color: var(--muted);
 }
 
-.preferences-row {
+.preferences-group {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 10px;
+  gap: 6px;
   align-items: center;
+  justify-items: end;
 }
 
 .segmented-control {
   display: inline-grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  gap: 6px;
-  padding: 4px;
+  gap: 4px;
+  padding: 3px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--ink) 6%, transparent);
@@ -58,13 +63,13 @@
 }
 
 .segmented-button {
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 9px;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.79rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -205,9 +210,9 @@
 .dashboard-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
-  gap: 20px;
+  gap: 16px;
   align-items: start;
-  padding: 24px 26px;
+  padding: 18px 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   background:
@@ -217,22 +222,23 @@
 }
 
 .dashboard-hero-main h1 {
-  margin: 8px 0 10px;
-  font-size: clamp(1.9rem, 3vw, 2.7rem);
-  line-height: 0.96;
+  margin: 6px 0 8px;
+  font-size: clamp(1.8rem, 2.8vw, 2.45rem);
+  line-height: 0.94;
 }
 
 .dashboard-hero-main p {
   margin: 0;
-  max-width: 68ch;
+  max-width: 62ch;
   color: var(--muted);
+  line-height: 1.45;
 }
 
 .dashboard-hero-side {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 14px;
+  gap: 10px;
 }
 
 .dashboard-hero-status {
@@ -240,8 +246,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 56px;
-  padding: 10px 12px;
+  min-height: 46px;
+  padding: 8px 10px;
   border-radius: 14px;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--ink) 4%, transparent);
@@ -250,12 +256,101 @@
 .dashboard-hero .hero-meta {
   margin-left: 0;
   min-width: 0;
-  gap: 14px;
+  gap: 10px;
   justify-content: flex-start;
+  align-items: stretch;
+  flex-wrap: wrap;
 }
 
 .dashboard-hero .meta-pill {
-  min-width: 118px;
+  min-width: 108px;
+}
+
+.metric-card-pipeline {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 16px 16px 16px 14px;
+}
+
+.metric-card-pipeline::before {
+  inset: 1px 1px auto 1px;
+  height: 30%;
+}
+
+.metric-card-visual {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.metric-card-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 92%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--teal) 18%, transparent), transparent),
+    color-mix(in srgb, var(--panel-strong) 82%, transparent);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: inset 0 1px 0 var(--surface-lip);
+}
+
+.metric-card-ribbon {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--teal) 70%, white 10%), color-mix(in srgb, var(--amber) 65%, white 10%));
+}
+
+.metric-card-pipeline-teal .metric-card-mark,
+.metric-card-pipeline-teal .metric-card-ribbon {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--teal) 18%, transparent), transparent),
+    color-mix(in srgb, var(--panel-strong) 82%, transparent);
+}
+
+.metric-card-pipeline-amber .metric-card-mark,
+.metric-card-pipeline-amber .metric-card-ribbon {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--amber) 18%, transparent), transparent),
+    color-mix(in srgb, var(--panel-strong) 82%, transparent);
+}
+
+.metric-card-pipeline-ocean .metric-card-mark,
+.metric-card-pipeline-ocean .metric-card-ribbon {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, #0ea5e9 18%, transparent), transparent),
+    color-mix(in srgb, var(--panel-strong) 82%, transparent);
+}
+
+.metric-card-pipeline-violet .metric-card-mark,
+.metric-card-pipeline-violet .metric-card-ribbon {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, #8b5cf6 18%, transparent), transparent),
+    color-mix(in srgb, var(--panel-strong) 82%, transparent);
+}
+
+.metric-card-pipeline-rose .metric-card-mark,
+.metric-card-pipeline-rose .metric-card-ribbon {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--rose) 18%, transparent), transparent),
+    color-mix(in srgb, var(--panel-strong) 82%, transparent);
+}
+
+.metric-card-pipeline .metric-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
 .dashboard-summary-strip {

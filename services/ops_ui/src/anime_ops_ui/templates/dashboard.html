@@ -79,15 +79,17 @@
 
     <section class="panel">
       <div class="panel-head">
-        <h2>{{ template_copy.panels.pipeline.title }}</h2>
-        <p>{{ template_copy.panels.pipeline.description }}</p>
+        <h2>{{ template_copy.panels.trends.title }}</h2>
+        <p>{{ template_copy.panels.trends.description }}</p>
       </div>
-      <div id="dashboard-pipeline-grid" class="metric-grid dashboard-metric-grid">
-        {% for _ in range(3) %}
-        <article class="metric-card is-skeleton" aria-hidden="true">
-          <span class="skeleton-line skeleton-line-meta"></span>
-          <span class="skeleton-line skeleton-line-title"></span>
-          <span class="skeleton-line skeleton-line-short"></span>
+      <div id="dashboard-trend-grid" class="trend-grid">
+        {% for _ in range(4) %}
+        <article class="trend-card is-skeleton" aria-hidden="true">
+          <div class="skeleton-stack">
+            <span class="skeleton-line skeleton-line-meta"></span>
+            <span class="skeleton-line skeleton-line-title"></span>
+          </div>
+          <div class="skeleton-chart"></div>
         </article>
         {% endfor %}
       </div>
@@ -111,17 +113,21 @@
 
     <section class="panel panel-wide">
       <div class="panel-head">
-        <h2>{{ template_copy.panels.trends.title }}</h2>
-        <p>{{ template_copy.panels.trends.description }}</p>
+        <h2>{{ template_copy.panels.pipeline.title }}</h2>
+        <p>{{ template_copy.panels.pipeline.description }}</p>
       </div>
-      <div id="dashboard-trend-grid" class="trend-grid">
-        {% for _ in range(4) %}
-        <article class="trend-card is-skeleton" aria-hidden="true">
-          <div class="skeleton-stack">
+      <div id="dashboard-pipeline-grid" class="metric-grid dashboard-metric-grid">
+        {% for _ in range(3) %}
+        <article class="metric-card metric-card-pipeline is-skeleton" aria-hidden="true">
+          <div class="metric-card-visual">
+            <span class="metric-card-mark skeleton-line skeleton-line-title"></span>
+            <span class="metric-card-ribbon"></span>
+          </div>
+          <div class="metric-card-copy">
             <span class="skeleton-line skeleton-line-meta"></span>
             <span class="skeleton-line skeleton-line-title"></span>
+            <span class="skeleton-line skeleton-line-short"></span>
           </div>
-          <div class="skeleton-chart"></div>
         </article>
         {% endfor %}
       </div>

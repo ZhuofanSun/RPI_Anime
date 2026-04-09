@@ -362,6 +362,29 @@ function trendTemplate(card, copy) {
   `;
 }
 
+function pipelineCardTone(index) {
+  return ["teal", "amber", "ocean", "violet", "rose"][index % 5];
+}
+
+function pipelineCardTemplate(card, index) {
+  const tone = pipelineCardTone(index);
+  const mark = posterInitials(card?.label || card?.value || String(index + 1));
+
+  return `
+    <article class="metric-card metric-card-pipeline metric-card-pipeline-${tone}">
+      <div class="metric-card-visual" aria-hidden="true">
+        <span class="metric-card-mark">${escapeHtml(mark)}</span>
+        <span class="metric-card-ribbon"></span>
+      </div>
+      <div class="metric-card-copy">
+        <span class="metric-label">${escapeHtml(card?.label || "-")}</span>
+        <strong class="metric-value">${escapeHtml(card?.value || "-")}</strong>
+        <span class="metric-detail">${escapeHtml(card?.detail || "-")}</span>
+      </div>
+    </article>
+  `;
+}
+
 function diagnosticsTemplate(items, copy) {
   if (!items.length) {
     return `<div class="diagnostic-empty">${escapeHtml(copy.diagnostics.empty)}</div>`;
@@ -420,7 +443,7 @@ function renderOverview(data, { cachedAt } = {}) {
   }
 
   const pipelineCards = Array.isArray(data.pipeline_cards) ? data.pipeline_cards : [];
-  pipelineGrid.innerHTML = pipelineCards.map(metricTemplate).join("");
+  pipelineGrid.innerHTML = pipelineCards.map((card, index) => pipelineCardTemplate(card, index)).join("");
 
   const statusCards = [...(Array.isArray(data.system_cards) ? data.system_cards : []), ...(Array.isArray(data.network_cards) ? data.network_cards : [])];
   statusGrid.innerHTML = statusCards.map(metricTemplate).join("");

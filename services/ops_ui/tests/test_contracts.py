@@ -651,6 +651,28 @@ def test_overview_schedule_styles_keep_unknown_row_compact_and_library_highlight
     assert "0 18px 34px color-mix(in srgb, #15803d 30%, transparent)" not in css
 
 
+def test_overview_dashboard_controls_and_pipeline_rendering_are_compact_and_visual():
+    template = _template_text("_preferences_controls.html")
+    script = _script_text("app.js")
+    css = _style_text("components.css")
+
+    assert template.count('class="preferences-group"') == 2
+    assert "preferences-header" not in template
+    assert "preferences-row" not in template
+
+    assert "function pipelineCardTemplate(card, index)" in script
+    assert "pipelineGrid.innerHTML = pipelineCards.map((card, index) => pipelineCardTemplate(card, index)).join(\"\");" in script
+    assert "metric-card-pipeline" in script
+    assert "pipelineCardTone" in script
+
+    assert ".preferences-controls" in css
+    assert ".preferences-groups" in css
+    assert ".metric-card-pipeline" in css
+    assert ".metric-card-mark" in css
+    assert ".dashboard-hero" in css
+    assert ".dashboard-hero-side" in css
+
+
 def test_overview_payload_logs_count_uses_uncapped_events_while_phase4_uses_limited_events(monkeypatch):
     monkeypatch.setattr(main_module, "_sample_history_once", lambda: None)
     monkeypatch.setattr(main_module, "_safe_get_json", lambda *args, **kwargs: ({}, None))
