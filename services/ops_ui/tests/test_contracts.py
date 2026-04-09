@@ -866,7 +866,7 @@ def test_shared_preferences_styles_support_segmented_controls_and_reduced_motion
     assert ".segmented-button.is-active" in css
 
 
-def test_language_script_writes_cookie_and_reloads():
+def test_language_script_writes_cookie_clears_cache_and_reloads():
     if shutil.which("node") is None:
         pytest.skip("node is required for language.js runtime contract coverage")
 
@@ -894,6 +894,11 @@ const buttons = [makeButton("zh-Hans"), makeButton("en")];
 let domReady = null;
 let cookieValue = "";
 let reloadCount = 0;
+const sessionStore = new Map([
+  ["anime-ops-ui-overview-cache-v3", '{"payload":{}}'],
+  ["anime-ops-ui-flash-v1", '{"tone":"info"}'],
+  ["unrelated-key", "keep"],
+]);
 
 const document = {
   body: {
@@ -933,6 +938,17 @@ const context = {
         reloadCount += 1;
       },
     },
+    sessionStorage: {
+      get length() {
+        return sessionStore.size;
+      },
+      key(index) {
+        return Array.from(sessionStore.keys())[index] ?? null;
+      },
+      removeItem(key) {
+        sessionStore.delete(key);
+      },
+    },
   },
 };
 
@@ -941,7 +957,7 @@ vm.createContext(context);
 vm.runInContext(script, context);
 domReady();
 buttons[1].click();
-process.stdout.write(JSON.stringify({ cookieValue, reloadCount }));
+process.stdout.write(JSON.stringify({ cookieValue, reloadCount, remainingKeys: Array.from(sessionStore.keys()) }));
 """
     env = os.environ.copy()
     env["LANGUAGE_SCRIPT"] = script
@@ -960,6 +976,7 @@ process.stdout.write(JSON.stringify({ cookieValue, reloadCount }));
     assert "Path=/" in payload["cookieValue"]
     assert "SameSite=Lax" in payload["cookieValue"]
     assert payload["reloadCount"] == 1
+    assert payload["remainingKeys"] == ["unrelated-key"]
 
 
 def test_shell_script_restores_action_button_markup_after_busy_state():

@@ -14,6 +14,22 @@ function syncLanguageButtons(currentLocale) {
   });
 }
 
+function clearLocaleSensitiveCache() {
+  const storage = window.sessionStorage;
+  if (!storage || typeof storage.length !== "number") {
+    return;
+  }
+
+  const staleKeys = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (typeof key === "string" && key.startsWith("anime-ops-ui-")) {
+      staleKeys.push(key);
+    }
+  }
+  staleKeys.forEach((key) => storage.removeItem(key));
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const body = document.body;
   if (!body) return;
@@ -30,6 +46,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       document.cookie = `${cookieName}=${nextLocale}; Max-Age=31536000; Path=/; SameSite=Lax`;
+      clearLocaleSensitiveCache();
       window.location.reload();
     });
   });
