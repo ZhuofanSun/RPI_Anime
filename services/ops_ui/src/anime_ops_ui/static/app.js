@@ -148,9 +148,14 @@ function schedulePosterTemplate(item, copy) {
   const stateClass = item?.is_library_ready ? " is-library-ready" : "";
   const tooltipMarkup = scheduleTooltipTemplate(item, copy);
   const ariaLabel = scheduleTooltipLabel(item, copy) || title;
+  const jellyfinUrl = item?.jellyfin_url;
+  const tagName = jellyfinUrl ? "a" : "article";
+  const linkAttrs = jellyfinUrl
+    ? ` href="${escapeHtml(jellyfinUrl)}" target="_blank" rel="noopener noreferrer"`
+    : ' tabindex="0"';
 
   return `
-    <article class="schedule-poster-card${stateClass}" tabindex="0" aria-label="${escapeHtml(ariaLabel)}">
+    <${tagName} class="schedule-poster-card${stateClass}"${linkAttrs} aria-label="${escapeHtml(ariaLabel)}">
       <div class="schedule-poster-media">
         ${
           item?.poster_url
@@ -159,7 +164,7 @@ function schedulePosterTemplate(item, copy) {
         }
       </div>
       ${tooltipMarkup}
-    </article>
+    </${tagName}>
   `;
 }
 

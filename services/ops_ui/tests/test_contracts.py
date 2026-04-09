@@ -41,6 +41,7 @@ def _schedule_item(
     item_id: int,
     title: str,
     poster_url: str | None,
+    jellyfin_url: str | None = None,
     is_library_ready: bool = False,
     detail: dict | None = None,
 ) -> dict:
@@ -48,6 +49,7 @@ def _schedule_item(
         "id": item_id,
         "title": title,
         "poster_url": poster_url,
+        "jellyfin_url": jellyfin_url,
         "is_library_ready": is_library_ready,
         "detail": detail
         or {
@@ -533,6 +535,7 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert isinstance(payload["service_rows"], list) and payload["service_rows"]
     assert isinstance(payload["stack_control"], dict)
     assert captured_phase4_kwargs["autobangumi_base_url"] == "http://autobangumi:7892"
+    assert captured_phase4_kwargs["jellyfin_port"] == 8096
     assert payload["copy"]["schedule"]["empty_day"] == "No broadcast"
     assert payload["copy"]["schedule"]["library_ready"] == "Added to library this week and ready to play"
     assert payload["copy"]["diagnostics"]["frontend_source"] == "frontend"
@@ -541,15 +544,15 @@ def test_overview_payload_matches_phase3_dashboard_app_contract(monkeypatch, tmp
     assert len(payload["weekly_schedule"]["days"]) == 7
     today_day = next(day for day in payload["weekly_schedule"]["days"] if day["weekday"] == 2)
     assert {"weekday", "label", "items", "hidden_items", "has_hidden_items"}.issubset(today_day.keys())
-    assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(today_day["items"][0].keys())
-    assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(today_day["hidden_items"][0].keys())
+    assert {"id", "title", "poster_url", "jellyfin_url", "is_library_ready", "detail"}.issubset(today_day["items"][0].keys())
+    assert {"id", "title", "poster_url", "jellyfin_url", "is_library_ready", "detail"}.issubset(today_day["hidden_items"][0].keys())
 
     assert payload["weekly_schedule"]["unknown"]["label"] == "Unknown"
     assert {"label", "hint", "items", "hidden_items", "has_hidden_items"}.issubset(payload["weekly_schedule"]["unknown"].keys())
-    assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(
+    assert {"id", "title", "poster_url", "jellyfin_url", "is_library_ready", "detail"}.issubset(
         payload["weekly_schedule"]["unknown"]["items"][0].keys()
     )
-    assert {"id", "title", "poster_url", "is_library_ready", "detail"}.issubset(
+    assert {"id", "title", "poster_url", "jellyfin_url", "is_library_ready", "detail"}.issubset(
         payload["weekly_schedule"]["unknown"]["hidden_items"][0].keys()
     )
 
@@ -590,6 +593,9 @@ def test_overview_app_script_schedule_contract_reads_nested_fields_and_caps_unkn
 
     assert "item?.title" in script
     assert "item?.poster_url" in script
+    assert "item?.jellyfin_url" in script
+    assert 'target="_blank"' in script
+    assert 'rel="noopener noreferrer"' in script
     assert "item?.is_library_ready" in script
     assert "item?.detail?.title_raw" in script
     assert "item?.detail?.group_name" in script

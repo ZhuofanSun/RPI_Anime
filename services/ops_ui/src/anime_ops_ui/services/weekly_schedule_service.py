@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from .autobangumi_client import AutoBangumiClient
 _SEASON_FOLDER_PATTERN = re.compile(r"^season\s*\d+$", re.IGNORECASE)
 _EPISODE_CODE_PATTERN = re.compile(r"\bs\d{1,2}e\d{1,3}\b", re.IGNORECASE)
 _IGNORED_PATH_TOKENS = {"library", "seasonal"}
+_JELLYFIN_SERIES_TYPE = "MediaBrowser.Controller.Entities.TV.Series"
 
 
 def _week_key(now: datetime) -> str:
@@ -39,6 +41,10 @@ def _poster_url(base_host: str, autobangumi_port: int, poster_link: str | None) 
 
 def _autobangumi_db_path(anime_data_root: Path) -> Path:
     return anime_data_root / "appdata" / "autobangumi" / "data" / "data.db"
+
+
+def _jellyfin_db_path(anime_data_root: Path) -> Path:
+    return anime_data_root / "appdata" / "jellyfin" / "config" / "data" / "jellyfin.db"
 
 
 def _safe_int(value: Any) -> int | None:
@@ -79,12 +85,43 @@ def _normalize_title_candidates(value: str | None) -> set[str]:
     return {item for item in candidates if item}
 
 
-def _build_bangumi_title_index(bangumi_items: list[dict[str, Any]]) -> dict[str, set[int]]:
+def _load_title_resolver():
     try:
-        resolver = load_title_map()
+        return load_title_map()
     except Exception:
-        resolver = None
+        return None
 
+
+def _expanded_title_candidates(values: list[Any], *, resolver=None) -> set[str]:
+    candidates: set[str] = set()
+    normalized_titles: list[str] = []
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if not text:
+            continue
+        normalized_titles.append(text)
+        candidates.update(_normalize_title_candidates(text))
+
+    if resolver is None:
+        return candidates
+
+    for title in normalized_titles:
+        normalized = normalize_title(title)
+        if not normalized:
+            continue
+        mapping = resolver.alias_index.get(normalized)
+        if mapping is None:
+            continue
+        for candidate in [mapping.folder_name, mapping.series_title, mapping.original_title, *mapping.aliases]:
+            candidates.update(_normalize_title_candidates(candidate))
+
+    return {item for item in candidates if item}
+
+
+def _build_bangumi_title_index(bangumi_items: list[dict[str, Any]]) -> dict[str, set[int]]:
+    resolver = _load_title_resolver()
     index: dict[str, set[int]] = {}
 
     def add_candidate(candidate: str | None, bangumi_id: int) -> None:
@@ -101,26 +138,8 @@ def _build_bangumi_title_index(bangumi_items: list[dict[str, Any]]) -> dict[str,
             item.get("title_raw"),
             item.get("title"),
         ]
-        for title in primary_titles:
-            add_candidate(str(title) if title is not None else None, bangumi_id)
-
-        if resolver is None:
-            continue
-
-        for title in primary_titles:
-            if not title:
-                continue
-            normalized = normalize_title(str(title))
-            if not normalized:
-                continue
-            mapping = resolver.alias_index.get(normalized)
-            if mapping is None:
-                continue
-            add_candidate(mapping.folder_name, bangumi_id)
-            add_candidate(mapping.series_title, bangumi_id)
-            add_candidate(mapping.original_title, bangumi_id)
-            for alias in mapping.aliases:
-                add_candidate(alias, bangumi_id)
+        for candidate in _expanded_title_candidates(primary_titles, resolver=resolver):
+            index.setdefault(candidate, set()).add(bangumi_id)
 
     return index
 
@@ -176,6 +195,83 @@ def _card_detail(item: dict[str, Any], *, title: str) -> dict[str, str | None]:
         "season_label": _season_label(item),
         "review_reason": str(item.get("needs_review_reason") or "").strip() or None,
     }
+
+
+def _read_jellyfin_series_rows(anime_data_root: Path | None) -> list[dict[str, str | None]]:
+    if anime_data_root is None:
+        return []
+
+    db_path = _jellyfin_db_path(anime_data_root)
+    if not db_path.exists():
+        return []
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT Id, Name, OriginalTitle, Path
+                FROM BaseItems
+                WHERE Type = ?
+                """,
+                (_JELLYFIN_SERIES_TYPE,),
+            ).fetchall()
+    except sqlite3.Error:
+        return []
+
+    return [
+        {
+            "id": str(item_id) if item_id is not None else None,
+            "name": str(name) if name is not None else None,
+            "original_title": str(original_title) if original_title is not None else None,
+            "path": str(path) if path is not None else None,
+        }
+        for item_id, name, original_title, path in rows
+    ]
+
+
+def _build_jellyfin_title_index(anime_data_root: Path | None, *, resolver=None) -> dict[str, set[str]]:
+    if resolver is None:
+        resolver = _load_title_resolver()
+    index: dict[str, set[str]] = {}
+
+    for row in _read_jellyfin_series_rows(anime_data_root):
+        item_id = str(row.get("id") or "").strip()
+        if not item_id:
+            continue
+        path_value = str(row.get("path") or "").strip()
+        path_name = Path(path_value.replace("\\", "/")).name if path_value else None
+        titles = [row.get("name"), row.get("original_title"), path_name]
+        for candidate in _expanded_title_candidates(titles, resolver=resolver):
+            index.setdefault(candidate, set()).add(item_id)
+
+    return index
+
+
+def _jellyfin_details_url(base_host: str, jellyfin_port: int, item_id: str) -> str:
+    return f"http://{base_host}:{jellyfin_port}/web/#/details?id={item_id}"
+
+
+def _resolve_jellyfin_url(
+    item: dict[str, Any],
+    *,
+    jellyfin_title_index: dict[str, set[str]],
+    base_host: str,
+    jellyfin_port: int,
+    resolver=None,
+) -> str | None:
+    if not jellyfin_title_index:
+        return None
+
+    matched_ids: set[str] = set()
+    titles = [item.get("official_title"), item.get("title_raw"), item.get("title")]
+    for candidate in _expanded_title_candidates(titles, resolver=resolver):
+        matched_ids.update(jellyfin_title_index.get(candidate, set()))
+        if len(matched_ids) > 1:
+            return None
+
+    if len(matched_ids) != 1:
+        return None
+    return _jellyfin_details_url(base_host, jellyfin_port, next(iter(matched_ids)))
 
 
 def _read_postprocessor_publish_events(
@@ -237,8 +333,10 @@ def _read_postprocessor_publish_events(
 def build_weekly_schedule_payload(
     *,
     bangumi_items: list[dict[str, Any]],
+    anime_data_root: Path | None = None,
     base_host: str,
     autobangumi_port: int,
+    jellyfin_port: int = 8096,
     library_ids: set[int],
     now: datetime,
     state_root: Path,
@@ -258,6 +356,8 @@ def build_weekly_schedule_payload(
 
     today_weekday = now.weekday()
     safe_limit = max(int(visible_limit), 0)
+    title_resolver = _load_title_resolver()
+    jellyfin_title_index = _build_jellyfin_title_index(anime_data_root, resolver=title_resolver)
 
     grouped: dict[int, list[dict[str, Any]]] = {index: [] for index in range(7)}
     unknown_items: list[dict[str, Any]] = []
@@ -273,6 +373,13 @@ def build_weekly_schedule_payload(
             "id": bangumi_id,
             "title": title,
             "poster_url": _poster_url(base_host, autobangumi_port, item.get("poster_link")),
+            "jellyfin_url": _resolve_jellyfin_url(
+                item,
+                jellyfin_title_index=jellyfin_title_index,
+                base_host=base_host,
+                jellyfin_port=jellyfin_port,
+                resolver=title_resolver,
+            ),
             "is_library_ready": bangumi_id in library_ids,
             "detail": _card_detail(item, title=title),
         }
@@ -316,6 +423,7 @@ def build_phase4_schedule_snapshot(
     anime_data_root: Path,
     base_host: str,
     autobangumi_port: int,
+    jellyfin_port: int = 8096,
     autobangumi_base_url: str,
     autobangumi_username: str,
     autobangumi_password: str,
@@ -345,8 +453,10 @@ def build_phase4_schedule_snapshot(
 
     schedule = build_weekly_schedule_payload(
         bangumi_items=bangumi_items,
+        anime_data_root=anime_data_root,
         base_host=base_host,
         autobangumi_port=autobangumi_port,
+        jellyfin_port=jellyfin_port,
         library_ids=library_ids,
         now=now,
         state_root=state_root,

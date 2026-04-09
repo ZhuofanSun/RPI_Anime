@@ -483,6 +483,8 @@
   background: transparent;
   box-shadow: none;
   outline: none;
+  color: inherit;
+  text-decoration: none;
 }
 
 .schedule-poster-media {

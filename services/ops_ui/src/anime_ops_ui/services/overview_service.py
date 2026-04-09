@@ -40,6 +40,7 @@ def build_overview_payload(*, locale: str | None = None) -> dict[str, Any]:
     anime_collection_root = main_module.Path(main_module._env("ANIME_COLLECTION_ROOT", "/srv/anime-collection"))
     base_host = main_module._env("HOMEPAGE_BASE_HOST", main_module.socket.gethostname())
     autobangumi_port = int(main_module._env("AUTOBANGUMI_PORT", "7892"))
+    jellyfin_port = int(main_module._env("JELLYFIN_PORT", "8096"))
     autobangumi_base_url = main_module._env("AUTOBANGUMI_API_URL", "").strip() or f"http://autobangumi:{autobangumi_port}"
     overview_now = datetime.now().astimezone()
     events = main_module.read_events(limit=300)
@@ -49,6 +50,7 @@ def build_overview_payload(*, locale: str | None = None) -> dict[str, Any]:
             anime_data_root=anime_data_root,
             base_host=base_host,
             autobangumi_port=autobangumi_port,
+            jellyfin_port=jellyfin_port,
             autobangumi_base_url=autobangumi_base_url,
             autobangumi_username=main_module._env("AUTOBANGUMI_USERNAME", ""),
             autobangumi_password=main_module._env("AUTOBANGUMI_PASSWORD", ""),

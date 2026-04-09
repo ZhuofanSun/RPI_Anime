@@ -1,5 +1,6 @@
 import json
 import inspect
+import sqlite3
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -8,6 +9,28 @@ from anime_ops_ui.services.weekly_schedule_service import (
     build_phase4_schedule_snapshot,
     build_weekly_schedule_payload,
 )
+
+
+def _write_jellyfin_series_db(root, rows):
+    db_path = root / "appdata" / "jellyfin" / "config" / "data" / "jellyfin.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE BaseItems (
+                Id TEXT,
+                Name TEXT,
+                OriginalTitle TEXT,
+                Path TEXT,
+                Type TEXT
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO BaseItems (Id, Name, OriginalTitle, Path, Type) VALUES (?, ?, ?, ?, ?)",
+            rows,
+        )
+        conn.commit()
 
 
 def test_weekly_schedule_groups_items_today_unknown_with_library_highlight_and_tooltip_detail(tmp_path):
@@ -95,6 +118,48 @@ def test_weekly_schedule_groups_items_today_unknown_with_library_highlight_and_t
 
     state = json.loads((tmp_path / "weekly_schedule_state.json").read_text(encoding="utf-8"))
     assert state["week_key"] == payload["week_key"]
+
+
+def test_weekly_schedule_adds_jellyfin_url_for_matching_series(tmp_path):
+    now = datetime(2026, 4, 8, 9, 0, tzinfo=ZoneInfo("America/Toronto"))
+    _write_jellyfin_series_db(
+        tmp_path,
+        [
+            (
+                "321B1F82-21CB-8AFA-0A3A-0F27F23FA58B",
+                "尖帽子的魔法工房",
+                "Witch Hat Atelier",
+                "/media/seasonal/尖帽子的魔法工房",
+                "MediaBrowser.Controller.Entities.TV.Series",
+            )
+        ],
+    )
+
+    payload = build_weekly_schedule_payload(
+        bangumi_items=[
+            {
+                "id": 9,
+                "official_title": "尖帽子的魔法工房",
+                "title_raw": "Witch Hat Atelier",
+                "air_weekday": now.weekday(),
+                "poster_link": "posters/5cac94c7.jpg",
+                "needs_review": False,
+            }
+        ],
+        anime_data_root=tmp_path,
+        base_host="sunzhuofan.local",
+        autobangumi_port=7892,
+        jellyfin_port=8096,
+        library_ids={9},
+        now=now,
+        state_root=tmp_path / "state",
+        locale="en",
+    )
+
+    today = payload["days"][now.weekday()]
+    assert today["items"][0]["jellyfin_url"] == (
+        "http://sunzhuofan.local:8096/web/#/details?id=321B1F82-21CB-8AFA-0A3A-0F27F23FA58B"
+    )
 
 
 def test_weekly_schedule_localizes_missing_title_fallback(tmp_path):
