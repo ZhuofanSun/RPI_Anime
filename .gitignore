@@ -17,3 +17,4 @@ tmp/
 dist/
 build/
 .worktrees/
+.superpowers/
