@@ -76,3 +76,11 @@ def test_sync_script_excludes_local_only_artifacts_from_remote_sync():
     assert "--exclude '.superpowers/'" in sync_script
     assert "--exclude 'docs/superpowers/'" in sync_script
     assert "--exclude 'docs/*_new_*.png'" in sync_script
+
+
+def test_sync_script_restarts_live_source_services_after_sync():
+    sync_script = _read_text("scripts/sync_to_pi.sh")
+
+    assert "--itemize-changes" in sync_script
+    assert "restart homepage" in sync_script
+    assert "restart postprocessor" in sync_script
