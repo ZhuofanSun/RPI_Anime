@@ -33,6 +33,10 @@ if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
 
 from anime_ops_ui.copy import template_copy, text
 from anime_ops_ui.i18n import resolve_locale
+from anime_ops_ui.mobile.routes_auth import router as mobile_auth_router
+from anime_ops_ui.mobile.routes_home import router as mobile_home_router
+from anime_ops_ui.mobile.routes_items import router as mobile_items_router
+from anime_ops_ui.mobile.routes_me import router as mobile_me_router
 from anime_ops_ui.page_context import build_page_context
 from anime_ops_ui.services.log_service import build_logs_payload as build_logs_payload_service
 from anime_ops_ui.services.navigation_state_service import build_navigation_state as build_navigation_state_service
@@ -1876,6 +1880,10 @@ def create_app(*, enable_lifespan: bool = True) -> FastAPI:
     app = FastAPI(title="Anime Ops UI", lifespan=lifespan if enable_lifespan else None)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(router)
+    app.include_router(mobile_auth_router)
+    app.include_router(mobile_home_router)
+    app.include_router(mobile_items_router)
+    app.include_router(mobile_me_router)
     app.middleware("http")(disable_browser_cache_for_ui_assets)
     return app
 
