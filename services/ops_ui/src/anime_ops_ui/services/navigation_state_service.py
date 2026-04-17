@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 import threading
 from typing import Any
 
+from anime_ops_ui import runtime_main_module
 from anime_ops_ui.i18n import DEFAULT_LOCALE, normalize_locale
 from anime_ops_ui.navigation import build_external_services, build_internal_pages, build_service_actions, build_stack_action
 
@@ -30,7 +31,7 @@ def _safe_port(raw: str, fallback: int) -> int:
 
 
 def _build_navigation_state_uncached(locale: str | None = None) -> dict[str, Any]:
-    from anime_ops_ui import main as main_module
+    main_module = runtime_main_module()
 
     normalized_locale = normalize_locale(locale or DEFAULT_LOCALE)
     review_root = main_module._manual_review_root()

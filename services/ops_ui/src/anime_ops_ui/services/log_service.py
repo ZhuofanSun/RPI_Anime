@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from anime_ops_ui import runtime_main_module
 from anime_ops_ui.copy import payload_copy
 
 
@@ -14,7 +15,7 @@ def build_logs_payload(
     limit: int = 300,
     locale: str | None = None,
 ) -> dict[str, Any]:
-    from anime_ops_ui import main as main_module
+    main_module = runtime_main_module()
 
     copy = payload_copy("logs", locale)
     summary_copy = copy["summary_cards"]

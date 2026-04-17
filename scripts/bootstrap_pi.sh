@@ -37,6 +37,8 @@ echo "[5/6] Preparing runtime directories"
 sudo mkdir -p /srv/anime-data/appdata
 sudo mkdir -p /srv/anime-data/appdata/jellyfin/config
 sudo mkdir -p /srv/anime-data/appdata/jellyfin/cache
+sudo mkdir -p /srv/anime-data/appdata/jellyfin/fonts
+sudo mkdir -p /srv/anime-data/appdata/ops-ui
 sudo mkdir -p /srv/anime-data/appdata/qbittorrent/config
 sudo mkdir -p /srv/anime-data/appdata/autobangumi/config
 sudo mkdir -p /srv/anime-data/appdata/autobangumi/data

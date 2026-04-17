@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from anime_ops_ui import runtime_main_module
 from anime_ops_ui.copy import payload_copy, postprocessor_group_reason, postprocessor_worker_status
 from anime_postprocessor.models import ParsedMedia
 from anime_postprocessor.qb import QBClient
@@ -76,7 +77,7 @@ def _postprocessor_group_payload(
 
 
 def build_postprocessor_payload(*, locale: str | None = None) -> dict[str, Any]:
-    from anime_ops_ui import main as main_module
+    main_module = runtime_main_module()
 
     copy = payload_copy("postprocessor", locale)
     paths = main_module._postprocessor_paths()

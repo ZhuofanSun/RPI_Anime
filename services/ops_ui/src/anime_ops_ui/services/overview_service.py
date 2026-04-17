@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from anime_ops_ui import runtime_main_module
 from anime_ops_ui.copy import payload_copy, text
 from anime_ops_ui.page_context import build_page_context
 from anime_ops_ui.services.dashboard_sections import build_dashboard_hero, build_service_rows, build_summary_strip
@@ -24,7 +25,7 @@ def build_service_summary(*, containers: dict[str, dict[str, Any]], tailscale_ru
 
 
 def build_overview_payload(*, locale: str | None = None, public_host: str | None = None) -> dict[str, Any]:
-    from anime_ops_ui import main as main_module
+    main_module = runtime_main_module()
 
     overview_copy = payload_copy("overview", locale)
     weekly_copy = payload_copy("weekly_schedule", locale)
@@ -88,6 +89,11 @@ def build_overview_payload(*, locale: str | None = None, public_host: str | None
     glances_base = main_module._glances_base_url()
     anime_data_mount = main_module._mount_health(anime_data_root)
     anime_collection_mount = main_module._mount_health(anime_collection_root)
+    storage_roots_share_small_system_disk = (
+        anime_data_mount["mounted"]
+        and anime_collection_mount["mounted"]
+        and main_module._storage_roots_share_small_system_disk(anime_data_root, anime_collection_root)
+    )
     if anime_data_mount["mounted"]:
         try:
             disk = main_module._disk_snapshot(anime_data_root)
@@ -356,6 +362,13 @@ def build_overview_payload(*, locale: str | None = None, public_host: str | None
             {
                 "source": "mount:/srv/anime-collection",
                 "message": diagnostics_copy["anime_collection_probe"].format(error=anime_collection_mount["probe_error"]),
+            }
+        )
+    if storage_roots_share_small_system_disk:
+        diagnostics.append(
+            {
+                "source": "mount:/srv-storage-layout",
+                "message": diagnostics_copy["storage_roots_shared_system_disk"],
             }
         )
 

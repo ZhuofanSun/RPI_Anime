@@ -107,6 +107,20 @@ flowchart LR
 - `/srv/anime-data`
 - `/srv/anime-collection`
 
+存储注意事项：
+
+- 这两个路径应该指向预期的外置数据盘，而不是系统盘上的空目录。
+- `./scripts/sync_to_pi.sh` 现在会检查树莓派上的实际挂载来源；如果 `/etc/fstab` 里声明了挂载，但目标路径已经回落到 `/`，脚本会直接拒绝同步，避免误写入 SD 卡。
+- 可以在树莓派上用这些命令快速核对：
+
+```bash
+lsblk -o NAME,MODEL,SIZE,FSTYPE,MOUNTPOINTS,LABEL,UUID
+findmnt /srv/anime-data /srv/anime-collection
+df -h /srv/anime-data /srv/anime-collection
+```
+
+- 如果你使用的是 SanDisk `Extreme 55AE`，并且在树莓派上反复遇到 UAS 掉盘，可以在 `/boot/firmware/cmdline.txt` 追加 `usb-storage.quirks=0781:55ae:u` 后重启。
+
 然后执行基础引导脚本：
 
 ```bash
@@ -139,7 +153,7 @@ flowchart LR
 ./scripts/sync_to_pi.sh
 ```
 
-这个脚本会把仓库同步到 `${PI_REMOTE_ROOT}`，并单独同步 `deploy/.env`。
+这个脚本会把仓库同步到 `${PI_REMOTE_ROOT}`，单独同步 `deploy/.env`，并在 `deploy/compose.yaml`、服务构建输入或 `deploy/.env` 变化时自动对远端 compose 栈做一次对齐。
 
 ### 4. 构建并启动服务
 
@@ -147,7 +161,7 @@ flowchart LR
 ./scripts/remote_up.sh
 ```
 
-这个脚本会重建 `homepage`，刷新 `postprocessor`，并把整套 compose 服务拉起。
+这个脚本仍然保留为“显式整栈重建”入口，适合你想强制刷新整套 compose 服务时使用。
 
 ### 5. 验证部署结果
 
@@ -158,9 +172,10 @@ curl http://<ops-host>:3000/healthz
 curl http://<ops-host>:3000/api/overview
 ```
 
-后续更新通常只需要重复这两步：
+后续更新通常先执行：
 
 ```bash
 ./scripts/sync_to_pi.sh
-./scripts/remote_up.sh
 ```
+
+如果你明确想做一次整栈重建，再执行 `./scripts/remote_up.sh`。

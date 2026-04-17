@@ -204,6 +204,7 @@ PAYLOAD_COPY = {
                 "anime_data_probe": "数据盘访问异常：{error}",
                 "anime_collection_missing": "未检测到收藏盘挂载，收藏库当前不可用。",
                 "anime_collection_probe": "收藏盘访问异常：{error}",
+                "storage_roots_shared_system_disk": "数据盘和收藏盘当前共用同一块小容量底盘；如果你原本依赖独立外置盘，请检查 USB 连接和主机挂载。",
             },
             "services": {
                 "restart": "Restart",
@@ -644,6 +645,7 @@ PAYLOAD_COPY = {
                 "anime_data_probe": "Anime data disk access error: {error}",
                 "anime_collection_missing": "Collection disk is not mounted, so the collection library is unavailable.",
                 "anime_collection_probe": "Collection disk access error: {error}",
+                "storage_roots_shared_system_disk": "Anime data and collection roots currently share the same small backing disk. If you expect separate external volumes, check USB connectivity and host mounts.",
             },
             "services": {
                 "restart": "Restart",

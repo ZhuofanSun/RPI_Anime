@@ -4,11 +4,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from anime_ops_ui import runtime_main_module
 from anime_ops_ui.copy import payload_copy, review_auto_parse_reason, review_bucket_label, review_bucket_reason
 
 
 def _review_item_from_path(path: Path, review_root: Path, *, locale: str | None = None) -> dict[str, Any]:
-    from anime_ops_ui import main as main_module
+    main_module = runtime_main_module()
 
     relative = path.relative_to(review_root)
     parts = list(relative.parts)
@@ -52,7 +53,7 @@ def _manual_review_items(review_root: Path, *, locale: str | None = None) -> lis
 
 
 def _review_siblings(item_path: Path, review_root: Path, *, locale: str | None = None) -> list[dict[str, Any]]:
-    from anime_ops_ui import main as main_module
+    main_module = runtime_main_module()
 
     siblings = []
     for path in sorted(item_path.parent.iterdir()):
@@ -65,7 +66,7 @@ def _review_siblings(item_path: Path, review_root: Path, *, locale: str | None =
 
 
 def build_manual_review_payload(*, locale: str | None = None) -> dict[str, Any]:
-    from anime_ops_ui import main as main_module
+    main_module = runtime_main_module()
 
     copy = payload_copy("review", locale)
     summary_copy = copy["summary_cards"]
@@ -136,7 +137,7 @@ def build_manual_review_payload(*, locale: str | None = None) -> dict[str, Any]:
 
 
 def build_manual_review_item_payload(item_id: str, *, locale: str | None = None) -> dict[str, Any]:
-    from anime_ops_ui import main as main_module
+    main_module = runtime_main_module()
 
     copy = payload_copy("review", locale)
     review_root = main_module._manual_review_root()

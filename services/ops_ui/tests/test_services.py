@@ -174,6 +174,69 @@ def test_build_overview_payload_uses_public_host_for_schedule_and_service_links(
     assert jellyfin_row["href"] == "http://100.88.77.66:8096"
 
 
+def test_build_overview_payload_reports_srv_storage_roots_sharing_small_system_disk(monkeypatch, tmp_path):
+    data_root = Path("/srv/anime-data")
+    collection_root = Path("/srv/anime-collection")
+
+    monkeypatch.setattr(
+        main_module,
+        "_env",
+        lambda name, default: {
+            "ANIME_DATA_ROOT": str(data_root),
+            "ANIME_COLLECTION_ROOT": str(collection_root),
+            "HOMEPAGE_BASE_HOST": "sunzhuofan.local",
+            "TAILSCALE_SOCKET": "/var/run/tailscale/tailscaled.sock",
+            "AUTOBANGUMI_API_URL": "",
+        }.get(name, default),
+    )
+    monkeypatch.setattr(main_module, "_sample_history_once", lambda: None)
+    monkeypatch.setattr(main_module, "_safe_get_json", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(main_module, "_tailscale_status", lambda *args, **kwargs: ({}, None))
+    monkeypatch.setattr(main_module, "_qb_snapshot", lambda: (None, None))
+    monkeypatch.setattr(main_module, "_fan_state_snapshot", lambda: (None, None))
+    monkeypatch.setattr(main_module, "_mount_health", lambda path: {"path": str(path), "mounted": True, "exists": True, "readable": True, "probe_error": None})
+    monkeypatch.setattr(main_module, "_disk_snapshot", lambda path: {"path": str(path), "used_bytes": 16, "free_bytes": 32, "total_bytes": 48, "percent": 25.0})
+    monkeypatch.setattr(main_module, "_storage_roots_share_small_system_disk", lambda primary, secondary: True)
+    monkeypatch.setattr(main_module, "read_events", lambda limit=300: [])
+    monkeypatch.setattr(main_module, "_count_media_files", lambda root: 0)
+    monkeypatch.setattr(main_module, "_count_series_dirs", lambda root: 0)
+    monkeypatch.setattr(
+        overview_service_module,
+        "build_phase4_schedule_snapshot",
+        lambda **kwargs: {
+            "weekly_schedule": {
+                "week_key": "2026-W15",
+                "today_weekday": 4,
+                "days": [
+                    {
+                        "weekday": index,
+                        "label": label,
+                        "is_today": index == 4,
+                        "items": [],
+                        "hidden_items": [],
+                        "has_hidden_items": False,
+                    }
+                    for index, label in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+                ],
+                "unknown": {
+                    "label": "Unknown",
+                    "hint": "Drag to assign a broadcast day",
+                    "items": [],
+                    "hidden_items": [],
+                    "has_hidden_items": False,
+                },
+            },
+        },
+    )
+
+    payload = build_overview_payload(locale="en")
+
+    assert {
+        "source": "mount:/srv-storage-layout",
+        "message": "Anime data and collection roots currently share the same small backing disk. If you expect separate external volumes, check USB connectivity and host mounts.",
+    } in payload["diagnostics"]
+
+
 def test_build_logs_payload_filters_by_source_level_and_search(monkeypatch):
     monkeypatch.setattr(
         main_module,
@@ -212,6 +275,24 @@ def test_read_events_returns_empty_when_event_log_parent_cannot_be_created(monke
     monkeypatch.setattr(Path, "mkdir", raising_mkdir)
 
     assert eventlog_module.read_events(limit=10) == []
+
+
+def test_append_event_creates_shared_writable_event_log_and_lock(monkeypatch, tmp_path):
+    event_path = tmp_path / "ops-ui" / "events.json"
+    monkeypatch.setattr(eventlog_module, "event_log_path", lambda: event_path)
+
+    eventlog_module.append_event(
+        source="ops-ui",
+        level="info",
+        action="startup",
+        message="service started",
+    )
+
+    lock_path = event_path.with_suffix(".json.lock")
+    assert event_path.exists()
+    assert lock_path.exists()
+    assert event_path.stat().st_mode & 0o777 == 0o666
+    assert lock_path.stat().st_mode & 0o777 == 0o666
 
 
 def test_build_manual_review_payload_reads_temp_tree(monkeypatch, tmp_path):

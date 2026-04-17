@@ -70,6 +70,25 @@ OPS_UI_NO_CACHE_HEADERS = {
     "Pragma": "no-cache",
     "Expires": "0",
 }
+SMALL_STORAGE_FALLBACK_THRESHOLD_BYTES = 100 * 1024 ** 3
+
+
+def _ensure_canonical_main_module_alias(
+    *,
+    current_name: str | None = None,
+    sys_modules: dict[str, Any] | None = None,
+) -> None:
+    name = current_name if current_name is not None else __name__
+    if name != "__main__":
+        return
+    modules = sys_modules if sys_modules is not None else sys.modules
+    dunder_main = modules.get("__main__")
+    if dunder_main is None:
+        return
+    modules.setdefault("anime_ops_ui.main", dunder_main)
+
+
+_ensure_canonical_main_module_alias()
 
 
 class ManualPublishRequest(BaseModel):
@@ -965,6 +984,24 @@ def _mount_health(path: Path) -> dict[str, Any]:
         "readable": readable,
         "probe_error": probe_error,
     }
+
+
+def _storage_roots_share_small_system_disk(primary: Path, secondary: Path) -> bool:
+    if not (str(primary).startswith("/srv/") and str(secondary).startswith("/srv/")):
+        return False
+    try:
+        primary_device = primary.stat().st_dev
+        secondary_device = secondary.stat().st_dev
+        if primary_device != secondary_device:
+            return False
+        primary_total = shutil.disk_usage(primary).total
+        secondary_total = shutil.disk_usage(secondary).total
+    except OSError:
+        return False
+    return (
+        abs(primary_total - secondary_total) <= 1024 * 1024
+        and primary_total < SMALL_STORAGE_FALLBACK_THRESHOLD_BYTES
+    )
 
 
 def _manual_review_root() -> Path:

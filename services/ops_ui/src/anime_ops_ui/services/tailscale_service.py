@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from anime_ops_ui import runtime_main_module
 from anime_ops_ui.copy import payload_copy
 
 
 def build_tailscale_payload(*, locale: str | None = None) -> dict[str, Any]:
-    from anime_ops_ui import main as main_module
+    main_module = runtime_main_module()
 
     copy = payload_copy("tailscale", locale)
     base_host = main_module._env("HOMEPAGE_BASE_HOST", __import__("socket").gethostname())

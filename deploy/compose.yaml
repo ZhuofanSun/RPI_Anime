@@ -79,6 +79,7 @@ services:
     volumes:
       - "${ANIME_APPDATA_ROOT}/jellyfin/config:/config"
       - "${ANIME_APPDATA_ROOT}/jellyfin/cache:/cache"
+      - "${ANIME_APPDATA_ROOT}/jellyfin/fonts:/usr/local/share/fonts/custom:ro"
       - "${ANIME_DATA_ROOT}/library/seasonal:/media/seasonal"
       - "${ANIME_COLLECTION_ROOT}:/media/collection:ro"
     restart: unless-stopped

@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+SHARED_FILE_MODE = 0o666
+
 
 def _env(name: str, default: str) -> str:
     return os.environ.get(name, default)
@@ -44,6 +46,12 @@ def _ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _ensure_shared_writable_file(path: Path) -> None:
+    if not path.exists():
+        path.touch(mode=SHARED_FILE_MODE, exist_ok=True)
+    path.chmod(SHARED_FILE_MODE)
+
+
 def _read_events_unlocked(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -66,10 +74,19 @@ def _locked_edit(callback, *, ensure_parent: bool = True) -> Any:
     if ensure_parent:
         _ensure_parent(path)
         _ensure_parent(lock_path)
+        _ensure_shared_writable_file(path)
+        _ensure_shared_writable_file(lock_path)
     else:
         if not path.parent.exists() or not lock_path.parent.exists():
             return callback(path)
-    with lock_path.open("w", encoding="utf-8") as lock_file:
+        if lock_path.exists():
+            try:
+                lock_path.chmod(SHARED_FILE_MODE)
+            except OSError:
+                pass
+        else:
+            return callback(path)
+    with lock_path.open("r+", encoding="utf-8") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         return callback(path)
 

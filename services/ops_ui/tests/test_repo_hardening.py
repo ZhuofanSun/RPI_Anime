@@ -74,6 +74,10 @@ def test_sync_script_excludes_local_only_artifacts_from_remote_sync():
 
     assert "--exclude 'backups/'" in sync_script
     assert "--exclude '.superpowers/'" in sync_script
+    assert "--exclude '.worktrees/'" in sync_script
+    assert "--exclude 'RPI_Anime_APP/'" in sync_script
+    assert "--exclude 'tmp/'" in sync_script
+    assert "--exclude '.pytest_cache/'" in sync_script
     assert "--exclude 'docs/superpowers/'" in sync_script
     assert "--exclude 'docs/*_new_*.png'" in sync_script
 
@@ -84,3 +88,33 @@ def test_sync_script_restarts_live_source_services_after_sync():
     assert "--itemize-changes" in sync_script
     assert "restart homepage" in sync_script
     assert "restart postprocessor" in sync_script
+
+
+def test_sync_script_reconciles_remote_stack_when_runtime_config_changes():
+    sync_script = _read_text("scripts/sync_to_pi.sh")
+
+    assert "deploy/compose.yaml" in sync_script
+    assert "services/ops_ui/Dockerfile" in sync_script
+    assert "services/ops_ui/pyproject" in sync_script
+    assert "services/postprocessor/Dockerfile" in sync_script
+    assert "services/postprocessor/pyproject" in sync_script
+    assert "deploy/.env" in sync_script
+    assert "build homepage" in sync_script
+    assert "up -d --build postprocessor" in sync_script
+    assert "up -d --no-build" in sync_script
+
+
+def test_sync_script_refuses_to_sync_into_rootfs_when_fstab_mount_is_missing():
+    sync_script = _read_text("scripts/sync_to_pi.sh")
+
+    assert "findmnt -s -n -o SOURCE --target" in sync_script
+    assert "findmnt -n -o SOURCE --target /" in sync_script
+    assert "Refusing to sync because" in sync_script
+    assert "mount has fallen back to the root filesystem" in sync_script
+
+
+def test_bootstrap_script_prepares_shared_ops_ui_state_directory():
+    bootstrap_script = _read_text("scripts/bootstrap_pi.sh")
+
+    assert "/srv/anime-data/appdata/ops-ui" in bootstrap_script
+    assert "/srv/anime-data/appdata/jellyfin/fonts" in bootstrap_script
