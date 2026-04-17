@@ -60,11 +60,15 @@ def _write_events_unlocked(path: Path, events: list[dict[str, Any]]) -> None:
     path.write_text(json.dumps(events, ensure_ascii=False), encoding="utf-8")
 
 
-def _locked_edit(callback) -> Any:
+def _locked_edit(callback, *, ensure_parent: bool = True) -> Any:
     path = event_log_path()
-    _ensure_parent(path)
     lock_path = _lock_path(path)
-    _ensure_parent(lock_path)
+    if ensure_parent:
+        _ensure_parent(path)
+        _ensure_parent(lock_path)
+    else:
+        if not path.parent.exists() or not lock_path.parent.exists():
+            return callback(path)
     with lock_path.open("w", encoding="utf-8") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         return callback(path)
@@ -108,7 +112,7 @@ def read_events(*, limit: int | None = None) -> list[dict[str, Any]]:
             return events[:limit]
         return events
 
-    return _locked_edit(_read)
+    return _locked_edit(_read, ensure_parent=False)
 
 
 def clear_events() -> dict[str, Any]:

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
+import types
 
 import pytest
 
+import anime_ops_ui as package_module
 from anime_ops_ui import main as main_module
 from anime_ops_ui.services import postprocessor_service as postprocessor_service_module
 from anime_ops_ui.services import overview_service as overview_service_module
@@ -13,6 +16,34 @@ from anime_ops_ui.services.overview_service import build_overview_payload, build
 from anime_ops_ui.services.postprocessor_service import build_postprocessor_payload
 from anime_ops_ui.services.review_service import build_manual_review_item_payload, build_manual_review_payload
 from anime_ops_ui.services.tailscale_service import build_tailscale_payload
+from anime_postprocessor import eventlog as eventlog_module
+
+
+def test_ensure_canonical_main_module_alias_maps_dunder_main_to_package_module():
+    module_map = {"__main__": types.ModuleType("__main__")}
+
+    main_module._ensure_canonical_main_module_alias(
+        current_name="__main__",
+        sys_modules=module_map,
+    )
+
+    assert module_map["anime_ops_ui.main"] is module_map["__main__"]
+
+
+def test_runtime_main_module_prefers_matching_dunder_main_module():
+    dunder_main = types.ModuleType("__main__")
+    dunder_main.__file__ = str(Path(main_module.__file__).resolve())
+    imported_main = types.ModuleType("anime_ops_ui.main")
+
+    resolved = package_module.runtime_main_module(
+        sys_modules={
+            "__main__": dunder_main,
+            "anime_ops_ui.main": imported_main,
+        },
+        package_main_path=Path(main_module.__file__).resolve(),
+    )
+
+    assert resolved is dunder_main
 
 
 def test_build_service_summary_counts_tailscaled():
@@ -166,6 +197,21 @@ def test_build_logs_payload_filters_by_source_level_and_search(monkeypatch):
     assert payload["summary_cards"][0]["label"] == "Visible"
     assert payload["copy"]["filters"]["all_sources"] == "All Sources"
     assert payload["copy"]["clear"]["success_message"] == "Cleared {count} structured log entries."
+
+
+def test_read_events_returns_empty_when_event_log_parent_cannot_be_created(monkeypatch):
+    monkeypatch.setattr(
+        eventlog_module,
+        "event_log_path",
+        lambda: Path("/srv/anime-data/appdata/ops-ui/events.json"),
+    )
+
+    def raising_mkdir(self, parents=False, exist_ok=False):
+        raise OSError(30, "Read-only file system")
+
+    monkeypatch.setattr(Path, "mkdir", raising_mkdir)
+
+    assert eventlog_module.read_events(limit=10) == []
 
 
 def test_build_manual_review_payload_reads_temp_tree(monkeypatch, tmp_path):
