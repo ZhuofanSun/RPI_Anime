@@ -9,6 +9,8 @@ import requests
 from anime_ops_ui import runtime_main_module
 from anime_ops_ui.domain.mobile_models import (
     SystemDownloadItem,
+    SystemLogItem,
+    SystemLogServiceOption,
     SystemOverviewBarDatum,
     SystemOverviewBarTrend,
     SystemOverviewLineTrend,
@@ -16,6 +18,7 @@ from anime_ops_ui.domain.mobile_models import (
     SystemOverviewSupplementaryItem,
 )
 from anime_ops_ui.i18n import normalize_locale
+from anime_ops_ui.services.log_service import build_logs_payload as build_logs_payload_service
 from anime_ops_ui.services.overview_service import build_overview
 
 
@@ -112,6 +115,35 @@ def _fan_value(*, locale: str | None = None) -> str:
 
 def _system_timestamp() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _service_label(service: str, *, locale: str | None = None) -> str:
+    normalized = (service or "").strip().lower()
+    mapping = {
+        "autobangumi": "AutoBangumi",
+        "postprocessor": "Postprocessor",
+        "homepage": "Ops UI",
+        "ops-ui": "Ops UI",
+        "qbittorrent": "qBittorrent",
+        "service-control": _locale_text(locale, en="Service Control", zh="服务控制"),
+        "tailscale-control": "Tailscale",
+        "jellyfin": "Jellyfin",
+    }
+    if normalized in mapping:
+        return mapping[normalized]
+    if not normalized:
+        return _locale_text(locale, en="Unknown", zh="未知")
+    return service
+
+
+def _level_info(level: str, *, locale: str | None = None) -> tuple[str, str]:
+    normalized = (level or "").strip().lower()
+    mapping = {
+        "error": ("error", _locale_text(locale, en="Error", zh="错误")),
+        "warning": ("warning", _locale_text(locale, en="Warning", zh="警告")),
+        "info": ("info", _locale_text(locale, en="Info", zh="信息")),
+    }
+    return mapping.get(normalized, ("info", _locale_text(locale, en="Info", zh="信息")))
 
 
 def _download_state_info(raw_state: str | None, *, locale: str | None = None) -> tuple[str, str, int]:
@@ -232,6 +264,46 @@ def build_system_downloads_payload(*, locale: str | None = None) -> dict[str, An
     return {
         "items": [entry[2] for entry in normalized_items[:30]],
         "updatedAt": _system_timestamp(),
+    }
+
+
+def build_system_logs_payload(*, locale: str | None = None, service: str | None = None, limit: int = 30) -> dict[str, Any]:
+    normalized_limit = max(1, min(limit, 30))
+    payload = build_logs_payload_service(source=service, limit=normalized_limit, locale=locale)
+
+    items: list[dict[str, Any]] = []
+    for entry in payload.get("items", []):
+        if not isinstance(entry, dict):
+            continue
+        level, level_label = _level_info(str(entry.get("level") or "info"), locale=locale)
+        items.append(
+            SystemLogItem(
+                id=str(entry.get("id") or f"log_{len(items)}"),
+                timestamp=str(entry.get("ts") or _system_timestamp()),
+                service=_service_label(str(entry.get("source") or ""), locale=locale),
+                level=level,
+                levelLabel=level_label,
+                summary=str(entry.get("message") or ""),
+            ).model_dump()
+        )
+
+    services = [
+        SystemLogServiceOption(id="all", label=_locale_text(locale, en="All", zh="全部")).model_dump()
+    ]
+    for raw_source in payload.get("sources", []):
+        services.append(
+            SystemLogServiceOption(
+                id=str(raw_source),
+                label=_service_label(str(raw_source), locale=locale),
+            ).model_dump()
+        )
+
+    selected_service = service or "all"
+    return {
+        "items": items,
+        "services": services,
+        "selectedService": selected_service,
+        "updatedAt": payload.get("last_updated") or _system_timestamp(),
     }
 
 

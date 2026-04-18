@@ -48,3 +48,17 @@ class SystemDownloadItem(BaseModel):
     stateLabel: str
     state: str
     addedAt: str | None = None
+
+
+class SystemLogItem(BaseModel):
+    id: str
+    timestamp: str
+    service: str
+    level: str
+    levelLabel: str
+    summary: str
+
+
+class SystemLogServiceOption(BaseModel):
+    id: str
+    label: str

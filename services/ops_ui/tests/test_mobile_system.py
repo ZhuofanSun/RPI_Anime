@@ -97,3 +97,45 @@ def test_mobile_system_downloads_returns_compact_contract(client, monkeypatch):
     assert payload["items"][1]["downloadSpeedBytesPerSec"] == 0
     assert payload["items"][1]["progress"] == 1.0
     assert payload["updatedAt"] == "2099-01-01T00:00:00Z"
+
+
+def test_mobile_system_logs_returns_compact_contract(client, monkeypatch):
+    monkeypatch.setattr(
+        mobile_system_service,
+        "build_logs_payload_service",
+        lambda source=None, limit=30, locale=None: {
+            "items": [
+                {
+                    "id": "log_001",
+                    "ts": "2099-01-01T00:00:00Z",
+                    "source": "autobangumi",
+                    "level": "warning",
+                    "message": "RSS 刷新超时，等待下次重试",
+                },
+                {
+                    "id": "log_002",
+                    "ts": "2098-12-31T23:59:00Z",
+                    "source": "qbittorrent",
+                    "level": "error",
+                    "message": "下载任务失败，等待重新连接",
+                },
+            ],
+            "sources": ["autobangumi", "qbittorrent"],
+            "last_updated": "2099-01-01T00:00:30Z",
+        },
+    )
+
+    response = client.get("/api/mobile/system/logs", headers={"Accept-Language": "zh-Hans"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload) == {"items", "services", "selectedService", "updatedAt"}
+    assert len(payload["items"]) == 2
+    assert payload["items"][0]["service"] == "AutoBangumi"
+    assert payload["items"][0]["level"] == "warning"
+    assert payload["items"][0]["levelLabel"] == "警告"
+    assert payload["items"][1]["service"] == "qBittorrent"
+    assert payload["items"][1]["levelLabel"] == "错误"
+    assert payload["services"][0] == {"id": "all", "label": "全部"}
+    assert payload["selectedService"] == "all"
+    assert payload["updatedAt"] == "2099-01-01T00:00:30Z"
