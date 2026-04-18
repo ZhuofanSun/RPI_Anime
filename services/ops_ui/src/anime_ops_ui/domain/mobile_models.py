@@ -11,6 +11,21 @@ class HomeFollowingItem(BaseModel):
     availabilityState: str | None = None
 
 
+class CalendarDayItem(BaseModel):
+    appItemId: str
+    title: str
+    posterUrl: str
+    unread: bool
+    availabilityState: str | None = None
+
+
+class CalendarDayBucket(BaseModel):
+    date: str
+    weekdayLabel: str
+    dayLabel: str
+    items: list[CalendarDayItem]
+
+
 class RSSListItem(BaseModel):
     rssId: int
     title: str

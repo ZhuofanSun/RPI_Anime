@@ -34,6 +34,7 @@ if POSTPROCESSOR_SRC.exists() and str(POSTPROCESSOR_SRC) not in sys.path:
 from anime_ops_ui.copy import template_copy, text
 from anime_ops_ui.i18n import resolve_locale
 from anime_ops_ui.mobile.routes_auth import router as mobile_auth_router
+from anime_ops_ui.mobile.routes_calendar import router as mobile_calendar_router
 from anime_ops_ui.mobile.routes_home import router as mobile_home_router
 from anime_ops_ui.mobile.routes_items import router as mobile_items_router
 from anime_ops_ui.mobile.routes_me import router as mobile_me_router
@@ -1921,6 +1922,7 @@ def create_app(*, enable_lifespan: bool = True) -> FastAPI:
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(router)
     app.include_router(mobile_auth_router)
+    app.include_router(mobile_calendar_router)
     app.include_router(mobile_home_router)
     app.include_router(mobile_items_router)
     app.include_router(mobile_me_router)
