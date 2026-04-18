@@ -9,6 +9,25 @@ class HomeFollowingItem(BaseModel):
     mappingStatus: str
 
 
+class RSSListItem(BaseModel):
+    rssId: int
+    title: str
+    connectionState: str
+    connectionStateLabel: str
+    enabled: bool
+    enabledStateLabel: str
+    lastCheckedLabel: str | None = None
+
+
+class RSSPreviewItem(BaseModel):
+    title: str
+    originalTitle: str | None = None
+    posterUrl: str | None = None
+    year: str | None = None
+    season: str | None = None
+    tags: list[str]
+
+
 class SystemOverviewStatusCard(BaseModel):
     title: str
     displayValue: str

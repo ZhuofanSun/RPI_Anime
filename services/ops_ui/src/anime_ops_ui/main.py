@@ -37,6 +37,7 @@ from anime_ops_ui.mobile.routes_auth import router as mobile_auth_router
 from anime_ops_ui.mobile.routes_home import router as mobile_home_router
 from anime_ops_ui.mobile.routes_items import router as mobile_items_router
 from anime_ops_ui.mobile.routes_me import router as mobile_me_router
+from anime_ops_ui.mobile.routes_rss import router as mobile_rss_router
 from anime_ops_ui.mobile.routes_review import router as mobile_review_router
 from anime_ops_ui.mobile.routes_system import router as mobile_system_router
 from anime_ops_ui.page_context import build_page_context
@@ -1923,6 +1924,7 @@ def create_app(*, enable_lifespan: bool = True) -> FastAPI:
     app.include_router(mobile_home_router)
     app.include_router(mobile_items_router)
     app.include_router(mobile_me_router)
+    app.include_router(mobile_rss_router)
     app.include_router(mobile_review_router)
     app.include_router(mobile_system_router)
     app.middleware("http")(disable_browser_cache_for_ui_assets)
