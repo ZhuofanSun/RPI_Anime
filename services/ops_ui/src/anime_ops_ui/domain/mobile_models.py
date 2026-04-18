@@ -36,3 +36,15 @@ class SystemOverviewBarTrend(BaseModel):
 class SystemOverviewSupplementaryItem(BaseModel):
     title: str
     value: str
+
+
+class SystemDownloadItem(BaseModel):
+    id: str
+    name: str
+    downloadedBytes: int
+    totalBytes: int
+    progress: float
+    downloadSpeedBytesPerSec: int
+    stateLabel: str
+    state: str
+    addedAt: str | None = None

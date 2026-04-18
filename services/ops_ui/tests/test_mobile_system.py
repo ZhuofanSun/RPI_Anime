@@ -49,3 +49,51 @@ def test_mobile_system_overview_returns_compact_contract(client, monkeypatch):
     assert payload["supplementary"]["fan"] == {"title": "风扇", "value": "72%"}
     assert payload["supplementary"]["uptime"]["value"] == "4 天 03:18"
     assert payload["updatedAt"] == "2099-01-01T00:00:00Z"
+
+
+def test_mobile_system_downloads_returns_compact_contract(client, monkeypatch):
+    monkeypatch.setattr(
+        mobile_system_service,
+        "_fetch_qbittorrent_downloads",
+        lambda: [
+            {
+                "hash": "torrent_hash_001",
+                "name": "[ANi] 灵笼 - 16",
+                "size": 1_073_741_824,
+                "completed": 858_993_459,
+                "progress": 0.8,
+                "dlspeed": 3_145_728,
+                "state": "downloading",
+                "added_on": 1_713_312_000,
+            },
+            {
+                "hash": "torrent_hash_002",
+                "name": "[ANi] 凡人修仙传 - 176",
+                "size": 734_003_200,
+                "completed": 734_003_200,
+                "progress": 1.0,
+                "dlspeed": 0,
+                "state": "uploading",
+                "added_on": 1_713_311_000,
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        mobile_system_service,
+        "_system_timestamp",
+        lambda: "2099-01-01T00:00:00Z",
+    )
+
+    response = client.get("/api/mobile/system/downloads", headers={"Accept-Language": "zh-Hans"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload) == {"items", "updatedAt"}
+    assert len(payload["items"]) == 2
+    assert payload["items"][0]["state"] == "downloading"
+    assert payload["items"][0]["stateLabel"] == "下载中"
+    assert payload["items"][0]["downloadedBytes"] == 858_993_459
+    assert payload["items"][1]["state"] == "completed"
+    assert payload["items"][1]["downloadSpeedBytesPerSec"] == 0
+    assert payload["items"][1]["progress"] == 1.0
+    assert payload["updatedAt"] == "2099-01-01T00:00:00Z"

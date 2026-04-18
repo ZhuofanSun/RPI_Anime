@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 from typing import Any
+
+import requests
 
 from anime_ops_ui import runtime_main_module
 from anime_ops_ui.domain.mobile_models import (
+    SystemDownloadItem,
     SystemOverviewBarDatum,
     SystemOverviewBarTrend,
     SystemOverviewLineTrend,
@@ -104,6 +108,131 @@ def _fan_value(*, locale: str | None = None) -> str:
     if pin:
         return str(pin)
     return "--"
+
+
+def _system_timestamp() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _download_state_info(raw_state: str | None, *, locale: str | None = None) -> tuple[str, str, int]:
+    state = (raw_state or "").strip()
+    downloading_states = {
+        "downloading",
+        "forcedDL",
+        "stalledDL",
+    }
+    queued_states = {
+        "metaDL",
+        "queuedDL",
+        "checkingDL",
+        "checkingUP",
+        "queuedUP",
+        "pausedDL",
+        "pausedUP",
+    }
+    completed_states = {
+        "uploading",
+        "forcedUP",
+        "stalledUP",
+    }
+
+    if state in downloading_states:
+        return "downloading", _locale_text(locale, en="Downloading", zh="下载中"), 0
+    if state in queued_states:
+        return "queued", _locale_text(locale, en="Queued", zh="排队中"), 1
+    if state in completed_states:
+        return "completed", _locale_text(locale, en="Completed", zh="已完成"), 2
+    return "other", _locale_text(locale, en="Waiting", zh="等待中"), 3
+
+
+def _parse_progress(raw_progress: Any, *, normalized_state: str) -> float:
+    try:
+        progress = float(raw_progress or 0.0)
+    except (TypeError, ValueError):
+        progress = 0.0
+    if normalized_state == "completed":
+        return 1.0
+    return max(0.0, min(progress, 1.0))
+
+
+def _parse_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _fetch_qbittorrent_downloads() -> list[dict[str, Any]]:
+    main_module = runtime_main_module()
+    base_url = main_module._env("QBITTORRENT_API_URL", "http://qbittorrent:8080").rstrip("/")
+    username = main_module._env("QBITTORRENT_USERNAME", "")
+    password = main_module._env("QBITTORRENT_PASSWORD", "")
+    category = main_module._env("POSTPROCESSOR_CATEGORY", "Bangumi")
+
+    session = requests.Session()
+    auth = session.post(
+        f"{base_url}/api/v2/auth/login",
+        data={"username": username, "password": password},
+        timeout=5,
+    )
+    auth.raise_for_status()
+    if auth.text.strip() != "Ok.":
+        raise RuntimeError(f"qB auth failed: {auth.text.strip()}")
+
+    torrents = session.get(
+        f"{base_url}/api/v2/torrents/info",
+        params={"category": category},
+        timeout=5,
+    )
+    torrents.raise_for_status()
+    payload = torrents.json()
+    if not isinstance(payload, list):
+        raise RuntimeError("qB torrent payload must be a list")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def build_system_downloads_payload(*, locale: str | None = None) -> dict[str, Any]:
+    torrent_items = _fetch_qbittorrent_downloads()
+    normalized_items: list[tuple[int, int, dict[str, Any]]] = []
+
+    for item in torrent_items:
+        raw_state = str(item.get("state") or "")
+        normalized_state, state_label, sort_rank = _download_state_info(raw_state, locale=locale)
+        progress = _parse_progress(item.get("progress"), normalized_state=normalized_state)
+        total_bytes = _parse_int(item.get("size") or item.get("total_size"))
+        downloaded_bytes = _parse_int(item.get("completed"))
+        if normalized_state == "completed":
+            downloaded_bytes = total_bytes if total_bytes > 0 else downloaded_bytes
+        download_speed = 0 if normalized_state == "completed" else _parse_int(item.get("dlspeed"))
+        added_at = _parse_int(item.get("added_on"))
+        added_at_value = None
+        if added_at > 0:
+            added_at_value = datetime.fromtimestamp(added_at, UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+        normalized_items.append(
+            (
+                sort_rank,
+                -added_at,
+                SystemDownloadItem(
+                    id=str(item.get("hash") or item.get("name") or f"download_{len(normalized_items)}"),
+                    name=str(item.get("name") or "--"),
+                    downloadedBytes=downloaded_bytes,
+                    totalBytes=total_bytes,
+                    progress=progress,
+                    downloadSpeedBytesPerSec=download_speed,
+                    stateLabel=state_label,
+                    state=normalized_state,
+                    addedAt=added_at_value,
+                ).model_dump(),
+            )
+        )
+
+    normalized_items.sort(key=lambda entry: (entry[0], entry[1], entry[2]["name"]))
+
+    return {
+        "items": [entry[2] for entry in normalized_items[:30]],
+        "updatedAt": _system_timestamp(),
+    }
 
 
 def build_system_overview_payload(*, locale: str | None = None) -> dict[str, Any]:
