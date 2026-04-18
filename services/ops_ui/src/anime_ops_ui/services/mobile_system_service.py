@@ -15,10 +15,13 @@ from anime_ops_ui.domain.mobile_models import (
     SystemOverviewLineTrend,
     SystemOverviewStatusCard,
     SystemOverviewSupplementaryItem,
+    SystemTailscaleLocalNode,
+    SystemTailscalePeer,
 )
 from anime_ops_ui.i18n import normalize_locale
 from anime_ops_ui.services.log_service import build_logs_payload as build_logs_payload_service
 from anime_ops_ui.services.overview_service import build_overview
+from anime_ops_ui.services.tailscale_service import build_tailscale_payload as build_tailscale_payload_service
 
 
 def _locale_text(locale: str | None, *, en: str, zh: str) -> str:
@@ -289,6 +292,48 @@ def build_system_logs_payload(*, locale: str | None = None, limit: int = 30) -> 
     return {
         "items": items,
         "updatedAt": payload.get("last_updated") or _system_timestamp(),
+    }
+
+
+def build_system_tailscale_payload(*, locale: str | None = None) -> dict[str, Any]:
+    payload = build_tailscale_payload_service(locale=locale)
+    current_node = payload.get("current_node") if isinstance(payload, dict) else {}
+    current_node = current_node if isinstance(current_node, dict) else {}
+    peers = payload.get("peers") if isinstance(payload, dict) else []
+    peers = peers if isinstance(peers, list) else []
+
+    local_name = str(current_node.get("host") or _locale_text(locale, en="Unknown", zh="未知"))
+    local_host = str(current_node.get("dns_name") or local_name)
+    local_ipv4 = str(current_node.get("ipv4") or "--")
+    local_online = bool(current_node.get("reachable"))
+
+    normalized_peers: list[dict[str, Any]] = []
+    for peer in peers:
+        if not isinstance(peer, dict):
+            continue
+        peer_name = str(peer.get("host_name") or peer.get("dns_name") or _locale_text(locale, en="Unknown", zh="未知"))
+        peer_host = str(peer.get("dns_name") or peer_name)
+        peer_ipv4 = str(peer.get("ip") or "--")
+        peer_online = str(peer.get("status") or "").lower() == "online"
+        normalized_peers.append(
+            SystemTailscalePeer(
+                name=peer_name,
+                host=peer_host,
+                ipv4=peer_ipv4,
+                online=peer_online,
+            ).model_dump()
+        )
+
+    normalized_peers.sort(key=lambda item: (0 if item["online"] else 1, item["name"].lower()))
+
+    return {
+        "localNode": SystemTailscaleLocalNode(
+            name=local_name,
+            host=local_host,
+            ipv4=local_ipv4,
+            online=local_online,
+        ).model_dump(),
+        "peers": normalized_peers,
     }
 
 

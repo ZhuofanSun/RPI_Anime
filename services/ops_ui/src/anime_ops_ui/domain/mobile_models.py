@@ -57,3 +57,17 @@ class SystemLogItem(BaseModel):
     level: str
     levelLabel: str
     summary: str
+
+
+class SystemTailscaleLocalNode(BaseModel):
+    name: str
+    host: str
+    ipv4: str
+    online: bool
+
+
+class SystemTailscalePeer(BaseModel):
+    name: str
+    host: str
+    ipv4: str
+    online: bool

@@ -137,3 +137,52 @@ def test_mobile_system_logs_returns_compact_contract(client, monkeypatch):
     assert payload["items"][1]["service"] == "qBittorrent"
     assert payload["items"][1]["levelLabel"] == "错误"
     assert payload["updatedAt"] == "2099-01-01T00:00:30Z"
+
+
+def test_mobile_system_tailscale_returns_compact_contract(client, monkeypatch):
+    monkeypatch.setattr(
+        mobile_system_service,
+        "build_tailscale_payload_service",
+        lambda locale=None: {
+            "current_node": {
+                "host": "rpi-anime-app",
+                "dns_name": "rpi-anime-app.tailnet.ts.net",
+                "ipv4": "100.87.23.14",
+                "reachable": True,
+            },
+            "peers": [
+                {
+                    "host_name": "ipad",
+                    "dns_name": "ipad.tailnet.ts.net",
+                    "ip": "100.73.42.77",
+                    "status": "offline",
+                },
+                {
+                    "host_name": "iphone",
+                    "dns_name": "iphone.tailnet.ts.net",
+                    "ip": "100.91.8.23",
+                    "status": "online",
+                },
+                {
+                    "host_name": "macbook",
+                    "dns_name": "macbook.tailnet.ts.net",
+                    "ip": "100.88.11.6",
+                    "status": "online",
+                },
+            ],
+        },
+    )
+
+    response = client.get("/api/mobile/system/tailscale", headers={"Accept-Language": "zh-Hans"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload) == {"localNode", "peers"}
+    assert payload["localNode"] == {
+        "name": "rpi-anime-app",
+        "host": "rpi-anime-app.tailnet.ts.net",
+        "ipv4": "100.87.23.14",
+        "online": True,
+    }
+    assert [item["name"] for item in payload["peers"]] == ["iphone", "macbook", "ipad"]
+    assert payload["peers"][2]["online"] is False
