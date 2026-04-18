@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Body, Request
+from fastapi import APIRouter, Body, Depends, Request
 from pydantic import BaseModel, Field
 
 from anime_ops_ui.i18n import resolve_locale
+from anime_ops_ui.mobile.auth import require_mobile_auth
 from anime_ops_ui.services.mobile_review_service import (
     build_review_detail_payload,
     build_review_queue_payload,
@@ -10,7 +11,7 @@ from anime_ops_ui.services.mobile_review_service import (
     retry_parse_review_item,
 )
 
-router = APIRouter(prefix="/api/mobile/review", tags=["mobile-review"])
+router = APIRouter(prefix="/api/mobile/review", tags=["mobile-review"], dependencies=[Depends(require_mobile_auth)])
 
 
 class MobileManualPublishRequest(BaseModel):

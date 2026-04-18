@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from anime_ops_ui.mobile.auth import require_mobile_auth
 from anime_ops_ui.services.mobile_calendar_service import build_calendar_payload
 
-router = APIRouter(prefix="/api/mobile", tags=["mobile-calendar"])
+router = APIRouter(prefix="/api/mobile", tags=["mobile-calendar"], dependencies=[Depends(require_mobile_auth)])
 
 
 @router.get("/calendar")

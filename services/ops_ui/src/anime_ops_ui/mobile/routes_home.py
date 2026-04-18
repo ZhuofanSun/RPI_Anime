@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from anime_ops_ui.mobile.auth import require_mobile_auth
 from anime_ops_ui.services.mobile_home_service import build_favorites_payload, build_following_payload
 
-router = APIRouter(prefix="/api/mobile/home", tags=["mobile-home"])
+router = APIRouter(prefix="/api/mobile/home", tags=["mobile-home"], dependencies=[Depends(require_mobile_auth)])
 
 
 @router.get("/following")

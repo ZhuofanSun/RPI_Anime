@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from anime_ops_ui.i18n import resolve_locale
+from anime_ops_ui.mobile.auth import require_mobile_auth
 from anime_ops_ui.services.mobile_rss_service import (
     analyze_rss_payload,
     build_rss_list_payload,
@@ -11,7 +12,7 @@ from anime_ops_ui.services.mobile_rss_service import (
     subscribe_rss_payload,
 )
 
-router = APIRouter(prefix="/api/mobile/rss", tags=["mobile-rss"])
+router = APIRouter(prefix="/api/mobile/rss", tags=["mobile-rss"], dependencies=[Depends(require_mobile_auth)])
 
 
 class MobileRSSURLRequest(BaseModel):

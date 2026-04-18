@@ -3,10 +3,11 @@ from fastapi.testclient import TestClient
 
 from anime_ops_ui import main as main_module
 from anime_ops_ui.main import create_app
+from anime_ops_ui.mobile.auth import embedded_password, embedded_username
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch):
+def anonymous_client(tmp_path, monkeypatch):
     data_root = tmp_path / "anime-data"
     state_root = tmp_path / "ops-ui-state"
     event_log_path = tmp_path / "events.json"
@@ -26,3 +27,17 @@ def client(tmp_path, monkeypatch):
         yield test_client
 
     main_module.HISTORY_STATE = None
+
+
+@pytest.fixture()
+def client(anonymous_client):
+    response = anonymous_client.post(
+        "/api/mobile/auth/session",
+        json={
+            "username": embedded_username(),
+            "password": embedded_password(),
+        },
+    )
+    token = response.json()["token"]
+    anonymous_client.headers.update({"Authorization": f"Bearer {token}"})
+    return anonymous_client

@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from anime_ops_ui.i18n import resolve_locale
+from anime_ops_ui.mobile.auth import require_mobile_auth
 from anime_ops_ui.services.mobile_system_service import (
     build_system_downloads_payload,
     build_system_logs_payload,
@@ -8,7 +9,7 @@ from anime_ops_ui.services.mobile_system_service import (
     build_system_tailscale_payload,
 )
 
-router = APIRouter(prefix="/api/mobile/system", tags=["mobile-system"])
+router = APIRouter(prefix="/api/mobile/system", tags=["mobile-system"], dependencies=[Depends(require_mobile_auth)])
 
 
 @router.get("/overview")

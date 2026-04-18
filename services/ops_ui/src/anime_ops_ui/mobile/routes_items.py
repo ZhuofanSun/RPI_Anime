@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from anime_ops_ui.mobile.auth import require_mobile_auth
 from anime_ops_ui.services.mobile_detail_service import build_detail_payload
 
-router = APIRouter(prefix="/api/mobile/items", tags=["mobile-items"])
+router = APIRouter(prefix="/api/mobile/items", tags=["mobile-items"], dependencies=[Depends(require_mobile_auth)])
 
 
 @router.get("/{app_item_id}")
