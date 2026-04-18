@@ -7,6 +7,8 @@ class HomeFollowingItem(BaseModel):
     posterUrl: str
     unread: bool
     mappingStatus: str
+    jellyfinSeriesId: str | None = None
+    availabilityState: str | None = None
 
 
 class RSSListItem(BaseModel):
