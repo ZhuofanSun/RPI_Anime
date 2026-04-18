@@ -38,6 +38,7 @@ def build_detail_payload(app_item_id: str) -> dict:
             "overview": "整理中",
             "seasons": [],
             "episodes": [],
+            "recentSeasonal": _recent_seasonal_items(),
         }
 
     return {
@@ -62,4 +63,34 @@ def build_detail_payload(app_item_id: str) -> dict:
         "overview": "示例简介",
         "seasons": [{"id": "season_1", "label": "第一季", "selected": True}],
         "episodes": [{"id": "ep_16", "label": "第 16 集", "focused": True, "unread": True}],
+        "recentSeasonal": _recent_seasonal_items(),
     }
+
+
+def _recent_seasonal_items() -> list[dict]:
+    return [
+        {
+            "appItemId": "app_following_demo_5",
+            "title": "时光代理人",
+            "posterUrl": "https://example.com/poster-5.jpg",
+            "subtitle": "更新至第 12 集",
+        },
+        {
+            "appItemId": "app_following_demo_2",
+            "title": "凡人修仙传",
+            "posterUrl": "https://example.com/poster-2.jpg",
+            "subtitle": "更新至第 176 集",
+        },
+        {
+            "appItemId": "app_following_demo_4",
+            "title": "镇魂街 第一季",
+            "posterUrl": "https://example.com/poster-4.jpg",
+            "subtitle": "更新至第 24 集",
+        },
+        {
+            "appItemId": "app_following_demo_3",
+            "title": "有兽焉",
+            "posterUrl": "https://example.com/poster-3.jpg",
+            "subtitle": "整理中",
+        },
+    ]
