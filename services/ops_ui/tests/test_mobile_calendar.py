@@ -6,6 +6,9 @@ def test_mobile_calendar_returns_day_bucketed_contract(client):
     assert payload["focusDate"] == "2026-04-18"
     assert payload["updatedAt"] == "2099-01-01T00:00:00Z"
     assert len(payload["days"]) == 7
+    assert payload["days"][0]["date"] == "2026-04-13"
+    assert payload["days"][-1]["date"] == "2026-04-19"
+    assert [item["weekdayLabel"] for item in payload["days"]] == ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     focused = next(item for item in payload["days"] if item["date"] == "2026-04-18")
     assert focused["weekdayLabel"] == "周六"
     assert focused["dayLabel"] == "04/18"
@@ -19,6 +22,6 @@ def test_mobile_calendar_accepts_focus_date_query(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["focusDate"] == "2026-04-17"
-    assert len(payload["days"]) == 5
-    assert payload["days"][0]["date"] == "2026-04-15"
+    assert len(payload["days"]) == 7
+    assert payload["days"][0]["date"] == "2026-04-13"
     assert payload["days"][-1]["date"] == "2026-04-19"
