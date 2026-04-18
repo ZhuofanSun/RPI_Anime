@@ -1,8 +1,36 @@
-from fastapi import HTTPException
+from anime_ops_ui.services.overview_service import build_overview_payload
 
 
-def _allowed_restart_targets() -> tuple[str, ...]:
-    return ("jellyfin", "qbittorrent", "autobangumi", "postprocessor", "homepage")
+def _service_health_rows() -> list[dict]:
+    try:
+        overview = build_overview_payload()
+        rows = {str(item.get("id")): item for item in overview.get("service_rows", []) if isinstance(item, dict)}
+    except Exception:
+        rows = {}
+
+    selected: list[dict] = []
+    for target in ("jellyfin", "qbittorrent", "autobangumi", "postprocessor", "tailscale"):
+        row = rows.get(target)
+        if not row:
+            continue
+        selected.append(
+            {
+                "target": target,
+                "label": row.get("name") or target,
+                "state": str(row.get("status") or "unknown"),
+                "detail": row.get("uptime") or row.get("meta"),
+            }
+        )
+
+    selected.append(
+        {
+            "target": "homepage",
+            "label": "Ops UI",
+            "state": "online" if rows else "unknown",
+            "detail": "app-facing backend",
+        }
+    )
+    return selected
 
 
 def build_me_context() -> dict:
@@ -13,20 +41,5 @@ def build_me_context() -> dict:
             "connectionTone": "success",
         },
         "about": {"version": "0.1.0", "backendVersion": "ops-ui dev"},
-        "maintenance": {
-            "serviceActions": [
-                {"target": "jellyfin", "label": "重启 Jellyfin", "enabled": True},
-                {"target": "qbittorrent", "label": "重启 qBittorrent", "enabled": True},
-                {"target": "autobangumi", "label": "重启 AutoBangumi", "enabled": True},
-                {"target": "postprocessor", "label": "重启 Postprocessor", "enabled": True},
-                {"target": "homepage", "label": "重启 Ops UI", "enabled": True},
-            ],
-            "restartAll": {"label": "全部重启", "enabled": True},
-        },
+        "serviceHealth": _service_health_rows(),
     }
-
-
-def schedule_restart(target: str) -> dict:
-    if target not in _allowed_restart_targets():
-        raise HTTPException(status_code=404, detail=f"unknown restart target: {target}")
-    return {"ok": True, "scheduled": True, "target": target, "message": f"已安排 {target} 重启。"}

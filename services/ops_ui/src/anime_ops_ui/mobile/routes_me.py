@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from anime_ops_ui.mobile.auth import require_mobile_auth
-from anime_ops_ui.services.mobile_me_service import build_me_context, schedule_restart
+from anime_ops_ui.services.mobile_me_service import build_me_context
 
 router = APIRouter(prefix="/api/mobile/me", tags=["mobile-me"], dependencies=[Depends(require_mobile_auth)])
 
@@ -9,13 +9,3 @@ router = APIRouter(prefix="/api/mobile/me", tags=["mobile-me"], dependencies=[De
 @router.get("/context")
 def get_me_context() -> dict:
     return build_me_context()
-
-
-@router.post("/service-actions/{target}/restart")
-def restart_service(target: str) -> dict:
-    return schedule_restart(target)
-
-
-@router.post("/service-actions/restart-all")
-def restart_all() -> dict:
-    return {"ok": True, "scheduled": True, "target": "stack", "message": "已安排整套服务重启。"}
