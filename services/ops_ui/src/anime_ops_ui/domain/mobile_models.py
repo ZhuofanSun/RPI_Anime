@@ -57,8 +57,3 @@ class SystemLogItem(BaseModel):
     level: str
     levelLabel: str
     summary: str
-
-
-class SystemLogServiceOption(BaseModel):
-    id: str
-    label: str

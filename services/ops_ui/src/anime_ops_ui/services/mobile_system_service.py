@@ -10,7 +10,6 @@ from anime_ops_ui import runtime_main_module
 from anime_ops_ui.domain.mobile_models import (
     SystemDownloadItem,
     SystemLogItem,
-    SystemLogServiceOption,
     SystemOverviewBarDatum,
     SystemOverviewBarTrend,
     SystemOverviewLineTrend,
@@ -267,9 +266,9 @@ def build_system_downloads_payload(*, locale: str | None = None) -> dict[str, An
     }
 
 
-def build_system_logs_payload(*, locale: str | None = None, service: str | None = None, limit: int = 30) -> dict[str, Any]:
+def build_system_logs_payload(*, locale: str | None = None, limit: int = 30) -> dict[str, Any]:
     normalized_limit = max(1, min(limit, 30))
-    payload = build_logs_payload_service(source=service, limit=normalized_limit, locale=locale)
+    payload = build_logs_payload_service(source=None, limit=normalized_limit, locale=locale)
 
     items: list[dict[str, Any]] = []
     for entry in payload.get("items", []):
@@ -287,22 +286,8 @@ def build_system_logs_payload(*, locale: str | None = None, service: str | None 
             ).model_dump()
         )
 
-    services = [
-        SystemLogServiceOption(id="all", label=_locale_text(locale, en="All", zh="全部")).model_dump()
-    ]
-    for raw_source in payload.get("sources", []):
-        services.append(
-            SystemLogServiceOption(
-                id=str(raw_source),
-                label=_service_label(str(raw_source), locale=locale),
-            ).model_dump()
-        )
-
-    selected_service = service or "all"
     return {
         "items": items,
-        "services": services,
-        "selectedService": selected_service,
         "updatedAt": payload.get("last_updated") or _system_timestamp(),
     }
 

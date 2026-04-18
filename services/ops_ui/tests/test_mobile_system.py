@@ -129,13 +129,11 @@ def test_mobile_system_logs_returns_compact_contract(client, monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert set(payload) == {"items", "services", "selectedService", "updatedAt"}
+    assert set(payload) == {"items", "updatedAt"}
     assert len(payload["items"]) == 2
     assert payload["items"][0]["service"] == "AutoBangumi"
     assert payload["items"][0]["level"] == "warning"
     assert payload["items"][0]["levelLabel"] == "警告"
     assert payload["items"][1]["service"] == "qBittorrent"
     assert payload["items"][1]["levelLabel"] == "错误"
-    assert payload["services"][0] == {"id": "all", "label": "全部"}
-    assert payload["selectedService"] == "all"
     assert payload["updatedAt"] == "2099-01-01T00:00:30Z"

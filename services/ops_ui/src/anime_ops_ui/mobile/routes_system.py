@@ -23,8 +23,6 @@ def get_system_downloads(request: Request) -> dict:
 @router.get("/logs")
 def get_system_logs(
     request: Request,
-    service: str | None = Query(default=None),
     limit: int = Query(default=30, ge=1, le=30),
 ) -> dict:
-    normalized_service = None if service in {None, "", "all"} else service
-    return build_system_logs_payload(locale=resolve_locale(request), service=normalized_service, limit=limit)
+    return build_system_logs_payload(locale=resolve_locale(request), limit=limit)
