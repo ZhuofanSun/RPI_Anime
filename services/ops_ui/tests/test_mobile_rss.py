@@ -82,9 +82,7 @@ def test_mobile_rss_list_returns_simplified_contract(client, monkeypatch):
         "rssId": 2,
         "title": "落语朱音",
         "connectionState": "connected",
-        "connectionStateLabel": "已连接",
         "enabled": True,
-        "enabledStateLabel": "启用",
         "lastCheckedLabel": "2026-04-17 03:00",
     }
     assert "url" not in payload["items"][0]

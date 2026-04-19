@@ -1,7 +1,21 @@
+from importlib.metadata import PackageNotFoundError, version as package_version
+
+from anime_ops_ui.i18n import normalize_locale
 from anime_ops_ui.services.overview_service import build_overview_payload
 
 
-def _service_health_rows() -> list[dict]:
+def _locale_text(locale: str | None, *, en: str, zh: str) -> str:
+    return en if normalize_locale(locale) == "en" else zh
+
+
+def _backend_version() -> str:
+    try:
+        return package_version("anime-ops-ui")
+    except PackageNotFoundError:
+        return "0.1.0"
+
+
+def _service_health_rows(*, locale: str | None = None) -> list[dict]:
     try:
         overview = build_overview_payload()
         rows = {str(item.get("id")): item for item in overview.get("service_rows", []) if isinstance(item, dict)}
@@ -26,20 +40,19 @@ def _service_health_rows() -> list[dict]:
         {
             "target": "homepage",
             "label": "Ops UI",
-            "state": "online" if rows else "unknown",
-            "detail": "app-facing backend",
+            "state": "online",
+            "detail": _locale_text(locale, en="app-facing backend", zh="面向 App 的后端"),
         }
     )
     return selected
 
 
-def build_me_context() -> dict:
+def build_me_context(*, locale: str | None = None) -> dict:
     return {
         "identity": {
             "serverLabel": "RPI Anime",
-            "connectionState": "在线",
-            "connectionTone": "success",
+            "connectionState": "online",
         },
-        "about": {"version": "0.1.0", "backendVersion": "ops-ui dev"},
-        "serviceHealth": _service_health_rows(),
+        "about": {"backendVersion": _backend_version()},
+        "serviceHealth": _service_health_rows(locale=locale),
     }

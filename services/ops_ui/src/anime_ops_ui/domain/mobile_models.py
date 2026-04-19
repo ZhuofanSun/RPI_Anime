@@ -30,9 +30,7 @@ class RSSListItem(BaseModel):
     rssId: int
     title: str
     connectionState: str
-    connectionStateLabel: str
     enabled: bool
-    enabledStateLabel: str
     lastCheckedLabel: str | None = None
 
 
@@ -81,7 +79,6 @@ class SystemDownloadItem(BaseModel):
     totalBytes: int
     progress: float
     downloadSpeedBytesPerSec: int
-    stateLabel: str
     state: str
     addedAt: str | None = None
 
@@ -91,7 +88,6 @@ class SystemLogItem(BaseModel):
     timestamp: str
     service: str
     level: str
-    levelLabel: str
     summary: str
 
 

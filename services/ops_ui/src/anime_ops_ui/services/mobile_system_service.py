@@ -138,17 +138,14 @@ def _service_label(service: str, *, locale: str | None = None) -> str:
     return service
 
 
-def _level_info(level: str, *, locale: str | None = None) -> tuple[str, str]:
+def _normalized_level(level: str) -> str:
     normalized = (level or "").strip().lower()
-    mapping = {
-        "error": ("error", _locale_text(locale, en="Error", zh="错误")),
-        "warning": ("warning", _locale_text(locale, en="Warning", zh="警告")),
-        "info": ("info", _locale_text(locale, en="Info", zh="信息")),
-    }
-    return mapping.get(normalized, ("info", _locale_text(locale, en="Info", zh="信息")))
+    if normalized in {"error", "warning", "info"}:
+        return normalized
+    return "info"
 
 
-def _download_state_info(raw_state: str | None, *, locale: str | None = None) -> tuple[str, str, int]:
+def _download_state_info(raw_state: str | None) -> tuple[str, int]:
     state = (raw_state or "").strip()
     downloading_states = {
         "downloading",
@@ -171,12 +168,12 @@ def _download_state_info(raw_state: str | None, *, locale: str | None = None) ->
     }
 
     if state in downloading_states:
-        return "downloading", _locale_text(locale, en="Downloading", zh="下载中"), 0
+        return "downloading", 0
     if state in queued_states:
-        return "queued", _locale_text(locale, en="Queued", zh="排队中"), 1
+        return "queued", 1
     if state in completed_states:
-        return "completed", _locale_text(locale, en="Completed", zh="已完成"), 2
-    return "other", _locale_text(locale, en="Waiting", zh="等待中"), 3
+        return "completed", 2
+    return "other", 3
 
 
 def _parse_progress(raw_progress: Any, *, normalized_state: str) -> float:
@@ -231,7 +228,7 @@ def build_system_downloads_payload(*, locale: str | None = None) -> dict[str, An
 
     for item in torrent_items:
         raw_state = str(item.get("state") or "")
-        normalized_state, state_label, sort_rank = _download_state_info(raw_state, locale=locale)
+        normalized_state, sort_rank = _download_state_info(raw_state)
         progress = _parse_progress(item.get("progress"), normalized_state=normalized_state)
         total_bytes = _parse_int(item.get("size") or item.get("total_size"))
         downloaded_bytes = _parse_int(item.get("completed"))
@@ -254,7 +251,6 @@ def build_system_downloads_payload(*, locale: str | None = None) -> dict[str, An
                     totalBytes=total_bytes,
                     progress=progress,
                     downloadSpeedBytesPerSec=download_speed,
-                    stateLabel=state_label,
                     state=normalized_state,
                     addedAt=added_at_value,
                 ).model_dump(),
@@ -277,14 +273,12 @@ def build_system_logs_payload(*, locale: str | None = None, limit: int = 30) -> 
     for entry in payload.get("items", []):
         if not isinstance(entry, dict):
             continue
-        level, level_label = _level_info(str(entry.get("level") or "info"), locale=locale)
         items.append(
             SystemLogItem(
                 id=str(entry.get("id") or f"log_{len(items)}"),
                 timestamp=str(entry.get("ts") or _system_timestamp()),
                 service=_service_label(str(entry.get("source") or ""), locale=locale),
-                level=level,
-                levelLabel=level_label,
+                level=_normalized_level(str(entry.get("level") or "info")),
                 summary=str(entry.get("message") or ""),
             ).model_dump()
         )

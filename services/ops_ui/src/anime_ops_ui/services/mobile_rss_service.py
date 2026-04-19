@@ -47,23 +47,19 @@ def _rss_title(item: dict[str, Any], *, locale: str | None = None) -> str:
     return _locale_text(locale, en="Unnamed source", zh="未命名订阅")
 
 
-def _connection_state_info(raw_value: str | None, *, locale: str | None = None) -> tuple[str, str]:
+def _connection_state(raw_value: str | None) -> str:
     normalized = str(raw_value or "").strip().lower()
     if not normalized:
-        return "unknown", _locale_text(locale, en="Unchecked", zh="未检查")
+        return "unknown"
 
     connected_markers = {"connected", "success", "ok", "healthy", "已连接"}
     issue_markers = {"error", "failed", "timeout", "abnormal", "异常", "失败", "超时"}
 
     if normalized in connected_markers or "connect" in normalized or "连接" in normalized:
-        return "connected", _locale_text(locale, en="Connected", zh="已连接")
+        return "connected"
     if normalized in issue_markers or "error" in normalized or "异常" in normalized or "失败" in normalized:
-        return "issue", _locale_text(locale, en="Issue", zh="连接异常")
-    return "unknown", _locale_text(locale, en="Unchecked", zh="未检查")
-
-
-def _enabled_state_label(enabled: bool, *, locale: str | None = None) -> str:
-    return _locale_text(locale, en="Enabled", zh="启用") if enabled else _locale_text(locale, en="Disabled", zh="禁用")
+        return "issue"
+    return "unknown"
 
 
 def _last_checked_label(raw_value: Any) -> str | None:
@@ -130,17 +126,12 @@ def build_rss_list_payload(*, locale: str | None = None) -> dict[str, Any]:
     items: list[tuple[int, str, dict[str, Any]]] = []
     for item in client.fetch_rss_sources():
         enabled = bool(item.get("enabled"))
-        connection_state, connection_state_label = _connection_state_info(
-            item.get("connection_status"),
-            locale=locale,
-        )
+        connection_state = _connection_state(item.get("connection_status"))
         list_item = RSSListItem(
             rssId=int(item.get("id") or 0),
             title=_rss_title(item, locale=locale),
             connectionState=connection_state,
-            connectionStateLabel=connection_state_label,
             enabled=enabled,
-            enabledStateLabel=_enabled_state_label(enabled, locale=locale),
             lastCheckedLabel=_last_checked_label(item.get("last_checked_at")),
         ).model_dump()
         items.append((0 if enabled else 1, list_item["title"].lower(), list_item))
