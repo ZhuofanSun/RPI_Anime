@@ -59,50 +59,26 @@ def get_collection_item(
     if series is None:
         return None
 
-    seasons = _read_collection_seasons(_anime_data_root(), jellyfin_item_id)
-    episodes = _read_collection_episodes(_anime_data_root(), jellyfin_item_id)
-    selected_season_id = seasons[-1]["id"] if seasons else None
-    selected_episodes = [episode for episode in episodes if episode.get("parent_id") == selected_season_id]
-    if not selected_episodes:
-        selected_episodes = episodes
+    context = get_jellyfin_series_context(jellyfin_item_id, public_base_url=public_base_url)
+    if context is None:
+        return None
 
-    season_payload = [
-        {
-            "id": _collection_app_item_id(str(season["id"])),
-            "label": _season_label(season),
-            "selected": str(season["id"]) == selected_season_id,
-        }
-        for season in seasons
-    ]
-    episode_payload = [
-        {
-            "id": _collection_app_item_id(str(episode["id"])),
-            "label": _episode_label(episode),
-            "focused": index == len(selected_episodes) - 1,
-            "unread": False,
-        }
-        for index, episode in enumerate(selected_episodes)
-    ]
-    poster_url = build_mobile_jellyfin_poster_url(
-        jellyfin_item_id=jellyfin_item_id,
-        public_base_url=public_base_url,
-    ) or ""
+    season_payload = _format_series_entries(context["seasons"], prefix=_COLLECTION_APP_ITEM_PREFIX)
+    episode_payload = _format_series_entries(context["episodes"], prefix=_COLLECTION_APP_ITEM_PREFIX)
     latest_episode = episode_payload[-1] if episode_payload else None
-    selected_season = season_payload[-1] if season_payload else None
-    year_label = _premiere_year(series.get("premiere_date"))
 
     return {
         "appItemId": app_item_id,
         "mappingStatus": "mapped",
-        "title": _display_title(series),
+        "title": str(context["title"]),
         "heroState": "playable_primed" if latest_episode is not None else "unavailable",
         "hero": {
-            "posterUrl": poster_url,
-            "backdropUrl": poster_url,
+            "posterUrl": str(context["posterUrl"]),
+            "backdropUrl": str(context["posterUrl"]),
             **(
                 {
-                    "latestPlayableEpisodeId": latest_episode["id"],
-                    "primedLabel": latest_episode["label"],
+                    "latestPlayableEpisodeId": str(context["latestPlayableEpisodeId"]),
+                    "primedLabel": str(context["primedLabel"]),
                     "playTarget": "zFuse",
                 }
                 if latest_episode is not None
@@ -110,19 +86,76 @@ def get_collection_item(
             ),
         },
         "summary": {
-            "freshness": year_label,
-            "availableEpisodeCount": len(episodes),
-            "seasonLabel": selected_season["label"] if selected_season is not None else year_label,
-            "score": _score_label(series.get("community_rating")),
-            "tags": _tags(series.get("tags")),
+            "freshness": str(context["freshness"]),
+            "availableEpisodeCount": int(context["availableEpisodeCount"]),
+            "seasonLabel": str(context["seasonLabel"]),
+            "score": str(context["score"]),
+            "tags": list(context["tags"]),
         },
-        "overview": _overview(series.get("overview")),
+        "overview": str(context["overview"]),
         "seasons": season_payload,
         "episodes": episode_payload,
         "recentSeasonal": _recent_seasonal_items(
             public_host=public_host,
             public_base_url=public_base_url,
         ),
+    }
+
+
+def get_jellyfin_series_context(
+    jellyfin_item_id: str,
+    *,
+    public_base_url: str | None = None,
+) -> dict[str, Any] | None:
+    series = _read_series_detail(_anime_data_root(), jellyfin_item_id)
+    if series is None:
+        return None
+
+    seasons = _read_series_children(_anime_data_root(), jellyfin_item_id, child_type=_JELLYFIN_SEASON_TYPE)
+    episodes = _read_series_children(_anime_data_root(), jellyfin_item_id, child_type=_JELLYFIN_EPISODE_TYPE)
+    selected_season_id = seasons[-1]["id"] if seasons else None
+    selected_episodes = [episode for episode in episodes if episode.get("parent_id") == selected_season_id]
+    if not selected_episodes:
+        selected_episodes = episodes
+
+    season_entries = [
+        {
+            "id": str(season["id"]),
+            "label": _season_label(season),
+            "selected": str(season["id"]) == selected_season_id,
+        }
+        for season in seasons
+    ]
+    episode_entries = [
+        {
+            "id": str(episode["id"]),
+            "label": _episode_label(episode),
+            "focused": index == len(selected_episodes) - 1,
+            "unread": False,
+        }
+        for index, episode in enumerate(selected_episodes)
+    ]
+    latest_episode = episode_entries[-1] if episode_entries else None
+    selected_season = season_entries[-1] if season_entries else None
+    freshness = _premiere_year(series.get("premiere_date"))
+
+    return {
+        "title": _display_title(series),
+        "posterUrl": build_mobile_jellyfin_poster_url(
+            jellyfin_item_id=jellyfin_item_id,
+            public_base_url=public_base_url,
+        )
+        or "",
+        "availableEpisodeCount": len(episodes),
+        "freshness": freshness,
+        "seasonLabel": str(selected_season["label"]) if selected_season is not None else freshness,
+        "score": _score_label(series.get("community_rating")),
+        "tags": _tags(series.get("tags")),
+        "overview": _overview(series.get("overview")),
+        "seasons": season_entries,
+        "episodes": episode_entries,
+        "latestPlayableEpisodeId": str(latest_episode["id"]) if latest_episode is not None else None,
+        "primedLabel": str(latest_episode["label"]) if latest_episode is not None else None,
     }
 
 
@@ -229,8 +262,41 @@ def _read_collection_series_detail(anime_data_root: Path, jellyfin_item_id: str)
     return _row_dict(row) if row is not None else None
 
 
+def _read_series_detail(anime_data_root: Path, jellyfin_item_id: str) -> dict[str, Any] | None:
+    db_path = _jellyfin_db_path(anime_data_root)
+    if not db_path.exists():
+        return None
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT
+                    Id,
+                    Name,
+                    OriginalTitle,
+                    Overview,
+                    CommunityRating,
+                    PremiereDate,
+                    Tags,
+                    Path,
+                    DateCreated
+                FROM BaseItems
+                WHERE Id = ?
+                    AND Type = ?
+                LIMIT 1
+                """,
+                (jellyfin_item_id, _JELLYFIN_SERIES_TYPE),
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+
+    return _row_dict(row) if row is not None else None
+
+
 def _read_collection_seasons(anime_data_root: Path, jellyfin_item_id: str) -> list[dict[str, Any]]:
-    return _read_collection_children(
+    return _read_series_children(
         anime_data_root,
         jellyfin_item_id,
         child_type=_JELLYFIN_SEASON_TYPE,
@@ -238,14 +304,14 @@ def _read_collection_seasons(anime_data_root: Path, jellyfin_item_id: str) -> li
 
 
 def _read_collection_episodes(anime_data_root: Path, jellyfin_item_id: str) -> list[dict[str, Any]]:
-    return _read_collection_children(
+    return _read_series_children(
         anime_data_root,
         jellyfin_item_id,
         child_type=_JELLYFIN_EPISODE_TYPE,
     )
 
 
-def _read_collection_children(anime_data_root: Path, jellyfin_item_id: str, *, child_type: str) -> list[dict[str, Any]]:
+def _read_series_children(anime_data_root: Path, jellyfin_item_id: str, *, child_type: str) -> list[dict[str, Any]]:
     db_path = _jellyfin_db_path(anime_data_root)
     if not db_path.exists():
         return []
@@ -353,6 +419,22 @@ def _episode_label(episode: dict[str, Any]) -> str:
         return f"E{index:02d}"
     name = str(episode.get("name") or "").strip()
     return name or "Episode"
+
+
+def _format_series_entries(entries: list[dict[str, Any]], *, prefix: str, mark_focused_unread: bool = False) -> list[dict[str, Any]]:
+    formatted: list[dict[str, Any]] = []
+    for entry in entries:
+        focused = bool(entry.get("focused"))
+        formatted.append(
+            {
+                "id": f"{prefix}{entry['id']}",
+                "label": entry["label"],
+                **({"selected": bool(entry.get("selected"))} if "selected" in entry else {}),
+                **({"focused": focused} if "focused" in entry else {}),
+                **({"unread": focused if mark_focused_unread else bool(entry.get("unread"))} if "unread" in entry else {}),
+            }
+        )
+    return formatted
 
 
 def _recent_seasonal_items(

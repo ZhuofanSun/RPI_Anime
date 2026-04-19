@@ -237,6 +237,136 @@ def test_mobile_detail_supports_real_collection_entries(client):
     assert payload["overview"] == "A strange story."
 
 
+def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(client, monkeypatch):
+    from anime_ops_ui.services import mobile_detail_service
+
+    data_root = client.app.state.test_paths["data_root"]
+    _write_collection_jellyfin_db(
+        data_root,
+        [
+            (
+                "JF-SERIES-99",
+                "Ling Cage",
+                "Ling Cage",
+                "Real library overview.",
+                9.3,
+                "2019-07-13 00:00:00",
+                "Sci-Fi|Action|Post-Apocalyptic",
+                "/media/seasonal/Ling Cage",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "2026-04-19 00:00:00",
+                "MediaBrowser.Controller.Entities.TV.Series",
+            ),
+            (
+                "JF-SEASON-99-1",
+                "Season 1",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "/media/seasonal/Ling Cage/Season 1",
+                "JF-SERIES-99",
+                None,
+                1,
+                None,
+                "JF-SERIES-99",
+                "2026-04-19 00:00:00",
+                "MediaBrowser.Controller.Entities.TV.Season",
+            ),
+            (
+                "JF-EP-99-1",
+                "Episode 1",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "/media/seasonal/Ling Cage/Season 1/Ling Cage S01E01.mkv",
+                "JF-SEASON-99-1",
+                None,
+                1,
+                1,
+                "JF-SERIES-99",
+                "2026-04-19 00:00:00",
+                "MediaBrowser.Controller.Entities.TV.Episode",
+            ),
+            (
+                "JF-EP-99-2",
+                "Episode 2",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "/media/seasonal/Ling Cage/Season 1/Ling Cage S01E02.mkv",
+                "JF-SEASON-99-1",
+                None,
+                2,
+                1,
+                "JF-SERIES-99",
+                "2026-04-19 00:00:00",
+                "MediaBrowser.Controller.Entities.TV.Episode",
+            ),
+        ],
+    )
+
+    monkeypatch.setattr(
+        mobile_detail_service,
+        "get_seasonal_item",
+        lambda app_item_id, public_host=None, public_base_url=None: {
+            "appItemId": "app_following_ab_42",
+            "title": "灵笼 第一季",
+            "posterUrl": "https://example.com/poster.jpg",
+            "mappingStatus": "mapped",
+            "availabilityState": "mapped_playable",
+            "isLibraryReady": True,
+            "jellyfinSeriesId": "JF-SERIES-99",
+            "detail": {
+                "season_label": "2026 春",
+                "source": "Baha",
+                "group_name": "ANi",
+                "dpi": "1080P",
+                "subtitle": "fallback subtitle",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        mobile_detail_service,
+        "build_recent_seasonal",
+        lambda exclude_app_item_id=None, limit=6, public_host=None, public_base_url=None: [],
+    )
+
+    response = client.get("/api/mobile/items/app_following_ab_42", headers={"host": "100.123.232.73:3000"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["appItemId"] == "app_following_ab_42"
+    assert payload["title"] == "灵笼 第一季"
+    assert payload["heroState"] == "playable_primed"
+    assert payload["hero"]["latestPlayableEpisodeId"] == "app_following_jf_JF-EP-99-2"
+    assert payload["hero"]["primedLabel"] == "E02"
+    assert payload["summary"]["freshness"] == "本周更新"
+    assert payload["summary"]["availableEpisodeCount"] == 2
+    assert payload["summary"]["seasonLabel"] == "S01"
+    assert payload["summary"]["score"] == "9.3"
+    assert payload["summary"]["tags"] == ["Sci-Fi", "Action", "Post-Apocalyptic"]
+    assert payload["overview"] == "Real library overview."
+    assert payload["seasons"] == [{"id": "app_following_jf_JF-SEASON-99-1", "label": "S01", "selected": True}]
+    assert payload["episodes"] == [
+        {"id": "app_following_jf_JF-EP-99-1", "label": "E01", "focused": False, "unread": False},
+        {"id": "app_following_jf_JF-EP-99-2", "label": "E02", "focused": True, "unread": True},
+    ]
+    hero_poster = urlsplit(payload["hero"]["posterUrl"])
+    hero_query = parse_qs(hero_poster.query)
+    assert hero_poster.path == "/api/mobile/media/poster"
+    assert hero_query["jellyfinItemId"] == ["JF-SERIES-99"]
+
+
 def test_mobile_detail_uses_request_host_for_seasonal_payload(client, monkeypatch):
     from anime_ops_ui.services import mobile_detail_service
 

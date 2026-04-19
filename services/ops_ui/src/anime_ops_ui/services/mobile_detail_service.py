@@ -1,5 +1,9 @@
-from anime_ops_ui.services.mobile_collection_service import get_collection_item
-from anime_ops_ui.services.mobile_media_service import build_mobile_poster_url
+from anime_ops_ui.services.mobile_collection_service import (
+    _format_series_entries,
+    get_collection_item,
+    get_jellyfin_series_context,
+)
+from anime_ops_ui.services.mobile_media_service import build_mobile_jellyfin_poster_url, build_mobile_poster_url
 from anime_ops_ui.services.mobile_seasonal_service import build_recent_seasonal, get_seasonal_item
 
 
@@ -111,7 +115,7 @@ def _build_seasonal_detail_payload(
 ) -> dict:
     app_item_id = str(item["appItemId"])
     title = str(item["title"])
-    poster_url = build_mobile_poster_url(
+    fallback_poster_url = build_mobile_poster_url(
         poster_link=str(item.get("posterUrl") or "").strip() or None,
         public_base_url=public_base_url,
     ) or str(item.get("posterUrl") or "https://example.com/poster.jpg")
@@ -119,9 +123,37 @@ def _build_seasonal_detail_payload(
     availability_state = str(item.get("availabilityState") or "subscription_only")
     playable = availability_state == "mapped_playable"
     detail = item.get("detail") if isinstance(item.get("detail"), dict) else {}
-    season_label = str(detail.get("season_label") or "2026 春")
-    tags = [value for value in [detail.get("source"), detail.get("group_name"), detail.get("dpi")] if value][:5]
-    overview = str(detail.get("review_reason") or detail.get("subtitle") or ("示例简介" if playable else "整理中"))
+    fallback_season_label = str(detail.get("season_label") or "2026 春")
+    fallback_tags = [value for value in [detail.get("source"), detail.get("group_name"), detail.get("dpi")] if value][:5]
+    fallback_overview = str(detail.get("review_reason") or detail.get("subtitle") or ("示例简介" if playable else "整理中"))
+    jellyfin_series_id = str(item.get("jellyfinSeriesId") or "").strip() or None
+    jellyfin_context = (
+        get_jellyfin_series_context(jellyfin_series_id, public_base_url=public_base_url)
+        if jellyfin_series_id is not None
+        else None
+    )
+    poster_url = (
+        build_mobile_jellyfin_poster_url(jellyfin_item_id=jellyfin_series_id, public_base_url=public_base_url)
+        if jellyfin_series_id is not None
+        else None
+    ) or str(jellyfin_context.get("posterUrl") if jellyfin_context else "") or fallback_poster_url
+    latest_episode_id = str(jellyfin_context["latestPlayableEpisodeId"]) if jellyfin_context else None
+    primed_label = str(jellyfin_context["primedLabel"]) if jellyfin_context else None
+    seasons = (
+        _format_series_entries(jellyfin_context["seasons"], prefix="app_following_jf_")
+        if jellyfin_context is not None
+        else ([{"id": "season_1", "label": "第一季", "selected": True}] if playable else [])
+    )
+    episodes = (
+        _format_series_entries(jellyfin_context["episodes"], prefix="app_following_jf_", mark_focused_unread=playable)
+        if jellyfin_context is not None
+        else ([{"id": "latest", "label": "第 1 集", "focused": True, "unread": True}] if playable else [])
+    )
+    score = str(jellyfin_context["score"]) if jellyfin_context is not None else "10.0"
+    season_label = str(jellyfin_context["seasonLabel"]) if jellyfin_context is not None else fallback_season_label
+    tags = list(jellyfin_context["tags"]) if jellyfin_context is not None and jellyfin_context["tags"] else fallback_tags
+    overview = str(jellyfin_context["overview"]) if jellyfin_context is not None and jellyfin_context["overview"] else fallback_overview
+    available_episode_count = int(jellyfin_context["availableEpisodeCount"]) if jellyfin_context is not None else (1 if playable else 0)
 
     return {
         "appItemId": app_item_id,
@@ -133,8 +165,8 @@ def _build_seasonal_detail_payload(
             "backdropUrl": poster_url,
             **(
                 {
-                    "latestPlayableEpisodeId": "latest",
-                    "primedLabel": "第 1 集",
+                    "latestPlayableEpisodeId": f"app_following_jf_{latest_episode_id}" if latest_episode_id else "latest",
+                    "primedLabel": primed_label or "第 1 集",
                     "playTarget": "zFuse",
                 }
                 if playable
@@ -143,14 +175,14 @@ def _build_seasonal_detail_payload(
         },
         "summary": {
             "freshness": "本周更新",
-            "availableEpisodeCount": 1 if playable else 0,
+            "availableEpisodeCount": available_episode_count,
             "seasonLabel": season_label,
-            "score": "10.0",
+            "score": score,
             "tags": tags,
         },
         "overview": overview,
-        "seasons": [{"id": "season_1", "label": "第一季", "selected": True}] if playable else [],
-        "episodes": [{"id": "latest", "label": "第 1 集", "focused": True, "unread": True}] if playable else [],
+        "seasons": seasons,
+        "episodes": episodes,
         "recentSeasonal": _recent_seasonal_items(
             exclude_app_item_id=app_item_id,
             public_host=public_host,
