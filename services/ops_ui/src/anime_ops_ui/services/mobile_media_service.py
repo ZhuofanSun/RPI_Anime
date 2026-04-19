@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
+import sqlite3
+from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 import requests
@@ -24,6 +27,21 @@ def build_mobile_poster_url(*, poster_link: str | None, public_base_url: str | N
     return f"{base_url}/api/mobile/media/poster?{urlencode({'path': normalized_path, 'sig': sign_mobile_poster_path(normalized_path)})}"
 
 
+def build_mobile_jellyfin_poster_url(*, jellyfin_item_id: str | None, public_base_url: str | None) -> str | None:
+    normalized_item_id = _normalize_jellyfin_item_id(jellyfin_item_id)
+    if normalized_item_id is None:
+        return None
+
+    base_url = str(public_base_url or "").strip().rstrip("/")
+    if not base_url:
+        return None
+
+    return (
+        f"{base_url}/api/mobile/media/poster?"
+        f"{urlencode({'jellyfinItemId': normalized_item_id, 'sig': sign_mobile_jellyfin_item_id(normalized_item_id)})}"
+    )
+
+
 def sign_mobile_poster_path(path: str) -> str:
     normalized_path = _normalize_poster_path(path)
     return hmac.new(
@@ -33,22 +51,59 @@ def sign_mobile_poster_path(path: str) -> str:
     ).hexdigest()
 
 
-def proxy_mobile_poster(*, path: str, sig: str) -> Response:
-    normalized_path = _normalize_poster_path(path)
-    if not hmac.compare_digest(sig, sign_mobile_poster_path(normalized_path)):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid poster signature.")
+def sign_mobile_jellyfin_item_id(item_id: str) -> str:
+    normalized_item_id = _normalize_jellyfin_item_id(item_id)
+    if normalized_item_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing Jellyfin item id.")
+    return hmac.new(
+        session_token().encode("utf-8"),
+        normalized_item_id.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
-    upstream_url = _autobangumi_poster_url(normalized_path)
-    try:
-        upstream = requests.get(upstream_url, timeout=10)
-    except requests.RequestException as exc:
+
+def proxy_mobile_poster(*, path: str | None = None, jellyfin_item_id: str | None = None, sig: str) -> Response:
+    has_path = str(path or "").strip() != ""
+    has_jellyfin_item_id = str(jellyfin_item_id or "").strip() != ""
+    if has_path == has_jellyfin_item_id:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to fetch poster from AutoBangumi: {exc}",
-        ) from exc
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide exactly one poster target.",
+        )
 
-    if upstream.status_code >= 400:
-        raise HTTPException(status_code=upstream.status_code, detail="Poster not available.")
+    if has_path:
+        normalized_path = _normalize_poster_path(str(path))
+        if not hmac.compare_digest(sig, sign_mobile_poster_path(normalized_path)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid poster signature.")
+        upstream_urls = [_autobangumi_poster_url(normalized_path)]
+    else:
+        normalized_item_id = _normalize_jellyfin_item_id(jellyfin_item_id)
+        if normalized_item_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing Jellyfin item id.")
+        if not hmac.compare_digest(sig, sign_mobile_jellyfin_item_id(normalized_item_id)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid poster signature.")
+        upstream_urls = [_jellyfin_poster_url(normalized_item_id), *_jellyfin_fallback_poster_urls(normalized_item_id)]
+
+    upstream = None
+    not_found = False
+    for upstream_url in upstream_urls:
+        try:
+            candidate = requests.get(upstream_url, timeout=10)
+        except requests.RequestException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to fetch poster asset: {exc}",
+            ) from exc
+        if candidate.status_code == 404:
+            not_found = True
+            continue
+        if candidate.status_code >= 400:
+            raise HTTPException(status_code=candidate.status_code, detail="Poster not available.")
+        upstream = candidate
+        break
+
+    if upstream is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND if not_found else status.HTTP_502_BAD_GATEWAY, detail="Poster not available.")
 
     headers = {}
     for header in ("Cache-Control", "ETag", "Last-Modified", "Content-Length"):
@@ -111,6 +166,15 @@ def _normalize_poster_path(path: str) -> str:
     return normalized_path
 
 
+def _normalize_jellyfin_item_id(item_id: str | None) -> str | None:
+    normalized = str(item_id or "").strip()
+    if not normalized:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9-]+", normalized):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Jellyfin item id.")
+    return normalized
+
+
 def _autobangumi_poster_url(path: str) -> str:
     main_module = runtime_main_module()
     autobangumi_port = int(main_module._env("AUTOBANGUMI_PORT", "7892"))
@@ -121,3 +185,60 @@ def _autobangumi_poster_url(path: str) -> str:
     else:
         asset_base = f"http://autobangumi:{autobangumi_port}"
     return f"{asset_base.rstrip('/')}/{path.lstrip('/')}"
+
+
+def _jellyfin_poster_url(item_id: str) -> str:
+    main_module = runtime_main_module()
+    jellyfin_port = int(main_module._env("JELLYFIN_PORT", "8096"))
+    return f"http://jellyfin:{jellyfin_port}/Items/{item_id}/Images/Primary"
+
+
+def _jellyfin_fallback_poster_urls(item_id: str) -> list[str]:
+    fallback_item_ids = _jellyfin_fallback_item_ids(item_id)
+    return [_jellyfin_poster_url(fallback_item_id) for fallback_item_id in fallback_item_ids if fallback_item_id != item_id]
+
+
+def _jellyfin_fallback_item_ids(item_id: str) -> list[str]:
+    db_path = _jellyfin_db_path()
+    if not db_path.exists():
+        return []
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            season_row = conn.execute(
+                """
+                SELECT Id
+                FROM BaseItems
+                WHERE Type = ?
+                    AND SeriesId = ?
+                ORDER BY COALESCE(IndexNumber, 0), Id
+                LIMIT 1
+                """,
+                ("MediaBrowser.Controller.Entities.TV.Season", item_id),
+            ).fetchone()
+            episode_row = conn.execute(
+                """
+                SELECT Id
+                FROM BaseItems
+                WHERE Type = ?
+                    AND SeriesId = ?
+                ORDER BY COALESCE(ParentIndexNumber, 0), COALESCE(IndexNumber, 0), Id
+                LIMIT 1
+                """,
+                ("MediaBrowser.Controller.Entities.TV.Episode", item_id),
+            ).fetchone()
+    except sqlite3.Error:
+        return []
+
+    fallbacks: list[str] = []
+    if season_row is not None and season_row[0] is not None:
+        fallbacks.append(str(season_row[0]))
+    if episode_row is not None and episode_row[0] is not None:
+        fallbacks.append(str(episode_row[0]))
+    return fallbacks
+
+
+def _jellyfin_db_path() -> Path:
+    main_module = runtime_main_module()
+    anime_data_root = main_module.Path(main_module._env("ANIME_DATA_ROOT", "/srv/anime-data"))
+    return anime_data_root / "appdata" / "jellyfin" / "config" / "data" / "jellyfin.db"

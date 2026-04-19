@@ -8,7 +8,8 @@ router = APIRouter(prefix="/api/mobile/media", tags=["mobile-media"])
 
 @router.get("/poster")
 def get_mobile_poster(
-    path: str = Query(..., min_length=1, max_length=2048),
+    path: str | None = Query(default=None, min_length=1, max_length=2048),
+    jellyfinItemId: str | None = Query(default=None, min_length=1, max_length=256),
     sig: str = Query(..., min_length=16, max_length=128),
 ) -> Response:
-    return proxy_mobile_poster(path=path, sig=sig)
+    return proxy_mobile_poster(path=path, jellyfin_item_id=jellyfinItemId, sig=sig)

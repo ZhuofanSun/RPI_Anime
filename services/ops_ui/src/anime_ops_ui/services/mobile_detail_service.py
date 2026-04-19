@@ -1,14 +1,6 @@
+from anime_ops_ui.services.mobile_collection_service import get_collection_item
 from anime_ops_ui.services.mobile_media_service import build_mobile_poster_url
 from anime_ops_ui.services.mobile_seasonal_service import build_recent_seasonal, get_seasonal_item
-
-_DETAIL_TITLES = {
-    "app_collection_demo_1": "罗小黑战记",
-    "app_collection_demo_2": "猫之茗",
-    "app_collection_demo_3": "第一序列",
-    "app_collection_demo_4": "火凤燎原",
-    "app_collection_demo_5": "天宝伏妖录",
-    "app_collection_demo_6": "大理寺日志",
-}
 
 
 def build_detail_payload(
@@ -29,7 +21,15 @@ def build_detail_payload(
             public_base_url=public_base_url,
         )
 
-    title = _DETAIL_TITLES.get(app_item_id, "示例条目")
+    collection_item = get_collection_item(
+        app_item_id,
+        public_host=public_host,
+        public_base_url=public_base_url,
+    )
+    if collection_item is not None:
+        return collection_item
+
+    title = "示例条目"
     if app_item_id.endswith("unmapped"):
         return {
             "appItemId": app_item_id,

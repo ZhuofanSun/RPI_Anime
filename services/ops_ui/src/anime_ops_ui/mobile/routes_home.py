@@ -17,5 +17,7 @@ def get_following(request: Request) -> dict:
 
 
 @router.get("/favorites")
-def get_favorites() -> dict:
-    return build_favorites_payload()
+def get_favorites(request: Request) -> dict:
+    return build_favorites_payload(
+        public_base_url=str(request.base_url).rstrip("/"),
+    )

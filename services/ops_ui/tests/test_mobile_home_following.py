@@ -1,6 +1,44 @@
+import sqlite3
 from urllib.parse import parse_qs, urlsplit
 
 from anime_ops_ui.domain.mobile_models import HomeFollowingItem
+
+
+def _write_collection_jellyfin_db(data_root, rows):
+    db_path = data_root / "appdata" / "jellyfin" / "config" / "data" / "jellyfin.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE BaseItems (
+                Id TEXT,
+                Name TEXT,
+                OriginalTitle TEXT,
+                Overview TEXT,
+                CommunityRating REAL,
+                PremiereDate TEXT,
+                Tags TEXT,
+                Path TEXT,
+                ParentId TEXT,
+                TopParentId TEXT,
+                IndexNumber INTEGER,
+                ParentIndexNumber INTEGER,
+                SeriesId TEXT,
+                DateCreated TEXT,
+                Type TEXT
+            )
+            """
+        )
+        conn.executemany(
+            """
+            INSERT INTO BaseItems (
+                Id, Name, OriginalTitle, Overview, CommunityRating, PremiereDate, Tags, Path,
+                ParentId, TopParentId, IndexNumber, ParentIndexNumber, SeriesId, DateCreated, Type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        conn.commit()
 
 
 def test_mobile_home_following_returns_card_contract(client, monkeypatch):
@@ -31,15 +69,118 @@ def test_mobile_home_following_returns_card_contract(client, monkeypatch):
     assert first["appItemId"] == "app_following_ab_42"
 
 
-def test_mobile_home_favorites_returns_collection_grid_contract(client):
-    response = client.get("/api/mobile/home/favorites")
+def test_mobile_home_favorites_returns_real_collection_grid_contract(client):
+    data_root = client.app.state.test_paths["data_root"]
+    _write_collection_jellyfin_db(
+        data_root,
+        [
+            (
+                "COLLECTION_ROOT",
+                "collection",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "/media/collection",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "2026-04-19 00:00:00",
+                "MediaBrowser.Controller.Entities.Folder",
+            ),
+            (
+                "JF-SERIES-42",
+                "Bakemonogatari",
+                "Bakemonogatari",
+                "A strange story.",
+                8.7,
+                "2009-07-03 00:00:00",
+                "Supernatural|Mystery",
+                "/media/collection/Bakemonogatari",
+                "COLLECTION_ROOT",
+                "COLLECTION_ROOT",
+                None,
+                None,
+                None,
+                "2026-04-19 00:00:00",
+                "MediaBrowser.Controller.Entities.TV.Series",
+            ),
+            (
+                "JF-SEASON-42-1",
+                "Season 1",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "/media/collection/Bakemonogatari/Season 1",
+                "JF-SERIES-42",
+                "COLLECTION_ROOT",
+                1,
+                None,
+                "JF_SERIES_42",
+                "2026-04-19 00:00:00",
+                "MediaBrowser.Controller.Entities.TV.Season",
+            ),
+            (
+                "JF-EP-42-1",
+                "Hitagi Crab",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "/media/collection/Bakemonogatari/Season 1/Bakemonogatari S01E01.mkv",
+                "JF-SEASON-42-1",
+                "COLLECTION_ROOT",
+                1,
+                1,
+                "JF-SERIES-42",
+                "2026-04-19 00:00:00",
+                "MediaBrowser.Controller.Entities.TV.Episode",
+            ),
+            (
+                "JF-SERIES-OUTSIDE",
+                "Seasonal Title",
+                "Seasonal Title",
+                None,
+                None,
+                None,
+                None,
+                "/media/seasonal/Seasonal Title",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "2026-04-19 00:00:00",
+                "MediaBrowser.Controller.Entities.TV.Series",
+            ),
+        ],
+    )
+
+    response = client.get("/api/mobile/home/favorites", headers={"host": "100.123.232.73:3000"})
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["updatedAt"] != "2099-01-01T00:00:00Z"
+    assert len(payload["items"]) == 1
     first = payload["items"][0]
     assert {"appItemId", "title", "posterUrl", "unread", "mappingStatus", "availabilityState"} <= set(first)
-    assert first["appItemId"].startswith("app_collection_")
+    poster = urlsplit(first["posterUrl"])
+    query = parse_qs(poster.query)
+    assert first["appItemId"] == "app_collection_jf_JF-SERIES-42"
+    assert first["title"] == "Bakemonogatari"
+    assert first["jellyfinSeriesId"] == "JF-SERIES-42"
+    assert first["mappingStatus"] == "mapped"
+    assert first["availabilityState"] == "mapped_playable"
+    assert poster.netloc == "100.123.232.73:3000"
+    assert poster.path == "/api/mobile/media/poster"
+    assert query["jellyfinItemId"] == ["JF-SERIES-42"]
+    assert len(query["sig"][0]) == 64
 
 
 def test_mobile_home_following_uses_request_host_for_generated_urls(client, monkeypatch):
