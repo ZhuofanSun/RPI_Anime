@@ -8,6 +8,7 @@ class HomeFollowingItem(BaseModel):
     unread: bool
     mappingStatus: str
     jellyfinSeriesId: str | None = None
+    premiereYear: str | None = None
     availabilityState: str | None = None
 
 

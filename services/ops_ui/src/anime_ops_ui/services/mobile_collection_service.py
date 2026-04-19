@@ -40,6 +40,7 @@ def build_favorite_items(*, public_base_url: str | None = None) -> list[HomeFoll
                 unread=False,
                 mappingStatus="mapped",
                 jellyfinSeriesId=jellyfin_item_id,
+                premiereYear=_premiere_year(row.get("premiere_date")) or None,
                 availabilityState="mapped_playable" if episode_count > 0 else "mapped_unplayable",
             )
         )

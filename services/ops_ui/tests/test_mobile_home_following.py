@@ -175,6 +175,7 @@ def test_mobile_home_favorites_returns_real_collection_grid_contract(client):
     assert first["appItemId"] == "app_collection_jf_JF-SERIES-42"
     assert first["title"] == "Bakemonogatari"
     assert first["jellyfinSeriesId"] == "JF-SERIES-42"
+    assert first["premiereYear"] == "2009"
     assert first["mappingStatus"] == "mapped"
     assert first["availabilityState"] == "mapped_playable"
     assert poster.netloc == "100.123.232.73:3000"
