@@ -8,6 +8,10 @@ from anime_ops_ui import runtime_main_module
 from anime_ops_ui.copy import review_auto_parse_reason
 from anime_ops_ui.i18n import normalize_locale
 from anime_ops_ui.services.review_service import get_manual_review_item, list_manual_review_items
+from anime_ops_ui.services.mobile_timestamp import normalize_mobile_timestamp
+
+
+REVIEW_CHANNEL_IDS = ("all", "unparsed", "duplicates", "failed")
 
 
 def _locale_text(locale: str | None, *, en: str, zh: str) -> str:
@@ -59,23 +63,51 @@ def _detail_payload_or_404(review_item_id: str, *, locale: str | None = None) ->
         raise HTTPException(status_code=404, detail="manual review file not found") from exc
 
 
+def _review_state(bucket: str | None) -> str:
+    if (bucket or "").strip().lower() == "failed":
+        return "abnormal"
+    return "pending"
+
+
+def _review_channels(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counts = {channel_id: 0 for channel_id in REVIEW_CHANNEL_IDS if channel_id != "all"}
+    for item in items:
+        bucket = str(item.get("bucket") or "").strip().lower()
+        if bucket in counts:
+            counts[bucket] += 1
+
+    return [
+        {"id": "all", "count": len(items)},
+        *(
+            {"id": channel_id, "count": counts[channel_id]}
+            for channel_id in REVIEW_CHANNEL_IDS
+            if channel_id != "all"
+        ),
+    ]
+
+
 def build_review_queue_payload(*, locale: str | None = None) -> dict[str, Any]:
-    payload = list_manual_review_items(locale=locale)
+    try:
+        payload = list_manual_review_items(locale=locale)
+    except Exception:
+        payload = {"items": [], "last_updated": None}
+    source_items = [item for item in payload.get("items", []) if isinstance(item, dict)]
     items = [
         {
             "reviewItemId": item["id"],
+            "bucket": str(item.get("bucket") or "unknown"),
             "title": _review_title(item),
             "summary": _queue_summary(item, locale=locale),
             "failureReason": item["reason"],
-            "state": "pending",
-            "queuedAt": item["modified_at"],
+            "state": _review_state(item.get("bucket")),
+            "queuedAt": normalize_mobile_timestamp(item.get("modified_at")),
         }
-        for item in payload.get("items", [])
-        if isinstance(item, dict)
+        for item in source_items
     ]
     return {
+        "channels": _review_channels(source_items),
         "items": items,
-        "updatedAt": payload.get("last_updated"),
+        "updatedAt": normalize_mobile_timestamp(payload.get("last_updated")),
     }
 
 
@@ -88,7 +120,9 @@ def build_review_detail_payload(review_item_id: str, *, locale: str | None = Non
     detail = {
         "reviewItemId": item["id"],
         "title": _review_title(item, defaults),
-        "state": "pending",
+        "summary": _queue_summary(item, locale=locale),
+        "queuedAt": normalize_mobile_timestamp(item.get("modified_at")),
+        "state": _review_state(item.get("bucket")),
         "failureReason": item["reason"],
         "source": {
             "fileName": item["filename"],

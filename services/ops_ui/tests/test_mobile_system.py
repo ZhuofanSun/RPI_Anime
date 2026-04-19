@@ -27,7 +27,7 @@ def test_mobile_system_overview_returns_compact_contract(client, monkeypatch):
                     ],
                 },
             ],
-            "last_updated": "2099-01-01T00:00:00Z",
+            "last_updated": "2099-01-01T00:00:00",
         },
     )
     monkeypatch.setattr(
@@ -48,7 +48,30 @@ def test_mobile_system_overview_returns_compact_contract(client, monkeypatch):
     assert payload["trends"]["downloads7d"]["bars"][0]["label"] == "04-11"
     assert payload["supplementary"]["fan"] == {"title": "风扇", "value": "72%"}
     assert payload["supplementary"]["uptime"]["value"] == "4 天 03:18"
-    assert payload["updatedAt"] == "2099-01-01T00:00:00Z"
+    assert payload["updatedAt"].endswith("Z")
+
+
+def test_mobile_system_overview_degrades_to_safe_payload_when_upstream_raises(client, monkeypatch):
+    def boom(*, locale=None):
+        raise RuntimeError("overview unavailable")
+
+    monkeypatch.setattr(mobile_system_service, "build_overview", boom)
+    monkeypatch.setattr(
+        mobile_system_service,
+        "_fan_value",
+        lambda locale=None: "Unavailable",
+    )
+
+    response = client.get("/api/mobile/system/overview", headers={"Accept-Language": "en"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload) == {"statusCards", "trends", "supplementary", "updatedAt"}
+    assert payload["statusCards"]["cpu"]["displayValue"] == "--"
+    assert payload["trends"]["cpu24h"]["points"] == []
+    assert payload["trends"]["downloads7d"]["bars"] == []
+    assert payload["supplementary"]["fan"]["value"] == "Unavailable"
+    assert payload["updatedAt"].endswith("Z")
 
 
 def test_mobile_system_downloads_returns_compact_contract(client, monkeypatch):
@@ -98,6 +121,20 @@ def test_mobile_system_downloads_returns_compact_contract(client, monkeypatch):
     assert payload["updatedAt"] == "2099-01-01T00:00:00Z"
 
 
+def test_mobile_system_downloads_returns_empty_items_when_qb_fetch_raises(client, monkeypatch):
+    def boom():
+        raise RuntimeError("qB unavailable")
+
+    monkeypatch.setattr(mobile_system_service, "_fetch_qbittorrent_downloads", boom)
+
+    response = client.get("/api/mobile/system/downloads", headers={"Accept-Language": "en"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"] == []
+    assert payload["updatedAt"].endswith("Z")
+
+
 def test_mobile_system_logs_returns_compact_contract(client, monkeypatch):
     monkeypatch.setattr(
         mobile_system_service,
@@ -106,21 +143,21 @@ def test_mobile_system_logs_returns_compact_contract(client, monkeypatch):
             "items": [
                 {
                     "id": "log_001",
-                    "ts": "2099-01-01T00:00:00Z",
+                    "ts": "2099-01-01T00:00:00",
                     "source": "autobangumi",
                     "level": "warning",
                     "message": "RSS 刷新超时，等待下次重试",
                 },
                 {
                     "id": "log_002",
-                    "ts": "2098-12-31T23:59:00Z",
+                    "ts": "2098-12-31T23:59:00",
                     "source": "qbittorrent",
                     "level": "error",
                     "message": "下载任务失败，等待重新连接",
                 },
             ],
             "sources": ["autobangumi", "qbittorrent"],
-            "last_updated": "2099-01-01T00:00:30Z",
+            "last_updated": "2099-01-01T00:00:30",
         },
     )
 
@@ -132,8 +169,23 @@ def test_mobile_system_logs_returns_compact_contract(client, monkeypatch):
     assert len(payload["items"]) == 2
     assert payload["items"][0]["service"] == "AutoBangumi"
     assert payload["items"][0]["level"] == "warning"
+    assert payload["items"][0]["timestamp"].endswith("Z")
     assert payload["items"][1]["service"] == "qBittorrent"
-    assert payload["updatedAt"] == "2099-01-01T00:00:30Z"
+    assert payload["updatedAt"].endswith("Z")
+
+
+def test_mobile_system_logs_returns_empty_items_when_log_service_raises(client, monkeypatch):
+    def boom(*, source=None, limit=30, locale=None):
+        raise RuntimeError("log service unavailable")
+
+    monkeypatch.setattr(mobile_system_service, "build_logs_payload_service", boom)
+
+    response = client.get("/api/mobile/system/logs", headers={"Accept-Language": "en"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"] == []
+    assert payload["updatedAt"].endswith("Z")
 
 
 def test_mobile_system_tailscale_returns_compact_contract(client, monkeypatch):

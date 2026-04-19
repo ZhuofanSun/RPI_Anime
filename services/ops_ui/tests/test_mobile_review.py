@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from anime_ops_ui import main as main_module
+from anime_ops_ui.services import mobile_review_service
 
 
 def _create_review_file(review_root: Path, relative_path: str, *, mtime: int) -> Path:
@@ -20,33 +21,67 @@ def test_mobile_review_list_returns_lightweight_queue_contract(client, tmp_path,
     review_root = tmp_path / "manual_review"
     newer_relative = "unparsed/My Series/Season 1/My Series S01E02.mkv"
     older_relative = "duplicates/Another Series/Season 1/Another Series S01E01.mkv"
+    failed_relative = "failed/Broken Series/Season 1/Broken Series S01E03.mkv"
     _create_review_file(review_root, older_relative, mtime=1_713_312_000)
     _create_review_file(review_root, newer_relative, mtime=1_713_398_400)
+    _create_review_file(review_root, failed_relative, mtime=1_713_200_000)
     monkeypatch.setattr(main_module, "_manual_review_root", lambda: review_root)
 
     response = client.get("/api/mobile/review", headers={"Accept-Language": "en"})
 
     assert response.status_code == 200
     payload = response.json()
-    assert set(payload) == {"items", "updatedAt"}
+    assert set(payload) == {"channels", "items", "updatedAt"}
+    assert payload["channels"] == [
+        {"id": "all", "count": 3},
+        {"id": "unparsed", "count": 1},
+        {"id": "duplicates", "count": 1},
+        {"id": "failed", "count": 1},
+    ]
     assert [item["reviewItemId"] for item in payload["items"]] == [
         _review_item_id(newer_relative),
         _review_item_id(older_relative),
+        _review_item_id(failed_relative),
     ]
     first = payload["items"][0]
     assert set(first) == {
         "reviewItemId",
         "title",
+        "bucket",
         "summary",
         "failureReason",
         "state",
         "queuedAt",
     }
+    assert first["bucket"] == "unparsed"
     assert first["title"] == "My Series"
     assert "Episode 2" in first["summary"]
     assert "My Series S01E02.mkv" in first["summary"]
     assert first["failureReason"] == "Could not reliably parse title or season/episode"
     assert first["state"] == "pending"
+    assert first["queuedAt"].endswith("Z")
+    assert payload["updatedAt"].endswith("Z")
+
+
+def test_mobile_review_list_degrades_to_empty_channel_contract_when_review_listing_raises(client, monkeypatch):
+    def boom(*, locale=None):
+        raise RuntimeError("review root unavailable")
+
+    monkeypatch.setattr(mobile_review_service, "list_manual_review_items", boom)
+
+    response = client.get("/api/mobile/review", headers={"Accept-Language": "en"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "channels": [
+            {"id": "all", "count": 0},
+            {"id": "unparsed", "count": 0},
+            {"id": "duplicates", "count": 0},
+            {"id": "failed", "count": 0},
+        ],
+        "items": [],
+        "updatedAt": None,
+    }
 
 
 def test_mobile_review_detail_returns_lightweight_detail_contract(client, tmp_path, monkeypatch):
@@ -82,7 +117,9 @@ def test_mobile_review_detail_returns_lightweight_detail_contract(client, tmp_pa
     assert payload["reviewItemId"] == _review_item_id(relative_path)
     assert payload["title"] == "My Series"
     assert payload["state"] == "pending"
+    assert payload["summary"] == "Episode 2 · My Series S01E02.mkv"
     assert payload["failureReason"] == "Could not reliably parse title or season/episode"
+    assert payload["queuedAt"].endswith("Z")
     assert payload["source"] == {
         "fileName": "My Series S01E02.mkv",
         "episodeHint": "Episode 2",

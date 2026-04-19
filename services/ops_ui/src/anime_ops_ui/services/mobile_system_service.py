@@ -20,6 +20,7 @@ from anime_ops_ui.domain.mobile_models import (
 )
 from anime_ops_ui.i18n import normalize_locale
 from anime_ops_ui.services.log_service import build_logs_payload as build_logs_payload_service
+from anime_ops_ui.services.mobile_timestamp import normalize_mobile_timestamp, utc_now_timestamp
 from anime_ops_ui.services.overview_service import build_overview
 from anime_ops_ui.services.tailscale_service import build_tailscale_payload as build_tailscale_payload_service
 
@@ -116,7 +117,7 @@ def _fan_value(*, locale: str | None = None) -> str:
 
 
 def _system_timestamp() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return utc_now_timestamp()
 
 
 def _service_label(service: str, *, locale: str | None = None) -> str:
@@ -223,7 +224,10 @@ def _fetch_qbittorrent_downloads() -> list[dict[str, Any]]:
 
 
 def build_system_downloads_payload(*, locale: str | None = None) -> dict[str, Any]:
-    torrent_items = _fetch_qbittorrent_downloads()
+    try:
+        torrent_items = _fetch_qbittorrent_downloads()
+    except Exception:
+        torrent_items = []
     normalized_items: list[tuple[int, int, dict[str, Any]]] = []
 
     for item in torrent_items:
@@ -267,7 +271,10 @@ def build_system_downloads_payload(*, locale: str | None = None) -> dict[str, An
 
 def build_system_logs_payload(*, locale: str | None = None, limit: int = 30) -> dict[str, Any]:
     normalized_limit = max(1, min(limit, 30))
-    payload = build_logs_payload_service(source=None, limit=normalized_limit, locale=locale)
+    try:
+        payload = build_logs_payload_service(source=None, limit=normalized_limit, locale=locale)
+    except Exception:
+        payload = {"items": [], "last_updated": _system_timestamp()}
 
     items: list[dict[str, Any]] = []
     for entry in payload.get("items", []):
@@ -276,7 +283,7 @@ def build_system_logs_payload(*, locale: str | None = None, limit: int = 30) -> 
         items.append(
             SystemLogItem(
                 id=str(entry.get("id") or f"log_{len(items)}"),
-                timestamp=str(entry.get("ts") or _system_timestamp()),
+                timestamp=normalize_mobile_timestamp(entry.get("ts"), default=_system_timestamp()) or _system_timestamp(),
                 service=_service_label(str(entry.get("source") or ""), locale=locale),
                 level=_normalized_level(str(entry.get("level") or "info")),
                 summary=str(entry.get("message") or ""),
@@ -285,7 +292,7 @@ def build_system_logs_payload(*, locale: str | None = None, limit: int = 30) -> 
 
     return {
         "items": items,
-        "updatedAt": payload.get("last_updated") or _system_timestamp(),
+        "updatedAt": normalize_mobile_timestamp(payload.get("last_updated"), default=_system_timestamp()) or _system_timestamp(),
     }
 
 
@@ -332,7 +339,10 @@ def build_system_tailscale_payload(*, locale: str | None = None) -> dict[str, An
 
 
 def build_system_overview_payload(*, locale: str | None = None) -> dict[str, Any]:
-    overview = build_overview(locale=locale)
+    try:
+        overview = build_overview(locale=locale)
+    except Exception:
+        overview = {}
     system_cards = overview.get("system_cards")
     trend_cards = overview.get("trend_cards")
 
@@ -380,5 +390,5 @@ def build_system_overview_payload(*, locale: str | None = None) -> dict[str, Any
                 value=str((uptime_card or {}).get("value") or "--"),
             ).model_dump(),
         },
-        "updatedAt": overview.get("last_updated"),
+        "updatedAt": normalize_mobile_timestamp(overview.get("last_updated"), default=_system_timestamp()) or _system_timestamp(),
     }
