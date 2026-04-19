@@ -219,6 +219,8 @@ def test_mobile_detail_supports_real_collection_entries(client):
     assert payload["appItemId"] == "app_collection_jf_JF-SERIES-42"
     assert payload["title"] == "Bakemonogatari"
     assert payload["heroState"] == "playable_primed"
+    assert payload["hero"]["playTarget"] == "jellyfinWeb"
+    assert payload["hero"]["playUrl"] == "http://100.123.232.73:8096/web/#/details?id=JF-SERIES-42"
     assert payload["summary"]["freshness"] == "2009"
     assert payload["summary"]["availableEpisodeCount"] == 2
     assert payload["summary"]["seasonLabel"] == "S01"
@@ -362,6 +364,8 @@ def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(cli
     assert payload["heroState"] == "playable_primed"
     assert payload["hero"]["latestPlayableEpisodeId"] == "app_following_jf_JF-EP-99-2"
     assert payload["hero"]["primedLabel"] == "E02"
+    assert payload["hero"]["playTarget"] == "jellyfinWeb"
+    assert payload["hero"]["playUrl"] == "http://100.123.232.73:8096/web/#/details?id=JF-SERIES-99"
     assert payload["summary"]["freshness"] == "本周更新"
     assert payload["summary"]["availableEpisodeCount"] == 2
     assert payload["summary"]["seasonLabel"] == "S01"

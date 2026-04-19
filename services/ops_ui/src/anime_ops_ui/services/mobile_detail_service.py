@@ -1,5 +1,6 @@
 from anime_ops_ui.services.mobile_collection_service import (
     _format_series_entries,
+    build_public_jellyfin_details_url,
     get_collection_item,
     get_jellyfin_series_context,
 )
@@ -67,7 +68,8 @@ def build_detail_payload(
             "backdropUrl": "https://example.com/backdrop.jpg",
             "latestPlayableEpisodeId": "ep_16",
             "primedLabel": "第 16 集",
-            "playTarget": "zFuse",
+            "playTarget": "jellyfinWeb",
+            "playUrl": "http://example.com:8096/web/#/details?id=demo-series",
         },
         "summary": {
             "freshness": "本周未更新",
@@ -167,7 +169,11 @@ def _build_seasonal_detail_payload(
                 {
                     "latestPlayableEpisodeId": f"app_following_jf_{latest_episode_id}" if latest_episode_id else "latest",
                     "primedLabel": primed_label or "第 1 集",
-                    "playTarget": "zFuse",
+                    "playTarget": "jellyfinWeb",
+                    "playUrl": build_public_jellyfin_details_url(
+                        jellyfin_item_id=jellyfin_series_id,
+                        public_base_url=public_base_url,
+                    ),
                 }
                 if playable
                 else {}

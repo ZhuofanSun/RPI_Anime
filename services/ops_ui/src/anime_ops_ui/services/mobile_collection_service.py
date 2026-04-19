@@ -5,6 +5,7 @@ import re
 import sqlite3
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from anime_ops_ui import runtime_main_module
 from anime_ops_ui.domain.mobile_models import HomeFollowingItem
@@ -79,7 +80,11 @@ def get_collection_item(
                 {
                     "latestPlayableEpisodeId": str(context["latestPlayableEpisodeId"]),
                     "primedLabel": str(context["primedLabel"]),
-                    "playTarget": "zFuse",
+                    "playTarget": "jellyfinWeb",
+                    "playUrl": build_public_jellyfin_details_url(
+                        jellyfin_item_id=jellyfin_item_id,
+                        public_base_url=public_base_url,
+                    ),
                 }
                 if latest_episode is not None
                 else {}
@@ -100,6 +105,26 @@ def get_collection_item(
             public_base_url=public_base_url,
         ),
     }
+
+
+def build_public_jellyfin_details_url(
+    *,
+    jellyfin_item_id: str | None,
+    public_base_url: str | None,
+) -> str | None:
+    normalized_item_id = str(jellyfin_item_id or "").strip()
+    normalized_base_url = str(public_base_url or "").strip()
+    if not normalized_item_id or not normalized_base_url:
+        return None
+
+    parsed = urlparse(normalized_base_url)
+    host = parsed.hostname
+    if not host:
+        return None
+
+    main_module = runtime_main_module()
+    jellyfin_port = int(main_module._env("JELLYFIN_PORT", "8096"))
+    return f"http://{host}:{jellyfin_port}/web/#/details?id={normalized_item_id}"
 
 
 def get_jellyfin_series_context(
