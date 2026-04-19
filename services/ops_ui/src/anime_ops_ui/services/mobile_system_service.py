@@ -356,6 +356,7 @@ def build_system_overview_payload(*, locale: str | None = None) -> dict[str, Any
     disk_card = system_cards[5] if len(system_cards) > 5 else None
 
     cpu_trend = trend_cards[0] if len(trend_cards) > 0 else None
+    temperature_trend = trend_cards[1] if len(trend_cards) > 1 else None
     traffic_trend = trend_cards[2] if len(trend_cards) > 2 else None
     download_trend = trend_cards[3] if len(trend_cards) > 3 else None
 
@@ -374,6 +375,10 @@ def build_system_overview_payload(*, locale: str | None = None) -> dict[str, Any
         },
         "trends": {
             "cpu24h": _line_trend(cpu_trend, fallback_title=_locale_text(locale, en="24-hour CPU", zh="24 小时 CPU")),
+            "temperature24h": _line_trend(
+                temperature_trend,
+                fallback_title=_locale_text(locale, en="24-hour Temperature", zh="24 小时温度"),
+            ),
             "clientTraffic": _line_trend(
                 traffic_trend,
                 fallback_title=_locale_text(locale, en="Client Traffic", zh="客户端流量"),

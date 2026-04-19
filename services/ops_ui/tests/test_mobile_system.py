@@ -45,6 +45,7 @@ def test_mobile_system_overview_returns_compact_contract(client, monkeypatch):
     assert payload["statusCards"]["cpu"]["displayValue"] == "42%"
     assert payload["statusCards"]["cpu"]["numericValue"] == 42.0
     assert payload["trends"]["cpu24h"]["points"] == [18.0, 36.0, 42.0]
+    assert payload["trends"]["temperature24h"]["points"] == [54.0, 56.0, 58.0]
     assert payload["trends"]["downloads7d"]["bars"][0]["label"] == "04-11"
     assert payload["supplementary"]["fan"] == {"title": "风扇", "value": "72%"}
     assert payload["supplementary"]["uptime"]["value"] == "4 天 03:18"
@@ -69,6 +70,7 @@ def test_mobile_system_overview_degrades_to_safe_payload_when_upstream_raises(cl
     assert set(payload) == {"statusCards", "trends", "supplementary", "updatedAt"}
     assert payload["statusCards"]["cpu"]["displayValue"] == "--"
     assert payload["trends"]["cpu24h"]["points"] == []
+    assert payload["trends"]["temperature24h"]["points"] == []
     assert payload["trends"]["downloads7d"]["bars"] == []
     assert payload["supplementary"]["fan"]["value"] == "Unavailable"
     assert payload["updatedAt"].endswith("Z")
