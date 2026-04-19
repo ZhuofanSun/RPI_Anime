@@ -226,8 +226,20 @@ def test_mobile_detail_supports_real_collection_entries(client):
     assert payload["summary"]["tags"] == ["Supernatural", "Mystery"]
     assert payload["seasons"] == [{"id": "app_collection_jf_JF-SEASON-42-1", "label": "S01", "selected": True}]
     assert payload["episodes"] == [
-        {"id": "app_collection_jf_JF-EP-42-1", "label": "E01", "focused": False, "unread": False},
-        {"id": "app_collection_jf_JF-EP-42-2", "label": "E02", "focused": True, "unread": False},
+        {
+            "id": "app_collection_jf_JF-EP-42-1",
+            "label": "E01",
+            "seasonId": "app_collection_jf_JF-SEASON-42-1",
+            "focused": False,
+            "unread": False,
+        },
+        {
+            "id": "app_collection_jf_JF-EP-42-2",
+            "label": "E02",
+            "seasonId": "app_collection_jf_JF-SEASON-42-1",
+            "focused": True,
+            "unread": False,
+        },
     ]
     hero_poster = urlsplit(payload["hero"]["posterUrl"])
     hero_query = parse_qs(hero_poster.query)
@@ -358,8 +370,20 @@ def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(cli
     assert payload["overview"] == "Real library overview."
     assert payload["seasons"] == [{"id": "app_following_jf_JF-SEASON-99-1", "label": "S01", "selected": True}]
     assert payload["episodes"] == [
-        {"id": "app_following_jf_JF-EP-99-1", "label": "E01", "focused": False, "unread": False},
-        {"id": "app_following_jf_JF-EP-99-2", "label": "E02", "focused": True, "unread": True},
+        {
+            "id": "app_following_jf_JF-EP-99-1",
+            "label": "E01",
+            "seasonId": "app_following_jf_JF-SEASON-99-1",
+            "focused": False,
+            "unread": False,
+        },
+        {
+            "id": "app_following_jf_JF-EP-99-2",
+            "label": "E02",
+            "seasonId": "app_following_jf_JF-SEASON-99-1",
+            "focused": True,
+            "unread": True,
+        },
     ]
     hero_poster = urlsplit(payload["hero"]["posterUrl"])
     hero_query = parse_qs(hero_poster.query)

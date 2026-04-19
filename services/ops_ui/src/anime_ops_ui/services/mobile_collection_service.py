@@ -130,6 +130,7 @@ def get_jellyfin_series_context(
         {
             "id": str(episode["id"]),
             "label": _episode_label(episode),
+            "seasonId": str(episode.get("parent_id") or ""),
             "focused": index == len(selected_episodes) - 1,
             "unread": False,
         }
@@ -430,6 +431,7 @@ def _format_series_entries(entries: list[dict[str, Any]], *, prefix: str, mark_f
                 "id": f"{prefix}{entry['id']}",
                 "label": entry["label"],
                 **({"selected": bool(entry.get("selected"))} if "selected" in entry else {}),
+                **({"seasonId": f"{prefix}{entry['seasonId']}" if entry.get("seasonId") else None} if "seasonId" in entry else {}),
                 **({"focused": focused} if "focused" in entry else {}),
                 **({"unread": focused if mark_focused_unread else bool(entry.get("unread"))} if "unread" in entry else {}),
             }
