@@ -4,8 +4,8 @@ from anime_ops_ui.domain.mobile_models import HomeFollowingItem
 from anime_ops_ui.services.mobile_seasonal_service import build_following_items
 
 
-def build_following_payload() -> dict:
-    return _build_channel_payload(_following_items())
+def build_following_payload(*, public_host: str | None = None, public_base_url: str | None = None) -> dict:
+    return _build_channel_payload(_following_items(public_host=public_host, public_base_url=public_base_url))
 
 
 def build_favorites_payload() -> dict:
@@ -19,8 +19,8 @@ def _build_channel_payload(items: list[HomeFollowingItem]) -> dict:
     }
 
 
-def _following_items() -> list[HomeFollowingItem]:
-    return build_following_items()
+def _following_items(*, public_host: str | None = None, public_base_url: str | None = None) -> list[HomeFollowingItem]:
+    return build_following_items(public_host=public_host, public_base_url=public_base_url)
 
 
 def _favorites_items() -> list[HomeFollowingItem]:

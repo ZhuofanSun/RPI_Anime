@@ -6,9 +6,15 @@ from anime_ops_ui.services.mobile_seasonal_service import build_calendar_buckets
 _DEFAULT_FOCUS_DATE = date(2026, 4, 18)
 
 
-def build_calendar_payload(focus_date: str | None = None, window: int = 7) -> dict:
+def build_calendar_payload(
+    focus_date: str | None = None,
+    window: int = 7,
+    *,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> dict:
     focus = _parse_focus_date(focus_date)
-    days = build_calendar_buckets(focus_date=focus)
+    days = build_calendar_buckets(focus_date=focus, public_host=public_host, public_base_url=public_base_url)
     return {
         "focusDate": focus.isoformat(),
         "days": [bucket.model_dump() for bucket in days],

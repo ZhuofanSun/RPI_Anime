@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlsplit
+
 from anime_ops_ui.services import mobile_rss_service
 
 
@@ -106,14 +108,16 @@ def test_mobile_rss_analyze_returns_preview_and_duplicate_flag(client, monkeypat
     payload = response.json()
     assert payload["duplicate"] is True
     assert payload["duplicateRssId"] == 2
-    assert payload["preview"] == {
-        "title": "落语朱音",
-        "originalTitle": "Akanebanashi",
-        "posterUrl": "http://testserver:7892/images/posters/akanebanashi.jpg",
-        "year": "2025",
-        "season": "S1",
-        "tags": ["1080P", "CHT", "ANi"],
-    }
+    assert payload["preview"]["title"] == "落语朱音"
+    assert payload["preview"]["originalTitle"] == "Akanebanashi"
+    assert payload["preview"]["year"] == "2025"
+    assert payload["preview"]["season"] == "S1"
+    assert payload["preview"]["tags"] == ["1080P", "CHT", "ANi"]
+    poster = urlsplit(payload["preview"]["posterUrl"])
+    query = parse_qs(poster.query)
+    assert poster.netloc == "testserver"
+    assert poster.path == "/api/mobile/media/poster"
+    assert query["path"] == ["images/posters/akanebanashi.jpg"]
     assert "url" in payload
 
 

@@ -37,6 +37,7 @@ from anime_ops_ui.mobile.routes_auth import router as mobile_auth_router
 from anime_ops_ui.mobile.routes_calendar import router as mobile_calendar_router
 from anime_ops_ui.mobile.routes_home import router as mobile_home_router
 from anime_ops_ui.mobile.routes_items import router as mobile_items_router
+from anime_ops_ui.mobile.routes_media import router as mobile_media_router
 from anime_ops_ui.mobile.routes_me import router as mobile_me_router
 from anime_ops_ui.mobile.routes_rss import router as mobile_rss_router
 from anime_ops_ui.mobile.routes_review import router as mobile_review_router
@@ -1925,6 +1926,7 @@ def create_app(*, enable_lifespan: bool = True) -> FastAPI:
     app.include_router(mobile_calendar_router)
     app.include_router(mobile_home_router)
     app.include_router(mobile_items_router)
+    app.include_router(mobile_media_router)
     app.include_router(mobile_me_router)
     app.include_router(mobile_rss_router)
     app.include_router(mobile_review_router)

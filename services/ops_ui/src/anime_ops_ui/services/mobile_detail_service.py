@@ -1,3 +1,4 @@
+from anime_ops_ui.services.mobile_media_service import build_mobile_poster_url
 from anime_ops_ui.services.mobile_seasonal_service import build_recent_seasonal, get_seasonal_item
 
 _DETAIL_TITLES = {
@@ -10,10 +11,23 @@ _DETAIL_TITLES = {
 }
 
 
-def build_detail_payload(app_item_id: str) -> dict:
-    seasonal_item = get_seasonal_item(app_item_id)
+def build_detail_payload(
+    app_item_id: str,
+    *,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> dict:
+    seasonal_item = get_seasonal_item(
+        app_item_id,
+        public_host=public_host,
+        public_base_url=public_base_url,
+    )
     if seasonal_item is not None:
-        return _build_seasonal_detail_payload(seasonal_item)
+        return _build_seasonal_detail_payload(
+            seasonal_item,
+            public_host=public_host,
+            public_base_url=public_base_url,
+        )
 
     title = _DETAIL_TITLES.get(app_item_id, "示例条目")
     if app_item_id.endswith("unmapped"):
@@ -36,7 +50,7 @@ def build_detail_payload(app_item_id: str) -> dict:
             "overview": "整理中",
             "seasons": [],
             "episodes": [],
-            "recentSeasonal": _recent_seasonal_items(),
+            "recentSeasonal": _recent_seasonal_items(public_host=public_host, public_base_url=public_base_url),
         }
 
     return {
@@ -61,18 +75,46 @@ def build_detail_payload(app_item_id: str) -> dict:
         "overview": "示例简介",
         "seasons": [{"id": "season_1", "label": "第一季", "selected": True}],
         "episodes": [{"id": "ep_16", "label": "第 16 集", "focused": True, "unread": True}],
-        "recentSeasonal": _recent_seasonal_items(),
+        "recentSeasonal": _recent_seasonal_items(public_host=public_host, public_base_url=public_base_url),
     }
 
 
-def _recent_seasonal_items() -> list[dict]:
-    return build_recent_seasonal()
+def _recent_seasonal_items(
+    *,
+    exclude_app_item_id: str | None = None,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> list[dict]:
+    items = build_recent_seasonal(
+        exclude_app_item_id=exclude_app_item_id,
+        public_host=public_host,
+        public_base_url=public_base_url,
+    )
+    return [
+        {
+            **item,
+            "posterUrl": build_mobile_poster_url(
+                poster_link=str(item.get("posterUrl") or "").strip() or None,
+                public_base_url=public_base_url,
+            )
+            or str(item.get("posterUrl") or ""),
+        }
+        for item in items
+    ]
 
 
-def _build_seasonal_detail_payload(item: dict[str, object]) -> dict:
+def _build_seasonal_detail_payload(
+    item: dict[str, object],
+    *,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> dict:
     app_item_id = str(item["appItemId"])
     title = str(item["title"])
-    poster_url = str(item.get("posterUrl") or "https://example.com/poster.jpg")
+    poster_url = build_mobile_poster_url(
+        poster_link=str(item.get("posterUrl") or "").strip() or None,
+        public_base_url=public_base_url,
+    ) or str(item.get("posterUrl") or "https://example.com/poster.jpg")
     mapping_status = str(item.get("mappingStatus") or "unmapped")
     availability_state = str(item.get("availabilityState") or "subscription_only")
     playable = availability_state == "mapped_playable"
@@ -109,5 +151,9 @@ def _build_seasonal_detail_payload(item: dict[str, object]) -> dict:
         "overview": overview,
         "seasons": [{"id": "season_1", "label": "第一季", "selected": True}] if playable else [],
         "episodes": [{"id": "latest", "label": "第 1 集", "focused": True, "unread": True}] if playable else [],
-        "recentSeasonal": build_recent_seasonal(exclude_app_item_id=app_item_id),
+        "recentSeasonal": _recent_seasonal_items(
+            exclude_app_item_id=app_item_id,
+            public_host=public_host,
+            public_base_url=public_base_url,
+        ),
     }

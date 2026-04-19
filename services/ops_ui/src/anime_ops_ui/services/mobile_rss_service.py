@@ -7,6 +7,7 @@ from anime_ops_ui import runtime_main_module
 from anime_ops_ui.domain.mobile_models import RSSListItem, RSSPreviewItem
 from anime_ops_ui.i18n import normalize_locale
 from anime_ops_ui.services.autobangumi_client import AutoBangumiClient
+from anime_ops_ui.services.mobile_media_service import build_mobile_poster_url
 
 
 def _locale_text(locale: str | None, *, en: str, zh: str) -> str:
@@ -70,23 +71,8 @@ def _last_checked_label(raw_value: Any) -> str | None:
     return value or None
 
 
-def _poster_url(
-    *,
-    request_scheme: str,
-    request_host: str,
-    poster_link: str | None,
-) -> str | None:
-    poster_path = str(poster_link or "").strip()
-    if not poster_path:
-        return None
-    if poster_path.startswith("http://") or poster_path.startswith("https://"):
-        return poster_path
-
-    main_module = runtime_main_module()
-    autobangumi_port = int(main_module._env("AUTOBANGUMI_PORT", "7892"))
-    host = request_host.strip() or "127.0.0.1"
-    scheme = request_scheme.strip() or "http"
-    return f"{scheme}://{host}:{autobangumi_port}/{poster_path.lstrip('/')}"
+def _poster_url(*, public_base_url: str | None, poster_link: str | None) -> str | None:
+    return build_mobile_poster_url(poster_link=poster_link, public_base_url=public_base_url)
 
 
 def _season_label(payload: dict[str, Any]) -> str | None:
@@ -170,8 +156,7 @@ def analyze_rss_payload(
     *,
     url: str,
     locale: str | None = None,
-    request_scheme: str = "http",
-    request_host: str = "127.0.0.1",
+    public_base_url: str | None = None,
 ) -> dict[str, Any]:
     client = _autobangumi_client()
     sources = client.fetch_rss_sources()
@@ -183,8 +168,7 @@ def analyze_rss_payload(
         title=str(analysis.get("official_title") or analysis.get("rule_name") or analysis.get("title_raw") or _rss_title(analysis, locale=locale)),
         originalTitle=str(analysis.get("title_raw") or "").strip() or None,
         posterUrl=_poster_url(
-            request_scheme=request_scheme,
-            request_host=request_host,
+            public_base_url=public_base_url,
             poster_link=analysis.get("poster_link"),
         ),
         year=str(analysis.get("year") or "").strip() or None,

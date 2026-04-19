@@ -29,8 +29,7 @@ def analyze_rss(request: Request, payload: MobileRSSURLRequest) -> dict:
     return analyze_rss_payload(
         url=payload.url,
         locale=resolve_locale(request),
-        request_scheme=request.url.scheme,
-        request_host=request.url.hostname or "127.0.0.1",
+        public_base_url=str(request.base_url).rstrip("/"),
     )
 
 

@@ -6,34 +6,54 @@ from urllib.parse import parse_qs, urlparse
 
 from anime_ops_ui import runtime_main_module
 from anime_ops_ui.domain.mobile_models import CalendarDayBucket, CalendarDayItem, HomeFollowingItem
+from anime_ops_ui.services.mobile_media_service import build_mobile_poster_url
 from anime_ops_ui.services.weekly_schedule_service import build_phase4_schedule_snapshot
 
 _CACHE_TTL_SECONDS = 15
-_SNAPSHOT_CACHE: tuple[datetime, dict[str, Any]] | None = None
+_SNAPSHOT_CACHE: dict[str, tuple[datetime, dict[str, Any]]] | None = None
 
 
-def build_seasonal_snapshot(*, now: datetime | None = None) -> dict[str, Any]:
+def build_seasonal_snapshot(
+    *,
+    now: datetime | None = None,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> dict[str, Any]:
     global _SNAPSHOT_CACHE
 
     current = (now or datetime.now().astimezone()).astimezone()
-    cached = _SNAPSHOT_CACHE
+    cache_key = str(public_base_url or public_host or "").strip().lower()
+    cache = _SNAPSHOT_CACHE or {}
+    cached = cache.get(cache_key)
     if cached is not None:
         cached_at, payload = cached
         if (current - cached_at).total_seconds() <= _CACHE_TTL_SECONDS:
             return payload
 
-    snapshot = _build_snapshot(current)
-    _SNAPSHOT_CACHE = (current, snapshot)
+    snapshot = _build_snapshot(current, public_host=public_host, public_base_url=public_base_url)
+    cache[cache_key] = (current, snapshot)
+    _SNAPSHOT_CACHE = cache
     return snapshot
 
 
-def build_following_items(*, now: datetime | None = None) -> list[HomeFollowingItem]:
-    snapshot = build_seasonal_snapshot(now=now)
+def build_following_items(
+    *,
+    now: datetime | None = None,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> list[HomeFollowingItem]:
+    snapshot = build_seasonal_snapshot(now=now, public_host=public_host, public_base_url=public_base_url)
     return [item["homeItem"] for item in snapshot["orderedItems"]]
 
 
-def build_calendar_buckets(*, focus_date: date, now: datetime | None = None) -> list[CalendarDayBucket]:
-    snapshot = build_seasonal_snapshot(now=now)
+def build_calendar_buckets(
+    *,
+    focus_date: date,
+    now: datetime | None = None,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> list[CalendarDayBucket]:
+    snapshot = build_seasonal_snapshot(now=now, public_host=public_host, public_base_url=public_base_url)
     week_start = _start_of_week(focus_date)
 
     buckets: list[CalendarDayBucket] = []
@@ -50,8 +70,14 @@ def build_calendar_buckets(*, focus_date: date, now: datetime | None = None) -> 
     return buckets
 
 
-def get_seasonal_item(app_item_id: str, *, now: datetime | None = None) -> dict[str, Any] | None:
-    snapshot = build_seasonal_snapshot(now=now)
+def get_seasonal_item(
+    app_item_id: str,
+    *,
+    now: datetime | None = None,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> dict[str, Any] | None:
+    snapshot = build_seasonal_snapshot(now=now, public_host=public_host, public_base_url=public_base_url)
     return snapshot["itemsById"].get(app_item_id)
 
 
@@ -60,8 +86,10 @@ def build_recent_seasonal(
     exclude_app_item_id: str | None = None,
     limit: int = 6,
     now: datetime | None = None,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
 ) -> list[dict[str, str]]:
-    snapshot = build_seasonal_snapshot(now=now)
+    snapshot = build_seasonal_snapshot(now=now, public_host=public_host, public_base_url=public_base_url)
     items = [
         {
             "appItemId": item["appItemId"],
@@ -75,10 +103,15 @@ def build_recent_seasonal(
     return items[: max(limit, 0)]
 
 
-def _build_snapshot(now: datetime) -> dict[str, Any]:
+def _build_snapshot(
+    now: datetime,
+    *,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> dict[str, Any]:
     main_module = runtime_main_module()
     anime_data_root = main_module.Path(main_module._env("ANIME_DATA_ROOT", "/srv/anime-data"))
-    base_host = str(main_module._env("HOMEPAGE_BASE_HOST", main_module.socket.gethostname())).strip()
+    base_host = str(public_host or main_module._env("HOMEPAGE_BASE_HOST", main_module.socket.gethostname())).strip()
     autobangumi_port = int(main_module._env("AUTOBANGUMI_PORT", "7892"))
     jellyfin_port = int(main_module._env("JELLYFIN_PORT", "8096"))
     autobangumi_base_url = main_module._env("AUTOBANGUMI_API_URL", "").strip() or f"http://autobangumi:{autobangumi_port}"
@@ -116,7 +149,7 @@ def _build_snapshot(now: datetime) -> dict[str, Any]:
         calendar_items: list[CalendarDayItem] = []
         raw_cards = list(day.get("items") or []) + list(day.get("hidden_items") or [])
         for card in raw_cards:
-            mobile_item = _mobile_item_from_card(card)
+            mobile_item = _mobile_item_from_card(card, public_base_url=public_base_url)
             if mobile_item is None:
                 continue
             ordered_items.append(mobile_item)
@@ -139,14 +172,17 @@ def _build_snapshot(now: datetime) -> dict[str, Any]:
     }
 
 
-def _mobile_item_from_card(card: dict[str, Any]) -> dict[str, Any] | None:
+def _mobile_item_from_card(card: dict[str, Any], *, public_base_url: str | None = None) -> dict[str, Any] | None:
     raw_id = card.get("id")
     if raw_id is None:
         return None
 
     app_item_id = _seasonal_app_item_id(raw_id)
     title = str(card.get("title") or "").strip() or "示例条目"
-    poster_url = str(card.get("poster_url") or "").strip() or "https://example.com/poster.jpg"
+    poster_url = build_mobile_poster_url(
+        poster_link=str(card.get("poster_url") or "").strip() or None,
+        public_base_url=public_base_url,
+    ) or "https://example.com/poster.jpg"
     jellyfin_url = str(card.get("jellyfin_url") or "").strip() or None
     library_ready = bool(card.get("is_library_ready"))
     mapping_status = "mapped" if jellyfin_url or library_ready else "unmapped"

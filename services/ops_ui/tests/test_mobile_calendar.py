@@ -23,7 +23,7 @@ def test_mobile_calendar_returns_day_bucketed_contract(client, monkeypatch):
     monkeypatch.setattr(
         mobile_calendar_service,
         "build_calendar_buckets",
-        lambda *, focus_date, now=None: [bucket] * 7,
+        lambda *, focus_date, public_host=None, public_base_url=None, now=None: [bucket] * 7,
     )
     response = client.get("/api/mobile/calendar")
 
@@ -46,7 +46,7 @@ def test_mobile_calendar_accepts_focus_date_query(client, monkeypatch):
     monkeypatch.setattr(
         mobile_calendar_service,
         "build_calendar_buckets",
-        lambda *, focus_date, now=None: [
+        lambda *, focus_date, public_host=None, public_base_url=None, now=None: [
             CalendarDayBucket(
                 date=(base_date + timedelta(days=index)).isoformat(),
                 weekdayLabel=f"周{index + 1}",
@@ -64,3 +64,26 @@ def test_mobile_calendar_accepts_focus_date_query(client, monkeypatch):
     assert len(payload["days"]) == 7
     assert payload["days"][0]["date"] == "2026-04-13"
     assert payload["days"][-1]["date"] == "2026-04-19"
+
+
+def test_mobile_calendar_uses_request_host_for_generated_content(client, monkeypatch):
+    from anime_ops_ui.services import mobile_calendar_service
+
+    captured: dict[str, str | None] = {}
+    bucket = CalendarDayBucket(
+        date="2026-04-18",
+        weekdayLabel="周六",
+        dayLabel="04/18",
+        items=[],
+    )
+
+    def fake_build_calendar_buckets(*, focus_date, public_host=None, public_base_url=None, now=None):
+        captured["public_host"] = public_host
+        return [bucket] * 7
+
+    monkeypatch.setattr(mobile_calendar_service, "build_calendar_buckets", fake_build_calendar_buckets)
+
+    response = client.get("/api/mobile/calendar", headers={"host": "100.123.232.73:3000"})
+
+    assert response.status_code == 200
+    assert captured["public_host"] == "100.123.232.73"
