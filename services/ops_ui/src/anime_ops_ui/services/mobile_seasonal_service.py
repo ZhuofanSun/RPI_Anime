@@ -146,10 +146,15 @@ def _build_snapshot(
     days: list[dict[str, Any]] = []
 
     for day in days_payload:
+        weekday_label = str(day.get("label") or "").strip()
         calendar_items: list[CalendarDayItem] = []
         raw_cards = list(day.get("items") or []) + list(day.get("hidden_items") or [])
         for card in raw_cards:
-            mobile_item = _mobile_item_from_card(card, public_base_url=public_base_url)
+            mobile_item = _mobile_item_from_card(
+                card,
+                public_base_url=public_base_url,
+                weekday_label=weekday_label,
+            )
             if mobile_item is None:
                 continue
             ordered_items.append(mobile_item)
@@ -172,7 +177,12 @@ def _build_snapshot(
     }
 
 
-def _mobile_item_from_card(card: dict[str, Any], *, public_base_url: str | None = None) -> dict[str, Any] | None:
+def _mobile_item_from_card(
+    card: dict[str, Any],
+    *,
+    public_base_url: str | None = None,
+    weekday_label: str | None = None,
+) -> dict[str, Any] | None:
     raw_id = card.get("id")
     if raw_id is None:
         return None
@@ -184,18 +194,21 @@ def _mobile_item_from_card(card: dict[str, Any], *, public_base_url: str | None 
         public_base_url=public_base_url,
     ) or "https://example.com/poster.jpg"
     jellyfin_url = str(card.get("jellyfin_url") or "").strip() or None
+    jellyfin_series_id = _extract_jellyfin_id(jellyfin_url)
+    has_series_mapping = jellyfin_series_id is not None
     library_ready = bool(card.get("is_library_ready"))
-    mapping_status = "mapped" if jellyfin_url or library_ready else "unmapped"
+    mapping_status = "mapped" if has_series_mapping else "unmapped"
     availability_state = (
-        "mapped_playable"
-        if library_ready
-        else "mapped_unplayable"
-        if jellyfin_url
+        "mapped_playable" if has_series_mapping and library_ready
+        else "mapped_unplayable" if has_series_mapping
         else "subscription_only"
     )
-    jellyfin_series_id = _extract_jellyfin_id(jellyfin_url)
-    unread = library_ready
+    unread = has_series_mapping and library_ready
     detail = card.get("detail") if isinstance(card.get("detail"), dict) else {}
+    recent_subtitle = _recent_subtitle(
+        weekday_label=weekday_label,
+        availability_state=availability_state,
+    )
 
     return {
         "appItemId": app_item_id,
@@ -222,7 +235,7 @@ def _mobile_item_from_card(card: dict[str, Any], *, public_base_url: str | None 
             unread=unread,
             availabilityState=availability_state,
         ),
-        "recentSubtitle": "本周更新" if library_ready else "整理中",
+        "recentSubtitle": recent_subtitle,
     }
 
 
@@ -241,6 +254,15 @@ def _extract_jellyfin_id(jellyfin_url: str | None) -> str | None:
     if query_id:
         return query_id[0]
     return None
+
+
+def _recent_subtitle(*, weekday_label: str | None, availability_state: str) -> str:
+    normalized_label = str(weekday_label or "").strip()
+    if availability_state == "mapped_playable":
+        return f"{normalized_label}更新" if normalized_label else "已更新"
+    if availability_state == "mapped_unplayable":
+        return f"{normalized_label}放送" if normalized_label else "待整理"
+    return "待映射"
 
 
 def _start_of_week(target_date: date) -> date:

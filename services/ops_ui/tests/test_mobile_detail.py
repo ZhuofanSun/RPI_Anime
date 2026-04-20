@@ -115,6 +115,13 @@ def test_mobile_detail_allows_unmapped_payload(client, monkeypatch):
     assert len(payload["recentSeasonal"]) >= 1
 
 
+def test_mobile_detail_unknown_item_returns_not_found(client):
+    response = client.get("/api/mobile/items/app_following_ab_missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Unknown mobile item: app_following_ab_missing"
+
+
 def test_mobile_detail_supports_real_collection_entries(client):
     data_root = client.app.state.test_paths["data_root"]
     _write_collection_jellyfin_db(
@@ -340,6 +347,7 @@ def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(cli
             "availabilityState": "mapped_playable",
             "isLibraryReady": True,
             "jellyfinSeriesId": "JF-SERIES-99",
+            "recentSubtitle": "周六更新",
             "detail": {
                 "season_label": "2026 春",
                 "source": "Baha",
@@ -366,7 +374,7 @@ def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(cli
     assert payload["hero"]["primedLabel"] == "E02"
     assert payload["hero"]["playTarget"] == "jellyfinWeb"
     assert payload["hero"]["playUrl"] == "http://100.123.232.73:8096/web/#/details?id=JF-SERIES-99"
-    assert payload["summary"]["freshness"] == "本周更新"
+    assert payload["summary"]["freshness"] == "周六更新"
     assert payload["summary"]["availableEpisodeCount"] == 2
     assert payload["summary"]["seasonLabel"] == "S01"
     assert payload["summary"]["score"] == "9.3"

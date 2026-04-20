@@ -15,13 +15,14 @@ def _backend_version() -> str:
         return "0.1.0"
 
 
-def _service_health_rows(*, locale: str | None = None) -> list[dict]:
-    try:
-        overview = build_overview_payload()
-        rows = {str(item.get("id")): item for item in overview.get("service_rows", []) if isinstance(item, dict)}
-    except Exception:
-        rows = {}
+def _service_rows(overview: dict | None) -> dict[str, dict]:
+    if not isinstance(overview, dict):
+        return {}
+    return {str(item.get("id")): item for item in overview.get("service_rows", []) if isinstance(item, dict)}
 
+
+def _service_health_rows(*, overview: dict | None, locale: str | None = None, overview_available: bool) -> list[dict]:
+    rows = _service_rows(overview)
     selected: list[dict] = []
     for target in ("jellyfin", "qbittorrent", "autobangumi", "postprocessor", "tailscale"):
         row = rows.get(target)
@@ -40,19 +41,36 @@ def _service_health_rows(*, locale: str | None = None) -> list[dict]:
         {
             "target": "homepage",
             "label": "Ops UI",
-            "state": "online",
-            "detail": _locale_text(locale, en="app-facing backend", zh="面向 App 的后端"),
+            "state": "online" if overview_available else "offline",
+            "detail": _locale_text(
+                locale,
+                en="app-facing backend" if overview_available else "backend unavailable",
+                zh="面向 App 的后端" if overview_available else "后端不可用",
+            ),
         }
     )
     return selected
 
 
-def build_me_context(*, locale: str | None = None) -> dict:
+def build_me_context(*, locale: str | None = None, public_host: str | None = None) -> dict:
+    try:
+        overview = build_overview_payload(public_host=public_host)
+        overview_available = True
+    except Exception:
+        overview = None
+        overview_available = False
+
+    server_label = str((overview or {}).get("host") or "").strip() or "RPI Anime"
+
     return {
         "identity": {
-            "serverLabel": "RPI Anime",
-            "connectionState": "online",
+            "serverLabel": server_label,
+            "connectionState": "online" if overview_available else "offline",
         },
         "about": {"backendVersion": _backend_version()},
-        "serviceHealth": _service_health_rows(locale=locale),
+        "serviceHealth": _service_health_rows(
+            overview=overview,
+            locale=locale,
+            overview_available=overview_available,
+        ),
     }

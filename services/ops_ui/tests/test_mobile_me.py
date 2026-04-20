@@ -6,10 +6,9 @@ def test_mobile_me_context_returns_service_health(client):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["identity"] == {
-        "serverLabel": "RPI Anime",
-        "connectionState": "online",
-    }
+    assert set(payload["identity"]) == {"serverLabel", "connectionState"}
+    assert payload["identity"]["connectionState"] == "online"
+    assert payload["identity"]["serverLabel"]
     assert set(payload["about"]) == {"backendVersion"}
     assert "serviceHealth" in payload
     assert "maintenance" not in payload
@@ -20,7 +19,8 @@ def test_mobile_me_context_uses_real_backend_version_and_localized_homepage_deta
     monkeypatch.setattr(
         mobile_me_service,
         "build_overview_payload",
-        lambda: {
+        lambda public_host=None: {
+            "host": public_host or "100.123.232.73",
             "service_rows": [
                 {
                     "id": "jellyfin",
@@ -33,8 +33,8 @@ def test_mobile_me_context_uses_real_backend_version_and_localized_homepage_deta
     )
     monkeypatch.setattr(mobile_me_service, "_backend_version", lambda: "9.9.9")
 
-    zh_response = client.get("/api/mobile/me/context", headers={"Accept-Language": "zh-Hans"})
-    en_response = client.get("/api/mobile/me/context", headers={"Accept-Language": "en"})
+    zh_response = client.get("/api/mobile/me/context", headers={"Accept-Language": "zh-Hans", "host": "100.123.232.73:3000"})
+    en_response = client.get("/api/mobile/me/context", headers={"Accept-Language": "en", "host": "100.123.232.73:3000"})
 
     assert zh_response.status_code == 200
     assert en_response.status_code == 200
@@ -44,6 +44,10 @@ def test_mobile_me_context_uses_real_backend_version_and_localized_homepage_deta
 
     assert zh_payload["about"]["backendVersion"] == "9.9.9"
     assert en_payload["about"]["backendVersion"] == "9.9.9"
+    assert zh_payload["identity"] == {
+        "serverLabel": "100.123.232.73",
+        "connectionState": "online",
+    }
     assert zh_payload["serviceHealth"][-1] == {
         "target": "homepage",
         "label": "Ops UI",
@@ -55,4 +59,27 @@ def test_mobile_me_context_uses_real_backend_version_and_localized_homepage_deta
         "label": "Ops UI",
         "state": "online",
         "detail": "app-facing backend",
+    }
+
+
+def test_mobile_me_context_marks_homepage_offline_when_overview_unavailable(client, monkeypatch):
+    monkeypatch.setattr(
+        mobile_me_service,
+        "build_overview_payload",
+        lambda public_host=None: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    response = client.get("/api/mobile/me/context", headers={"Accept-Language": "en"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["identity"] == {
+        "serverLabel": "RPI Anime",
+        "connectionState": "offline",
+    }
+    assert payload["serviceHealth"][-1] == {
+        "target": "homepage",
+        "label": "Ops UI",
+        "state": "offline",
+        "detail": "backend unavailable",
     }

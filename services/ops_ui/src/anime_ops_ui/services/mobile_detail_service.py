@@ -1,3 +1,5 @@
+from fastapi import HTTPException, status
+
 from anime_ops_ui.services.mobile_collection_service import (
     _format_series_entries,
     build_public_jellyfin_details_url,
@@ -34,55 +36,10 @@ def build_detail_payload(
     if collection_item is not None:
         return collection_item
 
-    title = "示例条目"
-    if app_item_id.endswith("unmapped"):
-        return {
-            "appItemId": app_item_id,
-            "mappingStatus": "unmapped",
-            "title": title,
-            "heroState": "unavailable",
-            "hero": {
-                "posterUrl": "https://example.com/poster.jpg",
-                "backdropUrl": "https://example.com/backdrop.jpg",
-            },
-            "summary": {
-                "freshness": "本周未更新",
-                "availableEpisodeCount": 0,
-                "seasonLabel": "2026 春",
-                "score": "10.0",
-                "tags": [],
-            },
-            "overview": "整理中",
-            "seasons": [],
-            "episodes": [],
-            "recentSeasonal": _recent_seasonal_items(public_host=public_host, public_base_url=public_base_url),
-        }
-
-    return {
-        "appItemId": app_item_id,
-        "mappingStatus": "mapped",
-        "title": title,
-        "heroState": "playable_primed",
-        "hero": {
-            "posterUrl": "https://example.com/poster.jpg",
-            "backdropUrl": "https://example.com/backdrop.jpg",
-            "latestPlayableEpisodeId": "ep_16",
-            "primedLabel": "第 16 集",
-            "playTarget": "jellyfinWeb",
-            "playUrl": "http://example.com:8096/web/#/details?id=demo-series",
-        },
-        "summary": {
-            "freshness": "本周未更新",
-            "availableEpisodeCount": 16,
-            "seasonLabel": "2019 夏",
-            "score": "9.6",
-            "tags": ["科幻"],
-        },
-        "overview": "示例简介",
-        "seasons": [{"id": "season_1", "label": "第一季", "selected": True}],
-        "episodes": [{"id": "ep_16", "label": "第 16 集", "focused": True, "unread": True}],
-        "recentSeasonal": _recent_seasonal_items(public_host=public_host, public_base_url=public_base_url),
-    }
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Unknown mobile item: {app_item_id}",
+    )
 
 
 def _recent_seasonal_items(
@@ -125,9 +82,13 @@ def _build_seasonal_detail_payload(
     availability_state = str(item.get("availabilityState") or "subscription_only")
     playable = availability_state == "mapped_playable"
     detail = item.get("detail") if isinstance(item.get("detail"), dict) else {}
-    fallback_season_label = str(detail.get("season_label") or "2026 春")
+    fallback_season_label = str(detail.get("season_label") or "当季放送")
     fallback_tags = [value for value in [detail.get("source"), detail.get("group_name"), detail.get("dpi")] if value][:5]
-    fallback_overview = str(detail.get("review_reason") or detail.get("subtitle") or ("示例简介" if playable else "整理中"))
+    fallback_overview = str(
+        detail.get("review_reason")
+        or detail.get("subtitle")
+        or ("待整理 Jellyfin 信息" if playable else "尚未完成映射" if mapping_status == "unmapped" else "待整理")
+    )
     jellyfin_series_id = str(item.get("jellyfinSeriesId") or "").strip() or None
     jellyfin_context = (
         get_jellyfin_series_context(jellyfin_series_id, public_base_url=public_base_url)
@@ -180,7 +141,7 @@ def _build_seasonal_detail_payload(
             ),
         },
         "summary": {
-            "freshness": "本周更新",
+            "freshness": _seasonal_freshness(item, mapping_status=mapping_status, availability_state=availability_state),
             "availableEpisodeCount": available_episode_count,
             "seasonLabel": season_label,
             "score": score,
@@ -195,3 +156,19 @@ def _build_seasonal_detail_payload(
             public_base_url=public_base_url,
         ),
     }
+
+
+def _seasonal_freshness(
+    item: dict[str, object],
+    *,
+    mapping_status: str,
+    availability_state: str,
+) -> str:
+    recent_subtitle = str(item.get("recentSubtitle") or "").strip()
+    if recent_subtitle:
+        return recent_subtitle
+    if availability_state == "mapped_unplayable":
+        return "待整理"
+    if mapping_status == "mapped":
+        return "已映射"
+    return "待映射"

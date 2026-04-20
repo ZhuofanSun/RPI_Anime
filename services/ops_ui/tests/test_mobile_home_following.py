@@ -299,3 +299,54 @@ def test_mobile_home_following_cache_varies_by_request_host(client, monkeypatch)
     assert poster.netloc == "100.88.77.66:3000"
     assert poster.path == "/api/mobile/media/poster"
     assert query["path"] == ["posters/ling-long.jpg"]
+
+
+def test_mobile_home_following_requires_real_jellyfin_mapping_for_mapped_states(client, monkeypatch):
+    from anime_ops_ui.services import mobile_seasonal_service
+
+    def fake_snapshot(
+        *,
+        anime_data_root,
+        base_host,
+        autobangumi_port,
+        jellyfin_port,
+        autobangumi_base_url,
+        autobangumi_username,
+        autobangumi_password,
+        state_root,
+        now,
+        events,
+        visible_limit,
+    ):
+        return {
+            "weekly_schedule": {
+                "days": [
+                    {
+                        "label": "周六",
+                        "items": [
+                            {
+                                "id": 42,
+                                "title": "灵笼 第一季",
+                                "poster_url": f"http://{base_host}:7892/posters/ling-long.jpg",
+                                "jellyfin_url": None,
+                                "is_library_ready": True,
+                                "detail": {},
+                            }
+                        ],
+                        "hidden_items": [],
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(mobile_seasonal_service, "_SNAPSHOT_CACHE", None)
+    monkeypatch.setattr(mobile_seasonal_service, "build_phase4_schedule_snapshot", fake_snapshot)
+
+    response = client.get("/api/mobile/home/following", headers={"host": "100.123.232.73:3000"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    first = payload["items"][0]
+    assert first["mappingStatus"] == "unmapped"
+    assert first["availabilityState"] == "subscription_only"
+    assert first["unread"] is False
