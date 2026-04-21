@@ -28,7 +28,7 @@ def read_series_watch_states(
     if db_path is None or not db_path.exists():
         return {}
 
-    user_id = resolve_playback_user_id()
+    user_id = _normalize_user_id(resolve_playback_user_id())
     if not user_id:
         return {}
 
@@ -51,18 +51,25 @@ def read_series_watch_states(
             rows = conn.execute(
                 f"""
                 SELECT
-                    items.SeriesId AS SeriesId,
+                    episode_state.SeriesId AS SeriesId,
                     COUNT(*) AS AvailableEpisodeCount,
                     SUM(
                         CASE
-                            WHEN COALESCE(user_data.Played, 0) = 1 THEN 0
+                            WHEN episode_state.Played = 1 THEN 0
                             ELSE 1
                         END
                     ) AS UnwatchedEpisodeCount
-                FROM {schema.item_source} items
-                {schema.join_clause}
-                WHERE {" AND ".join(where_clauses)}
-                GROUP BY items.SeriesId
+                FROM (
+                    SELECT
+                        items.SeriesId AS SeriesId,
+                        items.Id AS ItemId,
+                        MAX(COALESCE(user_data.Played, 0)) AS Played
+                    FROM {schema.item_source} items
+                    {schema.join_clause}
+                    WHERE {" AND ".join(where_clauses)}
+                    GROUP BY items.SeriesId, items.Id
+                ) episode_state
+                GROUP BY episode_state.SeriesId
                 """,
                 params,
             ).fetchall()
@@ -93,7 +100,7 @@ def read_episode_watch_states(
     if db_path is None or not db_path.exists() or not normalized_series_id:
         return {}
 
-    user_id = resolve_playback_user_id()
+    user_id = _normalize_user_id(resolve_playback_user_id())
     if not user_id:
         return {}
 
@@ -108,11 +115,12 @@ def read_episode_watch_states(
                 f"""
                 SELECT
                     items.Id AS EpisodeId,
-                    COALESCE(user_data.Played, 0) AS Played
+                    MAX(COALESCE(user_data.Played, 0)) AS Played
                 FROM {schema.item_source} items
                 {schema.join_clause}
                 WHERE items.Type = ?
                     AND items.SeriesId = ?
+                GROUP BY items.Id
                 """,
                 [user_id, _JELLYFIN_EPISODE_TYPE, normalized_series_id],
             ).fetchall()
@@ -165,7 +173,10 @@ def _resolve_watch_schema(conn: sqlite3.Connection) -> _WatchSchema | None:
         if {"itemid", "userid", "played"} <= user_columns:
             return _WatchSchema(
                 item_source=item_source,
-                join_clause="LEFT JOIN UserData user_data ON items.Id = user_data.ItemId AND user_data.UserId = ?",
+                join_clause=(
+                    "LEFT JOIN UserData user_data ON items.Id = user_data.ItemId "
+                    "AND replace(lower(user_data.UserId), '-', '') = ?"
+                ),
             )
 
     if _relation_exists(conn, "UserDatas"):
@@ -173,12 +184,18 @@ def _resolve_watch_schema(conn: sqlite3.Connection) -> _WatchSchema | None:
         if {"itemid", "userid", "played"} <= user_columns:
             return _WatchSchema(
                 item_source=item_source,
-                join_clause="LEFT JOIN UserDatas user_data ON items.Id = user_data.ItemId AND user_data.UserId = ?",
+                join_clause=(
+                    "LEFT JOIN UserDatas user_data ON items.Id = user_data.ItemId "
+                    "AND replace(lower(user_data.UserId), '-', '') = ?"
+                ),
             )
         if {"key", "userid", "played"} <= user_columns and "userdatakey" in item_columns:
             return _WatchSchema(
                 item_source=item_source,
-                join_clause="LEFT JOIN UserDatas user_data ON items.UserDataKey = user_data.Key AND user_data.UserId = ?",
+                join_clause=(
+                    "LEFT JOIN UserDatas user_data ON items.UserDataKey = user_data.Key "
+                    "AND replace(lower(user_data.UserId), '-', '') = ?"
+                ),
             )
 
     return None
@@ -213,6 +230,10 @@ def _coerce_bool(value: Any) -> bool:
         return int(value) != 0
     except (TypeError, ValueError):
         return str(value or "").strip().lower() in {"true", "yes", "y"}
+
+
+def _normalize_user_id(value: Any) -> str:
+    return str(value or "").strip().replace("-", "").lower()
 
 
 def _safe_int(value: Any) -> int | None:

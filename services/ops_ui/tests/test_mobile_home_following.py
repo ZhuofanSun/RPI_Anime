@@ -556,15 +556,20 @@ def test_series_mapping_index_marks_series_unread_from_jellyfin_watch_state(clie
 
     data_root = client.app.state.test_paths["data_root"]
     state_root = Path(client.app.state.test_paths["state_root"])
+    playback_user_id = "1D196118-259B-4D30-8EE6-CF3D5CE1B35F"
     _write_collection_jellyfin_db(
         data_root,
         _series_mapping_rows(series_id="JF-SERIES-99", title="Ling Cage"),
         user_rows=[
-            ("JF-SERIES-99-ep-2", "jf-user-1", 1),
+            ("JF-SERIES-99-ep-2", playback_user_id, 1),
         ],
     )
     monkeypatch.setattr(jellyfin_watch_state_service, "_playback_user_cache", None)
-    monkeypatch.setattr(jellyfin_watch_state_service, "resolve_playback_user_id", lambda: "jf-user-1")
+    monkeypatch.setattr(
+        jellyfin_watch_state_service,
+        "resolve_playback_user_id",
+        lambda: "1d196118259b4d308ee6cf3d5ce1b35f",
+    )
 
     index = series_mapping_service.build_series_mapping_index(
         anime_data_root=data_root,

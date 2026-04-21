@@ -144,6 +144,7 @@ def test_mobile_detail_supports_real_collection_entries(client, monkeypatch):
     from anime_ops_ui.services import jellyfin_watch_state_service
 
     data_root = client.app.state.test_paths["data_root"]
+    playback_user_id = "1D196118-259B-4D30-8EE6-CF3D5CE1B35F"
     _write_collection_jellyfin_db(
         data_root,
         [
@@ -234,11 +235,15 @@ def test_mobile_detail_supports_real_collection_entries(client, monkeypatch):
             ),
         ],
         user_rows=[
-            ("JF-EP-42-2", "jf-user-1", 1),
+            ("JF-EP-42-2", playback_user_id, 1),
         ],
     )
     monkeypatch.setattr(jellyfin_watch_state_service, "_playback_user_cache", None)
-    monkeypatch.setattr(jellyfin_watch_state_service, "resolve_playback_user_id", lambda: "jf-user-1")
+    monkeypatch.setattr(
+        jellyfin_watch_state_service,
+        "resolve_playback_user_id",
+        lambda: "1d196118259b4d308ee6cf3d5ce1b35f",
+    )
 
     response = client.get(
         "/api/mobile/items/app_collection_jf_JF-SERIES-42",
@@ -311,6 +316,7 @@ def test_mobile_detail_exposes_stable_playback_identity_for_seasonal_entries(cli
     from anime_ops_ui.services import jellyfin_watch_state_service, mobile_detail_service
 
     data_root = client.app.state.test_paths["data_root"]
+    playback_user_id = "1D196118-259B-4D30-8EE6-CF3D5CE1B35F"
     _write_collection_jellyfin_db(
         data_root,
         [
@@ -384,11 +390,15 @@ def test_mobile_detail_exposes_stable_playback_identity_for_seasonal_entries(cli
             ),
         ],
         user_rows=[
-            ("JF-EP-99-2", "jf-user-1", 1),
+            ("JF-EP-99-2", playback_user_id, 1),
         ],
     )
     monkeypatch.setattr(jellyfin_watch_state_service, "_playback_user_cache", None)
-    monkeypatch.setattr(jellyfin_watch_state_service, "resolve_playback_user_id", lambda: "jf-user-1")
+    monkeypatch.setattr(
+        jellyfin_watch_state_service,
+        "resolve_playback_user_id",
+        lambda: "1d196118259b4d308ee6cf3d5ce1b35f",
+    )
 
     monkeypatch.setattr(
         mobile_detail_service,
@@ -464,6 +474,7 @@ def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(cli
     from anime_ops_ui.services import jellyfin_watch_state_service, mobile_detail_service
 
     data_root = client.app.state.test_paths["data_root"]
+    playback_user_id = "1D196118-259B-4D30-8EE6-CF3D5CE1B35F"
     _write_collection_jellyfin_db(
         data_root,
         [
@@ -537,11 +548,15 @@ def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(cli
             ),
         ],
         user_rows=[
-            ("JF-EP-99-2", "jf-user-1", 1),
+            ("JF-EP-99-2", playback_user_id, 1),
         ],
     )
     monkeypatch.setattr(jellyfin_watch_state_service, "_playback_user_cache", None)
-    monkeypatch.setattr(jellyfin_watch_state_service, "resolve_playback_user_id", lambda: "jf-user-1")
+    monkeypatch.setattr(
+        jellyfin_watch_state_service,
+        "resolve_playback_user_id",
+        lambda: "1d196118259b4d308ee6cf3d5ce1b35f",
+    )
 
     monkeypatch.setattr(
         mobile_detail_service,
