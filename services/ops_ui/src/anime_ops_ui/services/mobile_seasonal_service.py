@@ -206,13 +206,15 @@ def _mobile_item_from_card(
         if has_playable_episodes_raw is not None
         else library_ready
     )
+    has_unwatched_episodes_raw = card.get("has_unwatched_episodes")
+    has_unwatched_episodes = bool(has_unwatched_episodes_raw) if has_unwatched_episodes_raw is not None else False
     mapping_status = "mapped" if has_series_mapping else "unmapped"
     availability_state = (
         "mapped_playable" if has_series_mapping and has_playable_episodes
         else "mapped_unplayable" if has_series_mapping
         else "subscription_only"
     )
-    unread = has_series_mapping and library_ready
+    unread = has_series_mapping and has_unwatched_episodes
     detail = card.get("detail") if isinstance(card.get("detail"), dict) else {}
     recent_subtitle = _recent_subtitle(
         weekday_label=weekday_label,

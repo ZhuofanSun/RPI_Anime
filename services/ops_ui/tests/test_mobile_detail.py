@@ -2,7 +2,7 @@ import sqlite3
 from urllib.parse import parse_qs, urlsplit
 
 
-def _write_collection_jellyfin_db(data_root, rows):
+def _write_collection_jellyfin_db(data_root, rows, *, user_rows=None):
     db_path = data_root / "appdata" / "jellyfin" / "config" / "data" / "jellyfin.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
@@ -36,6 +36,24 @@ def _write_collection_jellyfin_db(data_root, rows):
             """,
             rows,
         )
+        if user_rows is not None:
+            conn.execute(
+                """
+                CREATE TABLE UserDatas (
+                    ItemId TEXT,
+                    UserId TEXT,
+                    Played INTEGER
+                )
+                """
+            )
+            conn.executemany(
+                """
+                INSERT INTO UserDatas (
+                    ItemId, UserId, Played
+                ) VALUES (?, ?, ?)
+                """,
+                user_rows,
+            )
         conn.commit()
 
 
@@ -122,7 +140,9 @@ def test_mobile_detail_unknown_item_returns_not_found(client):
     assert response.json()["detail"] == "Unknown mobile item: app_following_ab_missing"
 
 
-def test_mobile_detail_supports_real_collection_entries(client):
+def test_mobile_detail_supports_real_collection_entries(client, monkeypatch):
+    from anime_ops_ui.services import jellyfin_watch_state_service
+
     data_root = client.app.state.test_paths["data_root"]
     _write_collection_jellyfin_db(
         data_root,
@@ -213,7 +233,12 @@ def test_mobile_detail_supports_real_collection_entries(client):
                 "MediaBrowser.Controller.Entities.TV.Episode",
             ),
         ],
+        user_rows=[
+            ("JF-EP-42-2", "jf-user-1", 1),
+        ],
     )
+    monkeypatch.setattr(jellyfin_watch_state_service, "_playback_user_cache", None)
+    monkeypatch.setattr(jellyfin_watch_state_service, "resolve_playback_user_id", lambda: "jf-user-1")
 
     response = client.get(
         "/api/mobile/items/app_collection_jf_JF-SERIES-42",
@@ -283,7 +308,7 @@ def test_mobile_detail_supports_real_collection_entries(client):
 
 
 def test_mobile_detail_exposes_stable_playback_identity_for_seasonal_entries(client, monkeypatch):
-    from anime_ops_ui.services import mobile_detail_service
+    from anime_ops_ui.services import jellyfin_watch_state_service, mobile_detail_service
 
     data_root = client.app.state.test_paths["data_root"]
     _write_collection_jellyfin_db(
@@ -358,7 +383,12 @@ def test_mobile_detail_exposes_stable_playback_identity_for_seasonal_entries(cli
                 "MediaBrowser.Controller.Entities.TV.Episode",
             ),
         ],
+        user_rows=[
+            ("JF-EP-99-2", "jf-user-1", 1),
+        ],
     )
+    monkeypatch.setattr(jellyfin_watch_state_service, "_playback_user_cache", None)
+    monkeypatch.setattr(jellyfin_watch_state_service, "resolve_playback_user_id", lambda: "jf-user-1")
 
     monkeypatch.setattr(
         mobile_detail_service,
@@ -415,7 +445,7 @@ def test_mobile_detail_exposes_stable_playback_identity_for_seasonal_entries(cli
             "jellyfinSeasonId": "JF-SEASON-99-1",
             "jellyfinEpisodeId": "JF-EP-99-1",
             "focused": False,
-            "unread": False,
+            "unread": True,
         },
         {
             "id": "app_following_jf_JF-EP-99-2",
@@ -425,13 +455,13 @@ def test_mobile_detail_exposes_stable_playback_identity_for_seasonal_entries(cli
             "jellyfinSeasonId": "JF-SEASON-99-1",
             "jellyfinEpisodeId": "JF-EP-99-2",
             "focused": True,
-            "unread": True,
+            "unread": False,
         },
     ]
 
 
 def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(client, monkeypatch):
-    from anime_ops_ui.services import mobile_detail_service
+    from anime_ops_ui.services import jellyfin_watch_state_service, mobile_detail_service
 
     data_root = client.app.state.test_paths["data_root"]
     _write_collection_jellyfin_db(
@@ -506,7 +536,12 @@ def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(cli
                 "MediaBrowser.Controller.Entities.TV.Episode",
             ),
         ],
+        user_rows=[
+            ("JF-EP-99-2", "jf-user-1", 1),
+        ],
     )
+    monkeypatch.setattr(jellyfin_watch_state_service, "_playback_user_cache", None)
+    monkeypatch.setattr(jellyfin_watch_state_service, "resolve_playback_user_id", lambda: "jf-user-1")
 
     monkeypatch.setattr(
         mobile_detail_service,
@@ -579,7 +614,7 @@ def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(cli
             "jellyfinSeasonId": "JF-SEASON-99-1",
             "jellyfinEpisodeId": "JF-EP-99-1",
             "focused": False,
-            "unread": False,
+            "unread": True,
         },
         {
             "id": "app_following_jf_JF-EP-99-2",
@@ -589,7 +624,7 @@ def test_mobile_detail_uses_real_jellyfin_values_for_mapped_seasonal_entries(cli
             "jellyfinSeasonId": "JF-SEASON-99-1",
             "jellyfinEpisodeId": "JF-EP-99-2",
             "focused": True,
-            "unread": True,
+            "unread": False,
         },
     ]
     hero_poster = urlsplit(payload["hero"]["posterUrl"])

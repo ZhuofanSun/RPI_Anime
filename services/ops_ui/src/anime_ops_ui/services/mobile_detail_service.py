@@ -109,9 +109,9 @@ def _build_seasonal_detail_payload(
         else ([{"id": "season_1", "label": "第一季", "selected": True}] if playable else [])
     )
     episodes = (
-        _format_series_entries(jellyfin_context["episodes"], prefix="app_following_jf_", mark_focused_unread=playable)
+        _format_series_entries(jellyfin_context["episodes"], prefix="app_following_jf_")
         if jellyfin_context is not None
-        else ([{"id": "latest", "label": "第 1 集", "focused": True, "unread": True}] if playable else [])
+        else ([{"id": "latest", "label": "第 1 集", "focused": True, "unread": False}] if playable else [])
     )
     score = str(jellyfin_context["score"]) if jellyfin_context is not None else "10.0"
     season_label = str(jellyfin_context["seasonLabel"]) if jellyfin_context is not None else fallback_season_label

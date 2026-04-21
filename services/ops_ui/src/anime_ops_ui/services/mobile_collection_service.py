@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from anime_ops_ui import runtime_main_module
 from anime_ops_ui.domain.mobile_models import HomeFollowingItem
+from anime_ops_ui.services.jellyfin_watch_state_service import read_episode_watch_states
 from anime_ops_ui.services.mobile_media_service import build_mobile_jellyfin_poster_url, build_mobile_poster_url
 from anime_ops_ui.services.mobile_seasonal_service import build_recent_seasonal
 
@@ -66,7 +67,11 @@ def get_collection_item(
         return None
 
     season_payload = _format_series_entries(context["seasons"], prefix=_COLLECTION_APP_ITEM_PREFIX)
-    episode_payload = _format_series_entries(context["episodes"], prefix=_COLLECTION_APP_ITEM_PREFIX)
+    episode_payload = _format_series_entries(
+        context["episodes"],
+        prefix=_COLLECTION_APP_ITEM_PREFIX,
+        force_unread=False,
+    )
     latest_episode = episode_payload[-1] if episode_payload else None
 
     return {
@@ -139,12 +144,14 @@ def get_jellyfin_series_context(
     *,
     public_base_url: str | None = None,
 ) -> dict[str, Any] | None:
-    series = _read_series_detail(_anime_data_root(), jellyfin_item_id)
+    anime_data_root = _anime_data_root()
+    series = _read_series_detail(anime_data_root, jellyfin_item_id)
     if series is None:
         return None
 
-    seasons = _read_series_children(_anime_data_root(), jellyfin_item_id, child_type=_JELLYFIN_SEASON_TYPE)
-    episodes = _read_series_children(_anime_data_root(), jellyfin_item_id, child_type=_JELLYFIN_EPISODE_TYPE)
+    seasons = _read_series_children(anime_data_root, jellyfin_item_id, child_type=_JELLYFIN_SEASON_TYPE)
+    episodes = _read_series_children(anime_data_root, jellyfin_item_id, child_type=_JELLYFIN_EPISODE_TYPE)
+    episode_watch_state = read_episode_watch_states(anime_data_root, jellyfin_item_id)
     selected_season_id = seasons[-1]["id"] if seasons else None
     selected_episodes = [episode for episode in episodes if episode.get("parent_id") == selected_season_id]
     if not selected_episodes:
@@ -169,7 +176,7 @@ def get_jellyfin_series_context(
             "jellyfinSeasonId": str(episode.get("parent_id") or "") or None,
             "jellyfinSeriesId": jellyfin_item_id,
             "focused": index == len(selected_episodes) - 1,
-            "unread": False,
+            "unread": bool(episode_watch_state.get(str(episode["id"]), False)),
         }
         for index, episode in enumerate(selected_episodes)
     ]
@@ -461,10 +468,19 @@ def _episode_label(episode: dict[str, Any]) -> str:
     return name or "Episode"
 
 
-def _format_series_entries(entries: list[dict[str, Any]], *, prefix: str, mark_focused_unread: bool = False) -> list[dict[str, Any]]:
+def _format_series_entries(
+    entries: list[dict[str, Any]],
+    *,
+    prefix: str,
+    mark_focused_unread: bool = False,
+    force_unread: bool | None = None,
+) -> list[dict[str, Any]]:
     formatted: list[dict[str, Any]] = []
     for entry in entries:
         focused = bool(entry.get("focused"))
+        unread = focused if mark_focused_unread else bool(entry.get("unread"))
+        if force_unread is not None:
+            unread = force_unread
         formatted.append(
             {
                 "id": f"{prefix}{entry['id']}",
@@ -472,7 +488,7 @@ def _format_series_entries(entries: list[dict[str, Any]], *, prefix: str, mark_f
                 **({"selected": bool(entry.get("selected"))} if "selected" in entry else {}),
                 **({"seasonId": f"{prefix}{entry['seasonId']}" if entry.get("seasonId") else None} if "seasonId" in entry else {}),
                 **({"focused": focused} if "focused" in entry else {}),
-                **({"unread": focused if mark_focused_unread else bool(entry.get("unread"))} if "unread" in entry else {}),
+                **({"unread": unread} if "unread" in entry else {}),
                 **({"jellyfinSeriesId": str(entry["jellyfinSeriesId"])} if entry.get("jellyfinSeriesId") else {}),
                 **({"jellyfinSeasonId": str(entry["jellyfinSeasonId"])} if entry.get("jellyfinSeasonId") else {}),
                 **({"jellyfinEpisodeId": str(entry["jellyfinEpisodeId"])} if entry.get("jellyfinEpisodeId") else {}),

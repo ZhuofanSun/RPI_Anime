@@ -308,6 +308,7 @@ def build_weekly_schedule_payload(
             "jellyfin_url": jellyfin_url,
             "jellyfin_series_id": jellyfin_series_id or None,
             "has_playable_episodes": bool(mapping and mapping.get("hasPlayableEpisodes")),
+            "has_unwatched_episodes": bool(mapping and mapping.get("hasUnwatchedEpisodes")),
             "is_library_ready": bangumi_id in library_ids,
             "detail": _card_detail(item, title=title),
         }

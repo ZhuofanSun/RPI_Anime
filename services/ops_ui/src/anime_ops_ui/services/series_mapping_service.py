@@ -9,6 +9,8 @@ from typing import Any
 from anime_postprocessor.parser import normalize_title
 from anime_postprocessor.title_map import load_title_map
 
+from anime_ops_ui.services.jellyfin_watch_state_service import read_series_watch_states
+
 _JELLYFIN_SERIES_TYPE = "MediaBrowser.Controller.Entities.TV.Series"
 _JELLYFIN_EPISODE_TYPE = "MediaBrowser.Controller.Entities.TV.Episode"
 
@@ -102,6 +104,11 @@ def _read_jellyfin_inventory(anime_data_root: Path | None) -> dict[str, Any]:
             "byTitle": {},
         }
 
+    watch_states = read_series_watch_states(
+        anime_data_root,
+        series_ids=[str(row["Id"] or "").strip() for row in series_rows],
+    )
+
     by_id: dict[str, dict[str, Any]] = {}
     by_folder: dict[str, set[str]] = {}
     by_title: dict[str, set[str]] = {}
@@ -114,12 +121,15 @@ def _read_jellyfin_inventory(anime_data_root: Path | None) -> dict[str, Any]:
         folder_name = Path(path_value.replace("\\", "/")).name if path_value else ""
         name = str(row["Name"] or "").strip()
         original_title = str(row["OriginalTitle"] or "").strip()
+        watch_state = watch_states.get(series_id, {})
         record = {
             "jellyfinSeriesId": series_id,
             "folderName": folder_name or None,
             "name": name or None,
             "originalTitle": original_title or None,
             "availableEpisodeCount": int(episode_counts.get(series_id, 0)),
+            "unwatchedEpisodeCount": int(watch_state.get("unwatchedEpisodeCount", 0)),
+            "hasUnwatchedEpisodes": bool(watch_state.get("hasUnwatchedEpisodes", False)),
         }
         by_id[series_id] = record
 
@@ -272,6 +282,7 @@ def build_series_mapping_index(
             "jellyfinSeriesId": matched_series_id,
             "availableEpisodeCount": int(inventory_record["availableEpisodeCount"]) if inventory_record is not None else 0,
             "hasPlayableEpisodes": bool(inventory_record and int(inventory_record["availableEpisodeCount"]) > 0),
+            "hasUnwatchedEpisodes": bool(inventory_record and inventory_record.get("hasUnwatchedEpisodes")),
             "matchedBy": matched_by,
             "candidateCount": candidate_count,
         }

@@ -1,10 +1,11 @@
 import sqlite3
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from anime_ops_ui.domain.mobile_models import HomeFollowingItem
 
 
-def _write_collection_jellyfin_db(data_root, rows):
+def _write_collection_jellyfin_db(data_root, rows, *, user_rows=None):
     db_path = data_root / "appdata" / "jellyfin" / "config" / "data" / "jellyfin.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
@@ -38,7 +39,98 @@ def _write_collection_jellyfin_db(data_root, rows):
             """,
             rows,
         )
+        if user_rows is not None:
+            conn.execute(
+                """
+                CREATE TABLE UserDatas (
+                    ItemId TEXT,
+                    UserId TEXT,
+                    Played INTEGER
+                )
+                """
+            )
+            conn.executemany(
+                """
+                INSERT INTO UserDatas (
+                    ItemId, UserId, Played
+                ) VALUES (?, ?, ?)
+                """,
+                user_rows,
+            )
         conn.commit()
+
+
+def _series_mapping_rows(*, series_id: str, title: str) -> list[tuple]:
+    return [
+        (
+            series_id,
+            title,
+            title,
+            None,
+            None,
+            None,
+            None,
+            f"/media/seasonal/{title}",
+            None,
+            None,
+            None,
+            None,
+            None,
+            "2026-04-19 00:00:00",
+            "MediaBrowser.Controller.Entities.TV.Series",
+        ),
+        (
+            f"{series_id}-season-1",
+            "Season 1",
+            None,
+            None,
+            None,
+            None,
+            None,
+            f"/media/seasonal/{title}/Season 1",
+            series_id,
+            None,
+            1,
+            None,
+            series_id,
+            "2026-04-19 00:00:00",
+            "MediaBrowser.Controller.Entities.TV.Season",
+        ),
+        (
+            f"{series_id}-ep-1",
+            "Episode 1",
+            None,
+            None,
+            None,
+            None,
+            None,
+            f"/media/seasonal/{title}/Season 1/{title} S01E01.mkv",
+            f"{series_id}-season-1",
+            None,
+            1,
+            1,
+            series_id,
+            "2026-04-19 00:00:00",
+            "MediaBrowser.Controller.Entities.TV.Episode",
+        ),
+        (
+            f"{series_id}-ep-2",
+            "Episode 2",
+            None,
+            None,
+            None,
+            None,
+            None,
+            f"/media/seasonal/{title}/Season 1/{title} S01E02.mkv",
+            f"{series_id}-season-1",
+            None,
+            2,
+            1,
+            series_id,
+            "2026-04-19 00:00:00",
+            "MediaBrowser.Controller.Entities.TV.Episode",
+        ),
+    ]
 
 
 def test_mobile_home_following_returns_card_contract(client, monkeypatch):
@@ -403,3 +495,91 @@ def test_mobile_home_following_uses_jellyfin_inventory_for_playable_state(client
     assert first["mappingStatus"] == "mapped"
     assert first["availabilityState"] == "mapped_playable"
     assert first["unread"] is False
+
+
+def test_mobile_home_following_uses_jellyfin_inventory_for_unread_state(client, monkeypatch):
+    from anime_ops_ui.services import mobile_seasonal_service
+
+    def fake_snapshot(
+        *,
+        anime_data_root,
+        base_host,
+        autobangumi_port,
+        jellyfin_port,
+        autobangumi_base_url,
+        autobangumi_username,
+        autobangumi_password,
+        state_root,
+        now,
+        events,
+        visible_limit,
+    ):
+        return {
+            "weekly_schedule": {
+                "days": [
+                    {
+                        "label": "周六",
+                        "items": [
+                            {
+                                "id": 42,
+                                "title": "灵笼 第一季",
+                                "poster_url": f"http://{base_host}:7892/posters/ling-long.jpg",
+                                "jellyfin_url": f"http://{base_host}:8096/web/#/details?id=series_123",
+                                "jellyfin_series_id": "series_123",
+                                "has_playable_episodes": True,
+                                "has_unwatched_episodes": True,
+                                "is_library_ready": True,
+                                "detail": {},
+                            }
+                        ],
+                        "hidden_items": [],
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(mobile_seasonal_service, "_SNAPSHOT_CACHE", None)
+    monkeypatch.setattr(mobile_seasonal_service, "build_phase4_schedule_snapshot", fake_snapshot)
+
+    response = client.get("/api/mobile/home/following", headers={"host": "100.123.232.73:3000"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    first = payload["items"][0]
+    assert first["mappingStatus"] == "mapped"
+    assert first["availabilityState"] == "mapped_playable"
+    assert first["unread"] is True
+
+
+def test_series_mapping_index_marks_series_unread_from_jellyfin_watch_state(client, monkeypatch):
+    from anime_ops_ui.services import jellyfin_watch_state_service, series_mapping_service
+
+    data_root = client.app.state.test_paths["data_root"]
+    state_root = Path(client.app.state.test_paths["state_root"])
+    _write_collection_jellyfin_db(
+        data_root,
+        _series_mapping_rows(series_id="JF-SERIES-99", title="Ling Cage"),
+        user_rows=[
+            ("JF-SERIES-99-ep-2", "jf-user-1", 1),
+        ],
+    )
+    monkeypatch.setattr(jellyfin_watch_state_service, "_playback_user_cache", None)
+    monkeypatch.setattr(jellyfin_watch_state_service, "resolve_playback_user_id", lambda: "jf-user-1")
+
+    index = series_mapping_service.build_series_mapping_index(
+        anime_data_root=data_root,
+        bangumi_items=[
+            {
+                "id": 42,
+                "title": "Ling Cage",
+                "title_raw": "Ling Cage",
+                "official_title": "Ling Cage",
+            }
+        ],
+        state_root=state_root,
+    )
+
+    assert index[42]["jellyfinSeriesId"] == "JF-SERIES-99"
+    assert index[42]["availableEpisodeCount"] == 2
+    assert index[42]["hasPlayableEpisodes"] is True
+    assert index[42]["hasUnwatchedEpisodes"] is True
