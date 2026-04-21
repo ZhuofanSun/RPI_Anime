@@ -194,12 +194,21 @@ def _mobile_item_from_card(
         public_base_url=public_base_url,
     ) or "https://example.com/poster.jpg"
     jellyfin_url = str(card.get("jellyfin_url") or "").strip() or None
-    jellyfin_series_id = _extract_jellyfin_id(jellyfin_url)
+    jellyfin_series_id = (
+        str(card.get("jellyfin_series_id") or "").strip()
+        or _extract_jellyfin_id(jellyfin_url)
+    )
     has_series_mapping = jellyfin_series_id is not None
     library_ready = bool(card.get("is_library_ready"))
+    has_playable_episodes_raw = card.get("has_playable_episodes")
+    has_playable_episodes = (
+        bool(has_playable_episodes_raw)
+        if has_playable_episodes_raw is not None
+        else library_ready
+    )
     mapping_status = "mapped" if has_series_mapping else "unmapped"
     availability_state = (
-        "mapped_playable" if has_series_mapping and library_ready
+        "mapped_playable" if has_series_mapping and has_playable_episodes
         else "mapped_unplayable" if has_series_mapping
         else "subscription_only"
     )

@@ -79,7 +79,8 @@ def get_collection_item(
             "backdropUrl": str(context["posterUrl"]),
             **(
                 {
-                    "latestPlayableEpisodeId": str(context["latestPlayableEpisodeId"]),
+                    "latestPlayableEpisodeId": f"{_COLLECTION_APP_ITEM_PREFIX}{context['latestPlayableEpisodeId']}",
+                    "latestPlayableJellyfinEpisodeId": str(context["latestPlayableEpisodeId"]),
                     "primedLabel": str(context["primedLabel"]),
                     "playTarget": "jellyfinWeb",
                     "playUrl": build_public_jellyfin_details_url(
@@ -99,6 +100,11 @@ def get_collection_item(
             "tags": list(context["tags"]),
         },
         "overview": str(context["overview"]),
+        "playback": _build_jellyfin_playback_identity(
+            jellyfin_series_id=jellyfin_item_id,
+            context=context,
+            prefix=_COLLECTION_APP_ITEM_PREFIX,
+        ),
         "seasons": season_payload,
         "episodes": episode_payload,
         "recentSeasonal": _recent_seasonal_items(
@@ -149,6 +155,8 @@ def get_jellyfin_series_context(
             "id": str(season["id"]),
             "label": _season_label(season),
             "selected": str(season["id"]) == selected_season_id,
+            "jellyfinSeasonId": str(season["id"]),
+            "jellyfinSeriesId": jellyfin_item_id,
         }
         for season in seasons
     ]
@@ -157,6 +165,9 @@ def get_jellyfin_series_context(
             "id": str(episode["id"]),
             "label": _episode_label(episode),
             "seasonId": str(episode.get("parent_id") or ""),
+            "jellyfinEpisodeId": str(episode["id"]),
+            "jellyfinSeasonId": str(episode.get("parent_id") or "") or None,
+            "jellyfinSeriesId": jellyfin_item_id,
             "focused": index == len(selected_episodes) - 1,
             "unread": False,
         }
@@ -167,6 +178,7 @@ def get_jellyfin_series_context(
     freshness = _premiere_year(series.get("premiere_date"))
 
     return {
+        "seriesId": jellyfin_item_id,
         "title": _display_title(series),
         "posterUrl": build_mobile_jellyfin_poster_url(
             jellyfin_item_id=jellyfin_item_id,
@@ -175,6 +187,7 @@ def get_jellyfin_series_context(
         or "",
         "availableEpisodeCount": len(episodes),
         "freshness": freshness,
+        "selectedSeasonId": str(selected_season_id) if selected_season_id is not None else None,
         "seasonLabel": str(selected_season["label"]) if selected_season is not None else freshness,
         "score": _score_label(series.get("community_rating")),
         "tags": _tags(series.get("tags")),
@@ -460,9 +473,30 @@ def _format_series_entries(entries: list[dict[str, Any]], *, prefix: str, mark_f
                 **({"seasonId": f"{prefix}{entry['seasonId']}" if entry.get("seasonId") else None} if "seasonId" in entry else {}),
                 **({"focused": focused} if "focused" in entry else {}),
                 **({"unread": focused if mark_focused_unread else bool(entry.get("unread"))} if "unread" in entry else {}),
+                **({"jellyfinSeriesId": str(entry["jellyfinSeriesId"])} if entry.get("jellyfinSeriesId") else {}),
+                **({"jellyfinSeasonId": str(entry["jellyfinSeasonId"])} if entry.get("jellyfinSeasonId") else {}),
+                **({"jellyfinEpisodeId": str(entry["jellyfinEpisodeId"])} if entry.get("jellyfinEpisodeId") else {}),
             }
         )
     return formatted
+
+
+def _build_jellyfin_playback_identity(
+    *,
+    jellyfin_series_id: str,
+    context: dict[str, Any],
+    prefix: str,
+) -> dict[str, Any]:
+    default_season_id = str(context.get("selectedSeasonId") or "").strip() or None
+    default_episode_id = str(context.get("latestPlayableEpisodeId") or "").strip() or None
+    return {
+        "provider": "jellyfin",
+        "seriesId": jellyfin_series_id,
+        "defaultSeasonId": default_season_id,
+        "defaultEpisodeId": default_episode_id,
+        "appDefaultSeasonId": f"{prefix}{default_season_id}" if default_season_id else None,
+        "appDefaultEpisodeId": f"{prefix}{default_episode_id}" if default_episode_id else None,
+    }
 
 
 def _recent_seasonal_items(

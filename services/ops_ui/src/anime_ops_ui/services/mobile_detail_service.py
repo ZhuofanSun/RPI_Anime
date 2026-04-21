@@ -2,6 +2,7 @@ from fastapi import HTTPException, status
 
 from anime_ops_ui.services.mobile_collection_service import (
     _format_series_entries,
+    _build_jellyfin_playback_identity,
     build_public_jellyfin_details_url,
     get_collection_item,
     get_jellyfin_series_context,
@@ -100,7 +101,7 @@ def _build_seasonal_detail_payload(
         if jellyfin_series_id is not None
         else None
     ) or str(jellyfin_context.get("posterUrl") if jellyfin_context else "") or fallback_poster_url
-    latest_episode_id = str(jellyfin_context["latestPlayableEpisodeId"]) if jellyfin_context else None
+    latest_episode_id = str(jellyfin_context.get("latestPlayableEpisodeId") or "").strip() if jellyfin_context else ""
     primed_label = str(jellyfin_context["primedLabel"]) if jellyfin_context else None
     seasons = (
         _format_series_entries(jellyfin_context["seasons"], prefix="app_following_jf_")
@@ -129,6 +130,7 @@ def _build_seasonal_detail_payload(
             **(
                 {
                     "latestPlayableEpisodeId": f"app_following_jf_{latest_episode_id}" if latest_episode_id else "latest",
+                    "latestPlayableJellyfinEpisodeId": latest_episode_id or None,
                     "primedLabel": primed_label or "第 1 集",
                     "playTarget": "jellyfinWeb",
                     "playUrl": build_public_jellyfin_details_url(
@@ -148,6 +150,15 @@ def _build_seasonal_detail_payload(
             "tags": tags,
         },
         "overview": overview,
+        "playback": (
+            _build_jellyfin_playback_identity(
+                jellyfin_series_id=jellyfin_series_id,
+                context=jellyfin_context,
+                prefix="app_following_jf_",
+            )
+            if jellyfin_context is not None and jellyfin_series_id is not None
+            else None
+        ),
         "seasons": seasons,
         "episodes": episodes,
         "recentSeasonal": _recent_seasonal_items(

@@ -13,6 +13,8 @@ from anime_ops_ui.services.weekly_schedule_service import (
 
 def _write_jellyfin_series_db(root, rows):
     db_path = root / "appdata" / "jellyfin" / "config" / "data" / "jellyfin.db"
+    if db_path.exists():
+        db_path.unlink()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute(
@@ -159,6 +161,82 @@ def test_weekly_schedule_adds_jellyfin_url_for_matching_series(tmp_path):
     today = payload["days"][now.weekday()]
     assert today["items"][0]["jellyfin_url"] == (
         "http://sunzhuofan.local:8096/web/#/details?id=321B1F82-21CB-8AFA-0A3A-0F27F23FA58B"
+    )
+
+
+def test_weekly_schedule_preserves_existing_series_mapping_when_later_matches_turn_ambiguous(tmp_path):
+    now = datetime(2026, 4, 8, 9, 0, tzinfo=ZoneInfo("America/Toronto"))
+    bangumi_items = [
+        {
+            "id": 9,
+            "official_title": "尖帽子的魔法工房",
+            "title_raw": "Witch Hat Atelier",
+            "air_weekday": now.weekday(),
+            "poster_link": "posters/5cac94c7.jpg",
+            "needs_review": False,
+        }
+    ]
+
+    _write_jellyfin_series_db(
+        tmp_path,
+        [
+            (
+                "JF-SERIES-1",
+                "尖帽子的魔法工房",
+                "Witch Hat Atelier",
+                "/media/seasonal/Witch Hat Atelier",
+                "MediaBrowser.Controller.Entities.TV.Series",
+            )
+        ],
+    )
+    first_payload = build_weekly_schedule_payload(
+        bangumi_items=bangumi_items,
+        anime_data_root=tmp_path,
+        base_host="sunzhuofan.local",
+        autobangumi_port=7892,
+        jellyfin_port=8096,
+        library_ids=set(),
+        now=now,
+        state_root=tmp_path / "state",
+        locale="en",
+    )
+
+    _write_jellyfin_series_db(
+        tmp_path,
+        [
+            (
+                "JF-SERIES-1",
+                "尖帽子的魔法工房",
+                "Witch Hat Atelier",
+                "/media/seasonal/Witch Hat Atelier",
+                "MediaBrowser.Controller.Entities.TV.Series",
+            ),
+            (
+                "JF-SERIES-2",
+                "尖帽子的魔法工房",
+                "Witch Hat Atelier",
+                "/media/seasonal/Witch Hat Atelier Duplicate",
+                "MediaBrowser.Controller.Entities.TV.Series",
+            ),
+        ],
+    )
+    second_payload = build_weekly_schedule_payload(
+        bangumi_items=bangumi_items,
+        anime_data_root=tmp_path,
+        base_host="sunzhuofan.local",
+        autobangumi_port=7892,
+        jellyfin_port=8096,
+        library_ids=set(),
+        now=now,
+        state_root=tmp_path / "state",
+        locale="en",
+    )
+
+    assert first_payload["days"][now.weekday()]["items"][0]["jellyfin_url"] == (
+        "http://sunzhuofan.local:8096/web/#/details?id=JF-SERIES-1"
+    )
+    assert second_payload["days"][now.weekday()]["items"][0]["jellyfin_url"] == (
+        "http://sunzhuofan.local:8096/web/#/details?id=JF-SERIES-1"
     )
 
 
