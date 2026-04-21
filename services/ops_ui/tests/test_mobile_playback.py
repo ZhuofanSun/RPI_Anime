@@ -1,0 +1,292 @@
+from urllib.parse import parse_qs, urlsplit
+
+
+def _playable_detail_payload() -> dict:
+    return {
+        "appItemId": "app_following_ab_42",
+        "mappingStatus": "mapped",
+        "title": "灵笼 第一季",
+        "heroState": "playable_primed",
+        "hero": {
+            "posterUrl": "https://example.com/poster.jpg",
+            "backdropUrl": "https://example.com/backdrop.jpg",
+            "latestPlayableEpisodeId": "ep_s2_02",
+            "latestPlayableJellyfinEpisodeId": "JF-EP-42-2",
+            "primedLabel": "E02",
+            "playTarget": "jellyfinWeb",
+            "playUrl": "http://100.123.232.73:8096/web/#/details?id=JF-SERIES-42",
+        },
+        "summary": {
+            "freshness": "本周更新",
+            "availableEpisodeCount": 2,
+            "seasonLabel": "S02",
+            "score": "9.3",
+            "tags": ["Sci-Fi"],
+        },
+        "overview": "真实简介",
+        "playback": {
+            "provider": "jellyfin",
+            "seriesId": "JF-SERIES-42",
+            "defaultSeasonId": "JF-SEASON-42",
+            "defaultEpisodeId": "JF-EP-42-2",
+            "appDefaultSeasonId": "season_2",
+            "appDefaultEpisodeId": "ep_s2_02",
+        },
+        "seasons": [
+            {
+                "id": "season_2",
+                "label": "S02",
+                "selected": True,
+                "jellyfinSeriesId": "JF-SERIES-42",
+                "jellyfinSeasonId": "JF-SEASON-42",
+            }
+        ],
+        "episodes": [
+            {
+                "id": "ep_s2_01",
+                "label": "E01",
+                "seasonId": "season_2",
+                "jellyfinSeriesId": "JF-SERIES-42",
+                "jellyfinSeasonId": "JF-SEASON-42",
+                "jellyfinEpisodeId": "JF-EP-42-1",
+                "focused": False,
+                "unread": False,
+            },
+            {
+                "id": "ep_s2_02",
+                "label": "E02",
+                "seasonId": "season_2",
+                "jellyfinSeriesId": "JF-SERIES-42",
+                "jellyfinSeasonId": "JF-SEASON-42",
+                "jellyfinEpisodeId": "JF-EP-42-2",
+                "focused": True,
+                "unread": True,
+            },
+        ],
+        "recentSeasonal": [],
+    }
+
+
+def _playback_info_payload() -> dict:
+    return {
+        "PlaySessionId": "play_session_demo",
+        "MediaSources": [
+            {
+                "Id": "MS-1",
+                "Name": "Main",
+                "Container": "mkv",
+                "Bitrate": 2770756,
+                "SupportsDirectPlay": True,
+                "SupportsDirectStream": True,
+                "DefaultAudioStreamIndex": 1,
+                "MediaStreams": [
+                    {
+                        "Type": "Video",
+                        "Index": 0,
+                        "Codec": "hevc",
+                        "Width": 1920,
+                        "Height": 1080,
+                    },
+                    {
+                        "Type": "Audio",
+                        "Index": 1,
+                        "DisplayTitle": "Japanese - AAC - Stereo - Default",
+                        "Language": "jpn",
+                        "Codec": "aac",
+                        "ChannelLayout": "stereo",
+                        "IsDefault": True,
+                    },
+                    {
+                        "Type": "Subtitle",
+                        "Index": 2,
+                        "DisplayTitle": "简体中文 - Chinese - Default - ASS",
+                        "Language": "zho",
+                        "Codec": "ass",
+                        "IsDefault": True,
+                        "IsExternal": False,
+                        "IsTextSubtitleStream": True,
+                    },
+                ],
+            }
+        ],
+    }
+
+
+def test_mobile_playback_bootstrap_returns_media_sources_and_tracks(client, monkeypatch):
+    from anime_ops_ui.services import mobile_playback_service
+
+    monkeypatch.setattr(mobile_playback_service, "build_detail_payload", lambda *args, **kwargs: _playable_detail_payload())
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "authenticate_jellyfin_session",
+        lambda: mobile_playback_service.JellyfinSession(user_id="USER-1", access_token="TOKEN-1"),
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_item_detail",
+        lambda user_id, jellyfin_item_id, access_token: {
+            "RunTimeTicks": 13821445000,
+            "UserData": {"PlaybackPositionTicks": 4200000000},
+        },
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_playback_info",
+        lambda user_id, jellyfin_item_id, access_token: _playback_info_payload(),
+    )
+
+    response = client.get(
+        "/api/mobile/items/app_following_ab_42/playback",
+        params={"episodeId": "ep_s2_01"},
+        headers={"host": "100.123.232.73:3000"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["target"] == {
+        "appItemId": "app_following_ab_42",
+        "appSeasonId": "season_2",
+        "appEpisodeId": "ep_s2_01",
+        "jellyfinSeriesId": "JF-SERIES-42",
+        "jellyfinSeasonId": "JF-SEASON-42",
+        "jellyfinEpisodeId": "JF-EP-42-1",
+        "title": "灵笼 第一季",
+        "episodeLabel": "E01",
+        "durationTicks": 13821445000,
+        "resumeTicks": 4200000000,
+    }
+    assert payload["transport"] == {
+        "provider": "jellyfin",
+        "mode": "directJellyfin",
+        "authMode": "queryApiKey",
+        "baseUrl": "http://100.123.232.73:8096",
+    }
+    assert payload["defaultMediaSourceId"] == "MS-1"
+    assert payload["jellyfinPlaySessionId"] == "play_session_demo"
+    assert payload["reporting"]["startUrl"] == "/api/mobile/items/app_following_ab_42/playback/session/start"
+
+    media_source = payload["mediaSources"][0]
+    assert media_source["id"] == "MS-1"
+    assert media_source["videoCodec"] == "hevc"
+    assert media_source["width"] == 1920
+    assert media_source["height"] == 1080
+    assert media_source["defaultAudioTrackId"] == "audio:1"
+    assert media_source["defaultSubtitleTrackId"] == "subtitle:2"
+    direct_play = urlsplit(media_source["directPlayUrl"])
+    direct_query = parse_qs(direct_play.query)
+    assert direct_play.netloc == "100.123.232.73:8096"
+    assert direct_play.path == "/Videos/JF-EP-42-1/stream"
+    assert direct_query["MediaSourceId"] == ["MS-1"]
+    assert direct_query["api_key"] == ["TOKEN-1"]
+    hls = urlsplit(media_source["transcodeHlsUrl"])
+    hls_query = parse_qs(hls.query)
+    assert hls.path == "/Videos/JF-EP-42-1/master.m3u8"
+    assert hls_query["MediaSourceId"] == ["MS-1"]
+    assert hls_query["api_key"] == ["TOKEN-1"]
+    assert media_source["audioTracks"] == [
+        {
+            "id": "audio:1",
+            "languageCode": "jpn",
+            "displayName": "Japanese - AAC - Stereo - Default",
+            "isDefault": True,
+            "codec": "aac",
+            "channelLayout": "stereo",
+            "streamIndex": 1,
+        }
+    ]
+    assert media_source["subtitleTracks"] == [
+        {
+            "id": "subtitle:off",
+            "languageCode": None,
+            "displayName": "Off",
+            "isDefault": False,
+            "delivery": "none",
+            "format": None,
+            "streamIndex": None,
+        },
+        {
+            "id": "subtitle:2",
+            "languageCode": "zho",
+            "displayName": "简体中文 - Chinese - Default - ASS",
+            "isDefault": True,
+            "delivery": "embedded",
+            "format": "ass",
+            "streamIndex": 2,
+        },
+    ]
+
+
+def test_mobile_playback_session_returns_direct_play_stream_descriptor(client, monkeypatch):
+    from anime_ops_ui.services import mobile_playback_service
+
+    monkeypatch.setattr(mobile_playback_service, "build_detail_payload", lambda *args, **kwargs: _playable_detail_payload())
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "authenticate_jellyfin_session",
+        lambda: mobile_playback_service.JellyfinSession(user_id="USER-1", access_token="TOKEN-1"),
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_item_detail",
+        lambda user_id, jellyfin_item_id, access_token: {
+            "RunTimeTicks": 13821445000,
+            "UserData": {"PlaybackPositionTicks": 4200000000},
+        },
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_playback_info",
+        lambda user_id, jellyfin_item_id, access_token: _playback_info_payload(),
+    )
+
+    response = client.post(
+        "/api/mobile/items/app_following_ab_42/playback/session",
+        json={
+            "appEpisodeId": "ep_s2_01",
+            "preferredDelivery": "directPlay",
+        },
+        headers={"host": "100.123.232.73:3000"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sessionId"] == "play_session_demo"
+    assert payload["stream"] == {
+        "delivery": "directPlay",
+        "url": "http://100.123.232.73:8096/Videos/JF-EP-42-1/stream?static=true&MediaSourceId=MS-1&api_key=TOKEN-1",
+        "headers": {},
+    }
+    assert payload["selectedMediaSourceId"] == "MS-1"
+    assert payload["selectedAudioTrackId"] == "audio:1"
+    assert payload["selectedSubtitleTrackId"] == "subtitle:2"
+    assert payload["resumeTicks"] == 4200000000
+    assert payload["durationTicks"] == 13821445000
+    assert payload["reporting"]["stopUrl"] == "/api/mobile/items/app_following_ab_42/playback/session/stop"
+
+
+def test_mobile_playback_reporting_endpoints_return_ack(client):
+    start = client.post(
+        "/api/mobile/items/app_following_ab_42/playback/session/start",
+        json={"sessionId": "play_session_demo", "positionTicks": 120000000},
+    )
+    progress = client.post(
+        "/api/mobile/items/app_following_ab_42/playback/session/progress",
+        json={"sessionId": "play_session_demo", "positionTicks": 240000000},
+    )
+    stop = client.post(
+        "/api/mobile/items/app_following_ab_42/playback/session/stop",
+        json={"sessionId": "play_session_demo", "positionTicks": 360000000},
+    )
+
+    assert start.status_code == 200
+    assert progress.status_code == 200
+    assert stop.status_code == 200
+    assert start.json() == {
+        "ok": True,
+        "appItemId": "app_following_ab_42",
+        "phase": "start",
+        "sessionId": "play_session_demo",
+        "positionTicks": 120000000,
+    }
+    assert progress.json()["phase"] == "progress"
+    assert stop.json()["phase"] == "stop"
