@@ -16,6 +16,19 @@ from anime_ops_ui.services.jellyfin_auth_service import (
     jellyfin_request_headers,
 )
 
+_UNSUPPORTED_DIRECT_SUBTITLE_FORMATS = {
+    "ass",
+    "ssa",
+    "pgs",
+    "pgssub",
+    "sup",
+    "sub",
+    "idx",
+    "vobsub",
+    "dvdsub",
+    "dvbsub",
+}
+
 
 def build_playback_bootstrap_payload(
     app_item_id: str,
@@ -121,12 +134,13 @@ def create_playback_session_payload(
             detail=f"Playable media source unavailable for mobile item: {app_item_id}",
         )
 
+    selected_audio_track_id = normalize_audio_track_id(selected_source, audio_track_id)
+    selected_subtitle_track_id = normalize_subtitle_track_id(selected_source, subtitle_track_id)
     delivery, stream_url = resolve_stream_delivery(
         selected_source,
         preferred_delivery=preferred_delivery,
+        selected_subtitle_track_id=selected_subtitle_track_id,
     )
-    selected_audio_track_id = normalize_audio_track_id(selected_source, audio_track_id)
-    selected_subtitle_track_id = normalize_subtitle_track_id(selected_source, subtitle_track_id)
 
     return {
         "sessionId": str(bootstrap.get("jellyfinPlaySessionId") or uuid.uuid4().hex),
@@ -434,12 +448,19 @@ def build_media_sources_payload(
     return sources
 
 
-def resolve_stream_delivery(source: dict[str, Any], *, preferred_delivery: str | None = None) -> tuple[str, str]:
+def resolve_stream_delivery(
+    source: dict[str, Any],
+    *,
+    preferred_delivery: str | None = None,
+    selected_subtitle_track_id: str | None = None,
+) -> tuple[str, str]:
     preferred = str(preferred_delivery or "").strip()
 
     if preferred in {"directPlay", "directStream"} and source.get("directPlayUrl"):
         return preferred, str(source["directPlayUrl"])
     if preferred == "transcodeHls" and source.get("transcodeHlsUrl"):
+        return "transcodeHls", str(source["transcodeHlsUrl"])
+    if should_prefer_transcode_hls(source, selected_subtitle_track_id=selected_subtitle_track_id):
         return "transcodeHls", str(source["transcodeHlsUrl"])
 
     if source.get("supportsDirectPlay") and source.get("directPlayUrl"):
@@ -452,6 +473,33 @@ def resolve_stream_delivery(source: dict[str, Any], *, preferred_delivery: str |
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail="No supported stream delivery found for the selected media source.",
+    )
+
+
+def should_prefer_transcode_hls(
+    source: dict[str, Any],
+    *,
+    selected_subtitle_track_id: str | None = None,
+) -> bool:
+    if not source.get("transcodeHlsUrl"):
+        return False
+    selected_subtitle = selected_subtitle_track(source, selected_subtitle_track_id)
+    if selected_subtitle is None:
+        return False
+    if selected_subtitle.get("id") == "subtitle:off":
+        return False
+
+    subtitle_format = str(selected_subtitle.get("format") or "").strip().lower()
+    return subtitle_format in _UNSUPPORTED_DIRECT_SUBTITLE_FORMATS
+
+
+def selected_subtitle_track(source: dict[str, Any], track_id: str | None) -> dict[str, Any] | None:
+    normalized = str(track_id or "").strip()
+    if not normalized:
+        return None
+    return next(
+        (track for track in source.get("subtitleTracks") or [] if track.get("id") == normalized),
+        None,
     )
 
 

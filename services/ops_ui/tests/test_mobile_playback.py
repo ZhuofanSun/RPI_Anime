@@ -282,6 +282,48 @@ def test_mobile_playback_session_returns_direct_play_stream_descriptor(client, m
     assert payload["reporting"]["stopUrl"] == "/api/mobile/items/app_following_ab_42/playback/session/stop"
 
 
+def test_mobile_playback_session_auto_prefers_hls_for_unsupported_subtitle_format(client, monkeypatch):
+    from anime_ops_ui.services import mobile_playback_service
+
+    monkeypatch.setattr(mobile_playback_service, "build_detail_payload", lambda *args, **kwargs: _playable_detail_payload())
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "authenticate_jellyfin_session",
+        lambda: mobile_playback_service.JellyfinSession(user_id="USER-1", access_token="TOKEN-1"),
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_item_detail",
+        lambda user_id, jellyfin_item_id, access_token: {
+            "RunTimeTicks": 13821445000,
+            "UserData": {"PlaybackPositionTicks": 4200000000},
+        },
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_playback_info",
+        lambda user_id, jellyfin_item_id, access_token: _playback_info_payload(),
+    )
+
+    response = client.post(
+        "/api/mobile/items/app_following_ab_42/playback/session",
+        json={
+            "appEpisodeId": "ep_s2_01",
+            "preferredDelivery": "auto",
+        },
+        headers={"host": "100.123.232.73:3000"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stream"]["delivery"] == "transcodeHls"
+    assert payload["stream"]["url"] == (
+        "http://100.123.232.73:8096/Videos/JF-EP-42-1/master.m3u8"
+        "?MediaSourceId=MS-1&api_key=TOKEN-1"
+    )
+    assert payload["selectedSubtitleTrackId"] == "subtitle:2"
+
+
 def test_mobile_playback_reporting_endpoints_bridge_resume_events_and_mark_completed_stop(client, monkeypatch):
     from anime_ops_ui.services import mobile_playback_service
 
