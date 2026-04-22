@@ -179,6 +179,10 @@ def apply_preprocess_entries(
     return response
 
 
+def run_preprocess_entry(entry: PreprocessEntry, *, ffmpeg_bin: str = "ffmpeg") -> None:
+    _run_preprocess_entry(entry, ffmpeg_bin=ffmpeg_bin)
+
+
 def _run_preprocess_entry(entry: PreprocessEntry, *, ffmpeg_bin: str) -> None:
     entry.staging_output_path.parent.mkdir(parents=True, exist_ok=True)
     if entry.staging_output_path.exists():

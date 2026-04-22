@@ -4,11 +4,15 @@ import shutil
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .models import ParsedMedia, UnparsedMedia
 from .scanner import ScanReport
 from .selector import SelectionDecision, build_selection_plan
 from .title_map import ResolvedSeries, TitleMapResolver, load_title_map
+
+if TYPE_CHECKING:
+    from .preprocess import PreprocessEntry
 
 
 @dataclass(frozen=True)
@@ -130,6 +134,31 @@ def build_publish_plan(
     )
 
 
+def build_publish_preprocess_entries(
+    plan: PublishPlan,
+    *,
+    staging_root: Path,
+    backup_root: Path,
+    ffprobe_bin: str = "ffprobe",
+    target_profile: str = "personal_modern_apple",
+) -> list["PreprocessEntry"]:
+    from .compatibility import build_compatibility_report
+    from .preprocess import build_preprocess_entries
+
+    compatibility = build_compatibility_report(
+        plan.decisions,
+        ffprobe_bin=ffprobe_bin,
+        target_profile=target_profile,
+    )
+    return build_preprocess_entries(
+        compatibility,
+        library_root=plan.library_root,
+        resolver=plan.resolver,
+        staging_root=staging_root,
+        backup_root=backup_root,
+    )
+
+
 def _cleanup_empty_dirs(path: Path, stop_at: Path) -> None:
     current = path
     while current != stop_at and current.is_dir():
@@ -153,16 +182,59 @@ def apply_publish_plan(
     *,
     delete_losers: bool = False,
     move_unparsed_to_review: bool = True,
+    preprocess_entries: list["PreprocessEntry"] | None = None,
+    ffmpeg_bin: str = "ffmpeg",
 ) -> dict:
+    from .preprocess import run_preprocess_entry
+
     published: list[dict] = []
     deleted: list[str] = []
     reviewed: list[dict] = []
+    preprocessed: list[dict] = []
+    preprocess_by_source = {
+        str(entry.source_path): entry for entry in (preprocess_entries or [])
+    }
 
     for decision in plan.decisions:
-        target = build_target_path(plan.library_root, decision.winner, resolver=plan.resolver)
+        preprocess_entry = preprocess_by_source.get(str(decision.winner.path))
+        target = (
+            preprocess_entry.library_output_path
+            if preprocess_entry is not None
+            else build_target_path(plan.library_root, decision.winner, resolver=plan.resolver)
+        )
+        if target.exists():
+            raise FileExistsError(f"target already exists: {target}")
+
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(decision.winner.path), str(target))
-        _cleanup_empty_dirs(decision.winner.path.parent, plan.download_root)
+        preprocess_details: dict | None = None
+
+        if preprocess_entry is not None:
+            run_preprocess_entry(preprocess_entry, ffmpeg_bin=ffmpeg_bin)
+            if preprocess_entry.backup_path.exists():
+                raise FileExistsError(f"backup already exists: {preprocess_entry.backup_path}")
+            preprocess_entry.backup_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(preprocess_entry.source_path), str(preprocess_entry.backup_path))
+            _cleanup_empty_dirs(preprocess_entry.source_path.parent, plan.download_root)
+            shutil.move(str(preprocess_entry.staging_output_path), str(target))
+            preprocess_details = {
+                "strategy": preprocess_entry.strategy,
+                "queue_key": preprocess_entry.queue_key,
+                "video_codec": preprocess_entry.video_codec,
+                "backup": str(preprocess_entry.backup_path),
+                "note": preprocess_entry.note,
+                "strategy_note": preprocess_entry.strategy_note,
+            }
+            preprocessed.append(
+                {
+                    "source": str(decision.winner.relative_path),
+                    "target": str(target),
+                    **preprocess_details,
+                }
+            )
+        else:
+            shutil.move(str(decision.winner.path), str(target))
+            _cleanup_empty_dirs(decision.winner.path.parent, plan.download_root)
+
         series = resolve_series(decision.winner, resolver=plan.resolver)
         show_dir = build_series_folder_path(
             plan.library_root,
@@ -183,6 +255,7 @@ def apply_publish_plan(
                 "score": decision.winner_score.summary,
                 "nfo": str(nfo_path),
                 "episode_nfo": str(episode_nfo_path),
+                "preprocess": preprocess_details,
             }
         )
 
@@ -209,6 +282,7 @@ def apply_publish_plan(
         "published": published,
         "deleted": deleted,
         "reviewed": reviewed,
+        "preprocessed": preprocessed,
     }
 
 

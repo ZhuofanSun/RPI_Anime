@@ -15,6 +15,7 @@ from .preprocess import (
 from .publisher import (
     apply_publish_plan,
     build_publish_plan,
+    build_publish_preprocess_entries,
     build_target_path,
     write_library_nfo,
 )
@@ -477,6 +478,18 @@ def _print_preprocess_entries(entries) -> None:
             print("  follow_up: refresh_jellyfin_metadata_for_replaced_library_items")
 
 
+def _print_publish_preprocess_summary(entries) -> None:
+    summary = summarize_preprocess_entries(entries)
+    print(f"\nauto preprocess winners: {summary['total']}")
+    if not summary["total"]:
+        return
+    for title, count in summary["title_counts"].items():
+        print(f"- {title}: {count}")
+    print(
+        "note: newly published preprocessed files may trigger Jellyfin chapter/trickplay background work."
+    )
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
@@ -508,6 +521,11 @@ def main() -> None:
         source_root = args.source_root or _default_download_root(anime_data_root)
         target_root = args.target_root or _default_library_root(anime_data_root)
         review_root = args.review_root or _default_review_root(anime_data_root)
+        staging_root = _default_preprocess_root(anime_data_root)
+        backup_root = _default_preprocess_backup_root(anime_data_root)
+        target_profile = os.environ.get("POSTPROCESSOR_TARGET_PROFILE", "personal_modern_apple")
+        ffprobe_bin = os.environ.get("POSTPROCESSOR_FFPROBE_BIN", "ffprobe")
+        ffmpeg_bin = os.environ.get("POSTPROCESSOR_FFMPEG_BIN", "ffmpeg")
         report = scan_root(source_root)
         plan = build_publish_plan(
             report=report,
@@ -515,8 +533,14 @@ def main() -> None:
             library_root=target_root,
             review_root=review_root,
         )
+        entries = build_publish_preprocess_entries(
+            plan,
+            staging_root=staging_root,
+            backup_root=backup_root,
+            ffprobe_bin=ffprobe_bin,
+            target_profile=target_profile,
+        )
         if not args.apply:
-            summary = summarize_preprocess_entries(entries)
             if getattr(args, "json", False):
                 print(
                     json.dumps(
@@ -551,6 +575,8 @@ def main() -> None:
                                 }
                                 for decision in plan.decisions
                             ],
+                            "preprocess_summary": summarize_preprocess_entries(entries),
+                            "preprocess_entries": [entry.to_dict() for entry in entries],
                         },
                         ensure_ascii=False,
                         indent=2,
@@ -558,6 +584,7 @@ def main() -> None:
                 )
                 return
             _print_publish_plan(plan)
+            _print_publish_preprocess_summary(entries)
             print(
                 "\ndry-run only. Re-run with 'publish --apply' to move winners."
             )
@@ -569,16 +596,23 @@ def main() -> None:
             plan,
             delete_losers=args.delete_losers,
             move_unparsed_to_review=True,
+            preprocess_entries=entries,
+            ffmpeg_bin=ffmpeg_bin,
         )
         if getattr(args, "json", False):
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return
         print("apply complete")
         print(f"published: {len(result['published'])}")
+        print(f"auto preprocessed: {len(result['preprocessed'])}")
         print(f"deleted losers: {len(result['deleted'])}")
         print(f"moved to review: {len(result['reviewed'])}")
         for item in result["published"]:
             print(f"- publish {item['source']} -> {item['target']}")
+            if item.get("preprocess"):
+                print(
+                    f"  preprocess: {item['preprocess']['strategy']} ({item['preprocess']['queue_key']})"
+                )
         for item in result["deleted"]:
             print(f"- delete {item}")
         for item in result["reviewed"]:

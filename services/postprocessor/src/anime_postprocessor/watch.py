@@ -9,7 +9,12 @@ from pathlib import Path
 from .eventlog import append_event
 from .models import EpisodeKey, ParsedMedia, UnparsedMedia
 from .parser import parse_media_file
-from .publisher import apply_publish_plan, build_publish_plan
+from .preprocess import summarize_preprocess_entries
+from .publisher import (
+    apply_publish_plan,
+    build_publish_plan,
+    build_publish_preprocess_entries,
+)
 from .qb import QBClient, QBTorrent
 from .scanner import build_report
 from .selector import score_candidate
@@ -180,6 +185,11 @@ def _run_once(
     local_download_root: Path,
     library_root: Path,
     review_root: Path,
+    staging_root: Path,
+    backup_root: Path,
+    ffprobe_bin: str,
+    ffmpeg_bin: str,
+    target_profile: str,
     delete_losers: bool,
     wait_timeout: int,
 ) -> None:
@@ -240,6 +250,14 @@ def _run_once(
                 library_root=library_root,
                 review_root=review_root,
             )
+            preprocess_entries = build_publish_preprocess_entries(
+                plan,
+                staging_root=staging_root,
+                backup_root=backup_root,
+                ffprobe_bin=ffprobe_bin,
+                target_profile=target_profile,
+            )
+            preprocess_summary = summarize_preprocess_entries(preprocess_entries)
             hashes = sorted({entry.torrent.torrent_hash for entry in state})
             qb.pause(hashes)
             qb.delete(hashes, delete_files=False)
@@ -247,11 +265,14 @@ def _run_once(
                 plan,
                 delete_losers=delete_losers,
                 move_unparsed_to_review=True,
+                preprocess_entries=preprocess_entries,
+                ffmpeg_bin=ffmpeg_bin,
             )
             print(
                 f"[watch] processed {key.normalized_title} "
                 f"S{key.season:02d}E{key.episode:02d}: "
                 f"reason={reason}; "
+                f"preprocessed={preprocess_summary['total']} "
                 f"published={len(result['published'])} "
                 f"deleted={len(result['deleted'])} "
                 f"reviewed={len(result['reviewed'])}"
@@ -266,6 +287,9 @@ def _run_once(
                 ),
                 details={
                     "reason": reason,
+                    "preprocess_summary": preprocess_summary,
+                    "preprocessed": result["preprocessed"],
+                    "jellyfin_background_tasks_expected": preprocess_summary["total"] > 0,
                     "published": len(result["published"]),
                     "deleted": len(result["deleted"]),
                     "reviewed": len(result["reviewed"]),
@@ -349,6 +373,11 @@ def watch_loop(
     local_download_root: Path,
     library_root: Path,
     review_root: Path,
+    staging_root: Path,
+    backup_root: Path,
+    ffprobe_bin: str,
+    ffmpeg_bin: str,
+    target_profile: str,
     poll_interval: int,
     delete_losers: bool,
     wait_timeout: int,
@@ -367,6 +396,9 @@ def watch_loop(
             "wait_timeout": wait_timeout,
             "delete_losers": delete_losers,
             "once": once,
+            "target_profile": target_profile,
+            "staging_root": str(staging_root),
+            "backup_root": str(backup_root),
         },
     )
     while True:
@@ -377,6 +409,11 @@ def watch_loop(
             local_download_root=local_download_root,
             library_root=library_root,
             review_root=review_root,
+            staging_root=staging_root,
+            backup_root=backup_root,
+            ffprobe_bin=ffprobe_bin,
+            ffmpeg_bin=ffmpeg_bin,
+            target_profile=target_profile,
             delete_losers=delete_losers,
             wait_timeout=wait_timeout,
         )
@@ -407,6 +444,21 @@ def watch_from_env(
     settle_timeout = wait_timeout or int(
         os.environ.get("POSTPROCESSOR_WAIT_TIMEOUT", "1800")
     )
+    staging_root = Path(
+        os.environ.get(
+            "ANIME_PREPROCESS_ROOT",
+            anime_data_root / "processing" / "ios_preprocess",
+        )
+    )
+    backup_root = Path(
+        os.environ.get(
+            "ANIME_PREPROCESS_BACKUP_ROOT",
+            anime_data_root / "processing" / "ios_preprocess_backups",
+        )
+    )
+    ffprobe_bin = os.environ.get("POSTPROCESSOR_FFPROBE_BIN", "ffprobe")
+    ffmpeg_bin = os.environ.get("POSTPROCESSOR_FFMPEG_BIN", "ffmpeg")
+    target_profile = os.environ.get("POSTPROCESSOR_TARGET_PROFILE", "personal_modern_apple")
     delete = (
         delete_losers
         if delete_losers is not None
@@ -422,6 +474,11 @@ def watch_from_env(
         local_download_root=source_root,
         library_root=target_root,
         review_root=review_root,
+        staging_root=staging_root,
+        backup_root=backup_root,
+        ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
+        target_profile=target_profile,
         poll_interval=interval,
         delete_losers=delete,
         wait_timeout=settle_timeout,
