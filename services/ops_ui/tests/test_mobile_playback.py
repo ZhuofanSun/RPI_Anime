@@ -150,6 +150,14 @@ def _hls_playback_info_payload() -> dict:
     }
 
 
+def _playback_info_payload_with_mov_text() -> dict:
+    payload = _playback_info_payload()
+    payload["MediaSources"][0]["Container"] = "mp4"
+    payload["MediaSources"][0]["MediaStreams"][2]["Codec"] = "mov_text"
+    payload["MediaSources"][0]["MediaStreams"][2]["DisplayTitle"] = "简体中文 - Chinese - Default - MOV_TEXT"
+    return payload
+
+
 def test_mobile_playback_bootstrap_returns_media_sources_and_tracks(client, monkeypatch):
     from anime_ops_ui.services import mobile_playback_service
 
@@ -364,6 +372,50 @@ def test_mobile_playback_session_auto_prefers_hls_for_unsupported_subtitle_forma
         "&SubtitleStreamIndex=2&SubtitleMethod=Encode&PlaySessionId=play_session_hls_demo"
         "&ApiKey=TOKEN-1"
     )
+    assert payload["selectedSubtitleTrackId"] == "subtitle:2"
+
+
+def test_mobile_playback_session_auto_keeps_direct_play_for_mov_text_subtitle(client, monkeypatch):
+    from anime_ops_ui.services import mobile_playback_service
+
+    playback_requests: list[dict | None] = []
+
+    monkeypatch.setattr(mobile_playback_service, "build_detail_payload", lambda *args, **kwargs: _playable_detail_payload())
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "authenticate_jellyfin_session",
+        lambda: mobile_playback_service.JellyfinSession(user_id="USER-1", access_token="TOKEN-1"),
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_item_detail",
+        lambda user_id, jellyfin_item_id, access_token: {
+            "RunTimeTicks": 13821445000,
+            "UserData": {"PlaybackPositionTicks": 4200000000},
+        },
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_playback_info",
+        lambda user_id, jellyfin_item_id, access_token, playback_request=None: (
+            playback_requests.append(playback_request),
+            _playback_info_payload_with_mov_text(),
+        )[1],
+    )
+
+    response = client.post(
+        "/api/mobile/items/app_following_ab_42/playback/session",
+        json={
+            "appEpisodeId": "ep_s2_01",
+            "preferredDelivery": "auto",
+        },
+        headers={"host": "100.123.232.73:3000"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert playback_requests == [None]
+    assert payload["stream"]["delivery"] == "directPlay"
     assert payload["selectedSubtitleTrackId"] == "subtitle:2"
 
 

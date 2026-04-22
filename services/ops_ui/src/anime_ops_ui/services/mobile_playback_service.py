@@ -28,6 +28,9 @@ _UNSUPPORTED_DIRECT_SUBTITLE_FORMATS = {
     "dvdsub",
     "dvbsub",
 }
+_DIRECT_SAFE_TEXT_SUBTITLE_FORMATS = {
+    "mov_text",
+}
 
 
 def build_playback_bootstrap_payload(
@@ -537,6 +540,12 @@ def should_prefer_transcode_hls(
     if selected_subtitle is None:
         return False
     if selected_subtitle.get("id") == "subtitle:off":
+        return False
+    subtitle_format = str(selected_subtitle.get("format") or "").strip().lower()
+    if (
+        source.get("supportsDirectPlay")
+        and subtitle_format in _DIRECT_SAFE_TEXT_SUBTITLE_FORMATS
+    ):
         return False
     return True
 
