@@ -9,6 +9,8 @@ from anime_postprocessor.compatibility import (
 )
 from anime_postprocessor.models import EpisodeKey, ParsedMedia
 from anime_postprocessor.preprocess import (
+    PreprocessEntry,
+    _run_preprocess_entry,
     build_preprocess_entries,
     filter_preprocess_decisions,
     summarize_preprocess_entries,
@@ -120,6 +122,7 @@ def test_build_preprocess_entries_maps_supported_queue_to_mp4_output():
     assert len(entries) == 1
     entry = entries[0]
     assert entry.strategy == "mp4_text_remux"
+    assert entry.video_codec == "h264"
     assert entry.staging_output_path == Path(
         "/tmp/staging/Demo Show/Season 1/Demo Show S01E01.mp4"
     )
@@ -198,3 +201,41 @@ def test_filter_preprocess_decisions_applies_title_filter_before_probe():
     )
 
     assert filtered == [keep]
+
+
+def test_run_preprocess_entry_tags_hevc_outputs_as_hvc1(tmp_path, monkeypatch):
+    source_path = tmp_path / "source.mkv"
+    source_path.write_bytes(b"demo")
+    output_path = tmp_path / "out.mp4"
+
+    entry = PreprocessEntry(
+        title="Demo Show",
+        season=1,
+        episode=1,
+        queue_key="remux_to_mp4_or_fmp4__then__verify_hevc_on_target_devices",
+        strategy="mp4_text_remux",
+        video_codec="hevc",
+        source_path=source_path,
+        staging_output_path=output_path,
+        library_output_path=output_path,
+        backup_path=tmp_path / "backup.mkv",
+        actions=["remux_to_mp4_or_fmp4", "verify_hevc_on_target_devices"],
+        note="demo",
+        strategy_note="demo",
+        requires_jellyfin_refresh=True,
+    )
+
+    recorded: dict[str, list[str]] = {}
+
+    def fake_run(command, check):
+        recorded["command"] = command
+        recorded["check"] = check
+
+    monkeypatch.setattr("anime_postprocessor.preprocess.subprocess.run", fake_run)
+
+    _run_preprocess_entry(entry, ffmpeg_bin="ffmpeg")
+
+    assert recorded["check"] is True
+    assert "-tag:v" in recorded["command"]
+    tag_index = recorded["command"].index("-tag:v")
+    assert recorded["command"][tag_index + 1] == "hvc1"

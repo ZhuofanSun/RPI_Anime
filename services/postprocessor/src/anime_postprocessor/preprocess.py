@@ -18,6 +18,7 @@ class PreprocessEntry:
     episode: int
     queue_key: str
     strategy: str
+    video_codec: str | None
     source_path: Path
     staging_output_path: Path
     library_output_path: Path
@@ -34,6 +35,7 @@ class PreprocessEntry:
             "episode": self.episode,
             "queue_key": self.queue_key,
             "strategy": self.strategy,
+            "video_codec": self.video_codec,
             "source_path": str(self.source_path),
             "staging_output_path": str(self.staging_output_path),
             "library_output_path": str(self.library_output_path),
@@ -132,6 +134,7 @@ def build_preprocess_entries(
                 episode=item.decision.winner.episode,
                 queue_key=queue.key,
                 strategy=strategy,
+                video_codec=item.probe.video_codec,
                 source_path=item.decision.winner.path,
                 staging_output_path=staging_output,
                 library_output_path=library_target,
@@ -203,6 +206,10 @@ def _run_preprocess_entry(entry: PreprocessEntry, *, ffmpeg_bin: str) -> None:
         "0",
         "-c:v",
         "copy",
+    ]
+    if str(entry.video_codec or "").strip().lower() == "hevc":
+        command.extend(["-tag:v", "hvc1"])
+    command.extend([
         "-c:a",
         "copy",
         "-c:s",
@@ -210,7 +217,7 @@ def _run_preprocess_entry(entry: PreprocessEntry, *, ffmpeg_bin: str) -> None:
         "-movflags",
         "+faststart",
         str(entry.staging_output_path),
-    ]
+    ])
     subprocess.run(command, check=True)
 
 
