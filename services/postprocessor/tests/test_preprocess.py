@@ -8,7 +8,11 @@ from anime_postprocessor.compatibility import (
     MediaProbe,
 )
 from anime_postprocessor.models import EpisodeKey, ParsedMedia
-from anime_postprocessor.preprocess import build_preprocess_entries
+from anime_postprocessor.preprocess import (
+    build_preprocess_entries,
+    filter_preprocess_decisions,
+    summarize_preprocess_entries,
+)
 from anime_postprocessor.selector import CandidateScore, SelectionDecision
 
 
@@ -125,6 +129,8 @@ def test_build_preprocess_entries_maps_supported_queue_to_mp4_output():
     assert entry.backup_path == Path(
         "/tmp/backups/Demo Show/Season 1/Demo Show S01E01.mkv"
     )
+    assert entry.strategy_note.startswith("Copy video/audio into MP4")
+    assert entry.requires_jellyfin_refresh is True
 
 
 def test_build_preprocess_entries_skips_unsupported_queue():
@@ -156,3 +162,39 @@ def test_build_preprocess_entries_filters_by_title():
     )
 
     assert entries == []
+
+
+def test_summarize_preprocess_entries_reports_series_and_refresh_counts():
+    media = _media("Demo Show/Season 1/Demo Show S01E01.mkv", title="Demo Show")
+    report = _report(media, "subtitles_to_webvtt__then__remux_to_mp4_or_fmp4")
+
+    entries = build_preprocess_entries(
+        report,
+        library_root=Path("/tmp/library"),
+        resolver=_Resolver(),
+        staging_root=Path("/tmp/staging"),
+        backup_root=Path("/tmp/backups"),
+    )
+
+    summary = summarize_preprocess_entries(entries)
+
+    assert summary["total"] == 1
+    assert summary["strategy_counts"] == {"mp4_text_remux": 1}
+    assert summary["title_counts"] == {"Demo Show": 1}
+    assert (
+        summary["queue_counts"]
+        == {"subtitles_to_webvtt__then__remux_to_mp4_or_fmp4": 1}
+    )
+    assert summary["requires_jellyfin_refresh_count"] == 1
+
+
+def test_filter_preprocess_decisions_applies_title_filter_before_probe():
+    keep = _decision(_media("Demo Show/Season 1/Demo Show S01E01.mkv", title="Keep Show"))
+    skip = _decision(_media("Demo Show/Season 1/Demo Show S01E02.mkv", title="Skip Show"))
+
+    filtered = filter_preprocess_decisions(
+        [keep, skip],
+        title_filters={"Keep Show"},
+    )
+
+    assert filtered == [keep]

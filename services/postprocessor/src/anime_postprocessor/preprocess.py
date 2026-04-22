@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
 from .compatibility import CompatibilityReport
 from .publisher import build_target_path
+from .selector import SelectionDecision
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,8 @@ class PreprocessEntry:
     backup_path: Path
     actions: list[str]
     note: str
+    strategy_note: str
+    requires_jellyfin_refresh: bool
 
     def to_dict(self) -> dict:
         return {
@@ -36,6 +40,8 @@ class PreprocessEntry:
             "backup_path": str(self.backup_path),
             "actions": self.actions,
             "note": self.note,
+            "strategy_note": self.strategy_note,
+            "requires_jellyfin_refresh": self.requires_jellyfin_refresh,
         }
 
 
@@ -47,6 +53,44 @@ def _select_strategy(queue_key: str) -> str | None:
     }:
         return "mp4_text_remux"
     return None
+
+
+def _strategy_note(strategy: str) -> str:
+    if strategy == "mp4_text_remux":
+        return (
+            "Copy video/audio into MP4, convert text subtitles to embedded mov_text, "
+            "and keep the file on the direct-play path for AVPlayer validation."
+        )
+    raise ValueError(f"unsupported preprocess strategy: {strategy}")
+
+
+def summarize_preprocess_entries(entries: list[PreprocessEntry]) -> dict:
+    strategy_counts = Counter(entry.strategy for entry in entries)
+    queue_counts = Counter(entry.queue_key for entry in entries)
+    title_counts = Counter(entry.title for entry in entries)
+    jellyfin_refresh_count = sum(1 for entry in entries if entry.requires_jellyfin_refresh)
+    return {
+        "total": len(entries),
+        "strategy_counts": dict(sorted(strategy_counts.items())),
+        "queue_counts": dict(sorted(queue_counts.items())),
+        "title_counts": dict(sorted(title_counts.items())),
+        "requires_jellyfin_refresh_count": jellyfin_refresh_count,
+    }
+
+
+def filter_preprocess_decisions(
+    decisions: list[SelectionDecision],
+    *,
+    title_filters: set[str] | None = None,
+) -> list[SelectionDecision]:
+    normalized_title_filters = {value.casefold() for value in title_filters or set()}
+    if not normalized_title_filters:
+        return decisions
+    return [
+        decision
+        for decision in decisions
+        if decision.winner.title.casefold() in normalized_title_filters
+    ]
 
 
 def build_preprocess_entries(
@@ -94,6 +138,8 @@ def build_preprocess_entries(
                 backup_path=backup_path,
                 actions=item.assessment.suggested_actions,
                 note=queue.note,
+                strategy_note=_strategy_note(strategy),
+                requires_jellyfin_refresh=library_target != item.decision.winner.path,
             )
         )
 
@@ -110,17 +156,24 @@ def apply_preprocess_entries(
     replace_library: bool = False,
 ) -> dict:
     completed: list[dict] = []
+    refresh_required = False
 
     for entry in entries:
         _run_preprocess_entry(entry, ffmpeg_bin=ffmpeg_bin)
         result = entry.to_dict()
         if replace_library:
             result.update(_replace_library_source(entry))
+            refresh_required = refresh_required or entry.requires_jellyfin_refresh
         completed.append(result)
 
-    return {
+    response = {
         "processed": completed,
     }
+    if replace_library and refresh_required:
+        response["post_apply_actions"] = [
+            "refresh_jellyfin_metadata_for_replaced_library_items"
+        ]
+    return response
 
 
 def _run_preprocess_entry(entry: PreprocessEntry, *, ffmpeg_bin: str) -> None:

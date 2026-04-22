@@ -6,7 +6,12 @@ import os
 from pathlib import Path
 
 from .compatibility import build_compatibility_report
-from .preprocess import apply_preprocess_entries, build_preprocess_entries
+from .preprocess import (
+    apply_preprocess_entries,
+    build_preprocess_entries,
+    filter_preprocess_decisions,
+    summarize_preprocess_entries,
+)
 from .publisher import (
     apply_publish_plan,
     build_publish_plan,
@@ -443,16 +448,33 @@ def _build_series_queue_summary(compatibility, *, target_root: Path, resolver) -
 
 
 def _print_preprocess_entries(entries) -> None:
-    print(f"preprocess entries: {len(entries)}")
+    summary = summarize_preprocess_entries(entries)
+    print(f"preprocess entries: {summary['total']}")
+    if summary["strategy_counts"]:
+        print("strategy counts:")
+        for strategy, count in summary["strategy_counts"].items():
+            print(f"- {strategy}: {count}")
+    if summary["title_counts"]:
+        print("series counts:")
+        for title, count in summary["title_counts"].items():
+            print(f"- {title}: {count}")
+    if summary["requires_jellyfin_refresh_count"]:
+        print(
+            "follow-up: "
+            f"{summary['requires_jellyfin_refresh_count']} entries will need Jellyfin metadata refresh after replace."
+        )
     for entry in entries:
         print(f"- {entry.title} S{entry.season:02d}E{entry.episode:02d}")
         print(f"  queue: {entry.queue_key}")
         print(f"  strategy: {entry.strategy}")
+        print(f"  strategy_note: {entry.strategy_note}")
         print(f"  source: {entry.source_path}")
         print(f"  staging_output: {entry.staging_output_path}")
         print(f"  library_output: {entry.library_output_path}")
         print(f"  backup: {entry.backup_path}")
         print(f"  note: {entry.note}")
+        if entry.requires_jellyfin_refresh:
+            print("  follow_up: refresh_jellyfin_metadata_for_replaced_library_items")
 
 
 def main() -> None:
@@ -494,6 +516,7 @@ def main() -> None:
             review_root=review_root,
         )
         if not args.apply:
+            summary = summarize_preprocess_entries(entries)
             if getattr(args, "json", False):
                 print(
                     json.dumps(
@@ -663,8 +686,12 @@ def main() -> None:
             library_root=target_root,
             review_root=review_root,
         )
-        compatibility = build_compatibility_report(
+        filtered_decisions = filter_preprocess_decisions(
             plan.decisions,
+            title_filters=set(args.series_title or []),
+        )
+        compatibility = build_compatibility_report(
+            filtered_decisions,
             ffprobe_bin="ffprobe",
             target_profile=args.target_profile,
         )
@@ -675,9 +702,9 @@ def main() -> None:
             staging_root=staging_root,
             backup_root=backup_root,
             queue_filters=set(args.queue_key or []),
-            title_filters=set(args.series_title or []),
             limit=args.limit,
         )
+        summary = summarize_preprocess_entries(entries)
         if not args.apply:
             if getattr(args, "json", False):
                 print(
@@ -689,6 +716,7 @@ def main() -> None:
                             "staging_root": str(staging_root),
                             "backup_root": str(backup_root),
                             "target_profile": args.target_profile,
+                            "summary": summary,
                             "entries": [entry.to_dict() for entry in entries],
                         },
                         ensure_ascii=False,
@@ -705,7 +733,16 @@ def main() -> None:
             replace_library=args.replace_library,
         )
         if getattr(args, "json", False):
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    {
+                        **result,
+                        "summary": summarize_preprocess_entries(entries),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             return
         print(f"processed entries: {len(result['processed'])}")
         for item in result["processed"]:
@@ -716,6 +753,8 @@ def main() -> None:
             if item.get("replaced_library"):
                 print(f"  backup: {item['backup_path']}")
                 print(f"  library_output: {item['library_output_path']}")
+        for action in result.get("post_apply_actions", []):
+            print(f"follow-up: {action}")
         return
 
 
