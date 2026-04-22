@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 
+from .compatibility import build_compatibility_report
 from .publisher import (
     apply_publish_plan,
     build_publish_plan,
@@ -76,6 +77,36 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="Emit the plan or result as JSON.",
+    )
+
+    classify = subparsers.add_parser(
+        "classify",
+        help="Classify selected winners into iOS playback compatibility buckets.",
+    )
+    classify.add_argument(
+        "--source-root",
+        type=Path,
+        help="Download root to scan. Defaults to $ANIME_DOWNLOAD_ROOT or downloads/Bangumi.",
+    )
+    classify.add_argument(
+        "--target-root",
+        type=Path,
+        help="Library root for resolved target paths. Defaults to $ANIME_LIBRARY_ROOT or library/seasonal.",
+    )
+    classify.add_argument(
+        "--review-root",
+        type=Path,
+        help="Manual review root. Defaults to $ANIME_REVIEW_ROOT or processing/manual_review.",
+    )
+    classify.add_argument(
+        "--ffprobe-bin",
+        default="ffprobe",
+        help="ffprobe binary to use for media inspection. Defaults to ffprobe.",
+    )
+    classify.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the compatibility report as JSON.",
     )
 
     watch = subparsers.add_parser(
@@ -221,6 +252,52 @@ def _print_publish_plan(plan) -> None:
             print(f"- {item.relative_path} ({item.reason})")
 
 
+def _print_compatibility_report(report, *, target_root: Path, resolver) -> None:
+    summary = report.summary
+    print(f"classification total: {summary['total']}")
+    print(f"green: {summary['green']}")
+    print(f"yellow: {summary['yellow']}")
+    print(f"red: {summary['red']}")
+
+    if not report.decisions:
+        return
+
+    print("\ncompatibility decisions:")
+    for item in report.decisions:
+        decision = item.decision
+        target = build_target_path(
+            target_root,
+            decision.winner,
+            resolver=resolver,
+        )
+        print(
+            f"- {decision.key.normalized_title} "
+            f"S{decision.key.season:02d}E{decision.key.episode:02d}"
+        )
+        print(f"  winner: {decision.winner.relative_path}")
+        print(f"  target: {target}")
+        print(f"  classification: {item.assessment.classification}")
+        print(f"  sync_risk: {item.assessment.sync_risk}")
+        print(f"  quality_risk: {item.assessment.quality_risk}")
+        print(
+            "  probe: "
+            f"container={item.probe.container or 'unknown'}, "
+            f"video={item.probe.video_codec or 'unknown'} "
+            f"{item.probe.video_profile or ''}".strip()
+        )
+        print(
+            "  tracks: "
+            f"audio={item.probe.audio_track_count} "
+            f"({', '.join(item.probe.audio_codecs) or 'none'}), "
+            f"subtitle={item.probe.subtitle_track_count} "
+            f"({', '.join(item.probe.subtitle_codecs) or 'none'})"
+        )
+        for reason in item.assessment.reasons:
+            print(f"  reason: {reason}")
+        for action in item.assessment.suggested_actions:
+            print(f"  action: {action}")
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
@@ -362,6 +439,50 @@ def main() -> None:
         print(f"nfo written: {len(written)}")
         for item in written:
             print(f"- {item['show_dir']} -> {item['nfo']}")
+        return
+
+    if args.command == "classify":
+        source_root = args.source_root or _default_download_root(anime_data_root)
+        target_root = args.target_root or _default_library_root(anime_data_root)
+        review_root = args.review_root or _default_review_root(anime_data_root)
+        report = scan_root(source_root)
+        plan = build_publish_plan(
+            report=report,
+            download_root=source_root,
+            library_root=target_root,
+            review_root=review_root,
+        )
+        compatibility = build_compatibility_report(
+            plan.decisions,
+            ffprobe_bin=args.ffprobe_bin,
+        )
+        if getattr(args, "json", False):
+            print(
+                json.dumps(
+                    {
+                        "source_root": str(source_root),
+                        "target_root": str(target_root),
+                        "review_root": str(review_root),
+                        "report": report.to_dict(),
+                        "compatibility": compatibility.to_dict(),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        print(f"source root: {source_root}")
+        print(f"target root: {target_root}")
+        print(f"review root: {review_root}")
+        _print_compatibility_report(
+            compatibility,
+            target_root=target_root,
+            resolver=plan.resolver,
+        )
+        if report.unparsed_files:
+            print("\nunparsed files:")
+            for item in report.unparsed_files:
+                print(f"- {item.relative_path} ({item.reason})")
         return
 
 
