@@ -25,6 +25,14 @@ class MobilePlaybackSessionRequest(BaseModel):
 class MobilePlaybackReportingRequest(BaseModel):
     sessionId: str | None = None
     positionTicks: int | None = None
+    jellyfinEpisodeId: str | None = None
+    mediaSourceId: str | None = None
+    audioTrackId: str | None = None
+    subtitleTrackId: str | None = None
+    playMethod: str | None = None
+    isPaused: bool | None = None
+    failed: bool | None = None
+    completed: bool | None = None
 
 
 @router.get("/{app_item_id}/playback")
@@ -65,32 +73,77 @@ def create_item_playback_session(
 
 
 @router.post("/{app_item_id}/playback/session/start")
-def report_item_playback_session_started(app_item_id: str, payload: MobilePlaybackReportingRequest) -> dict:
+def report_item_playback_session_started(
+    app_item_id: str,
+    payload: MobilePlaybackReportingRequest,
+    request: Request,
+) -> dict:
+    main_module = runtime_main_module()
     return build_reporting_ack(
         app_item_id,
         phase="start",
         session_id=payload.sessionId,
         position_ticks=payload.positionTicks,
+        jellyfin_episode_id=payload.jellyfinEpisodeId,
+        media_source_id=payload.mediaSourceId,
+        audio_track_id=payload.audioTrackId,
+        subtitle_track_id=payload.subtitleTrackId,
+        play_method=payload.playMethod,
+        is_paused=payload.isPaused,
+        failed=payload.failed,
+        completed=payload.completed,
+        public_host=main_module._public_host(request),
+        public_base_url=str(request.base_url).rstrip("/"),
     )
 
 
 @router.post("/{app_item_id}/playback/session/progress")
-def report_item_playback_session_progress(app_item_id: str, payload: MobilePlaybackReportingRequest) -> dict:
+def report_item_playback_session_progress(
+    app_item_id: str,
+    payload: MobilePlaybackReportingRequest,
+    request: Request,
+) -> dict:
+    main_module = runtime_main_module()
     return build_reporting_ack(
         app_item_id,
         phase="progress",
         session_id=payload.sessionId,
         position_ticks=payload.positionTicks,
+        jellyfin_episode_id=payload.jellyfinEpisodeId,
+        media_source_id=payload.mediaSourceId,
+        audio_track_id=payload.audioTrackId,
+        subtitle_track_id=payload.subtitleTrackId,
+        play_method=payload.playMethod,
+        is_paused=payload.isPaused,
+        failed=payload.failed,
+        completed=payload.completed,
+        public_host=main_module._public_host(request),
+        public_base_url=str(request.base_url).rstrip("/"),
     )
 
 
 @router.post("/{app_item_id}/playback/session/stop")
-def report_item_playback_session_stopped(app_item_id: str, payload: MobilePlaybackReportingRequest) -> dict:
+def report_item_playback_session_stopped(
+    app_item_id: str,
+    payload: MobilePlaybackReportingRequest,
+    request: Request,
+) -> dict:
+    main_module = runtime_main_module()
     return build_reporting_ack(
         app_item_id,
         phase="stop",
         session_id=payload.sessionId,
         position_ticks=payload.positionTicks,
+        jellyfin_episode_id=payload.jellyfinEpisodeId,
+        media_source_id=payload.mediaSourceId,
+        audio_track_id=payload.audioTrackId,
+        subtitle_track_id=payload.subtitleTrackId,
+        play_method=payload.playMethod,
+        is_paused=payload.isPaused,
+        failed=payload.failed,
+        completed=payload.completed,
+        public_host=main_module._public_host(request),
+        public_base_url=str(request.base_url).rstrip("/"),
     )
 
 

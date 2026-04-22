@@ -129,6 +129,7 @@ def create_playback_session_payload(
 
     return {
         "sessionId": str(bootstrap.get("jellyfinPlaySessionId") or uuid.uuid4().hex),
+        "target": bootstrap["target"],
         "stream": {
             "delivery": delivery,
             "url": stream_url,
@@ -149,7 +150,25 @@ def build_reporting_ack(
     phase: str,
     session_id: str | None = None,
     position_ticks: int | None = None,
+    jellyfin_episode_id: str | None = None,
+    media_source_id: str | None = None,
+    audio_track_id: str | None = None,
+    subtitle_track_id: str | None = None,
+    play_method: str | None = None,
+    is_paused: bool | None = None,
+    failed: bool | None = None,
+    completed: bool | None = None,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
 ) -> dict[str, Any]:
+    normalized_phase = str(phase or "").strip().lower()
+    if normalized_phase == "stop" and completed:
+        mark_jellyfin_item_played(
+            app_item_id,
+            jellyfin_episode_id=jellyfin_episode_id,
+            public_host=public_host,
+            public_base_url=public_base_url,
+        )
     return {
         "ok": True,
         "appItemId": app_item_id,
@@ -157,6 +176,66 @@ def build_reporting_ack(
         "sessionId": session_id,
         "positionTicks": position_ticks,
     }
+
+
+def mark_jellyfin_item_played(
+    app_item_id: str,
+    *,
+    jellyfin_episode_id: str | None = None,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> None:
+    normalized_episode_id = resolve_reporting_episode_id(
+        app_item_id,
+        jellyfin_episode_id=jellyfin_episode_id,
+        public_host=public_host,
+        public_base_url=public_base_url,
+    )
+    jellyfin_session = authenticate_jellyfin_session()
+    post_jellyfin_mark_played(
+        item_id=normalized_episode_id,
+        user_id=jellyfin_session.user_id,
+        access_token=jellyfin_session.access_token,
+    )
+
+
+def resolve_reporting_episode_id(
+    app_item_id: str,
+    *,
+    jellyfin_episode_id: str | None = None,
+    public_host: str | None = None,
+    public_base_url: str | None = None,
+) -> str:
+    detail_payload = build_detail_payload(
+        app_item_id,
+        public_host=public_host,
+        public_base_url=public_base_url,
+    )
+    selection = _resolve_playback_selection(detail_payload)
+
+    normalized_episode_id = str(jellyfin_episode_id or "").strip() or str(selection["jellyfinEpisodeId"] or "").strip()
+    if not normalized_episode_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Mobile playback reporting target is incomplete for item: {app_item_id}",
+        )
+    return normalized_episode_id
+
+
+def post_jellyfin_mark_played(*, item_id: str, user_id: str, access_token: str) -> None:
+    response = requests.post(
+        f"{internal_jellyfin_base_url()}/UserPlayedItems/{item_id}",
+        params={"userId": user_id},
+        headers={"X-Emby-Token": access_token},
+        timeout=10,
+    )
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Jellyfin played-state update failed for mobile playback.",
+        )
+
+
 def fetch_jellyfin_item_detail(user_id: str, jellyfin_item_id: str, access_token: str) -> dict[str, Any]:
     response = requests.get(
         f"{internal_jellyfin_base_url()}/Users/{user_id}/Items/{jellyfin_item_id}",
@@ -370,6 +449,8 @@ def first_media_stream_value(source: dict[str, Any], *, stream_type: str, key: s
         if str(stream.get("Type") or "") == stream_type:
             return stream.get(key)
     return None
+
+
 def public_jellyfin_base_url(public_base_url: str | None) -> str:
     normalized_base_url = str(public_base_url or "").strip()
     parsed = urlparse(normalized_base_url)
@@ -382,6 +463,8 @@ def public_jellyfin_base_url(public_base_url: str | None) -> str:
     main_module = runtime_main_module()
     jellyfin_port = int(main_module._env("JELLYFIN_PORT", "8096"))
     return f"http://{host}:{jellyfin_port}"
+
+
 def _resolve_playback_selection(
     detail_payload: dict[str, Any],
     *,

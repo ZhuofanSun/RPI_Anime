@@ -67,6 +67,23 @@ def _playable_detail_payload() -> dict:
     }
 
 
+def _reporting_request_payload(**overrides) -> dict:
+    payload = {
+        "sessionId": "play_session_demo",
+        "positionTicks": 360000000,
+        "jellyfinEpisodeId": "JF-EP-42-1",
+        "mediaSourceId": "MS-1",
+        "audioTrackId": "audio:1",
+        "subtitleTrackId": "subtitle:2",
+        "playMethod": "directPlay",
+        "isPaused": False,
+        "failed": False,
+        "completed": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _playback_info_payload() -> dict:
     return {
         "PlaySessionId": "play_session_demo",
@@ -251,6 +268,7 @@ def test_mobile_playback_session_returns_direct_play_stream_descriptor(client, m
     assert response.status_code == 200
     payload = response.json()
     assert payload["sessionId"] == "play_session_demo"
+    assert payload["target"]["jellyfinEpisodeId"] == "JF-EP-42-1"
     assert payload["stream"] == {
         "delivery": "directPlay",
         "url": "http://100.123.232.73:8096/Videos/JF-EP-42-1/stream?static=true&MediaSourceId=MS-1&api_key=TOKEN-1",
@@ -264,18 +282,32 @@ def test_mobile_playback_session_returns_direct_play_stream_descriptor(client, m
     assert payload["reporting"]["stopUrl"] == "/api/mobile/items/app_following_ab_42/playback/session/stop"
 
 
-def test_mobile_playback_reporting_endpoints_return_ack(client):
+def test_mobile_playback_reporting_endpoints_only_mark_played_on_completed_stop(client, monkeypatch):
+    from anime_ops_ui.services import mobile_playback_service
+
+    marked_played: list[dict] = []
+
+    monkeypatch.setattr(mobile_playback_service, "build_detail_payload", lambda *args, **kwargs: _playable_detail_payload())
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "mark_jellyfin_item_played",
+        lambda app_item_id, **kwargs: marked_played.append({"appItemId": app_item_id, **kwargs}),
+    )
+
     start = client.post(
         "/api/mobile/items/app_following_ab_42/playback/session/start",
-        json={"sessionId": "play_session_demo", "positionTicks": 120000000},
+        json=_reporting_request_payload(positionTicks=120000000),
+        headers={"host": "100.123.232.73:3000"},
     )
     progress = client.post(
         "/api/mobile/items/app_following_ab_42/playback/session/progress",
-        json={"sessionId": "play_session_demo", "positionTicks": 240000000},
+        json=_reporting_request_payload(positionTicks=240000000, isPaused=True, playMethod="directStream"),
+        headers={"host": "100.123.232.73:3000"},
     )
     stop = client.post(
         "/api/mobile/items/app_following_ab_42/playback/session/stop",
-        json={"sessionId": "play_session_demo", "positionTicks": 360000000},
+        json=_reporting_request_payload(completed=True),
+        headers={"host": "100.123.232.73:3000"},
     )
 
     assert start.status_code == 200
@@ -290,3 +322,11 @@ def test_mobile_playback_reporting_endpoints_return_ack(client):
     }
     assert progress.json()["phase"] == "progress"
     assert stop.json()["phase"] == "stop"
+    assert marked_played == [
+        {
+            "appItemId": "app_following_ab_42",
+            "jellyfin_episode_id": "JF-EP-42-1",
+            "public_host": "100.123.232.73",
+            "public_base_url": "http://100.123.232.73:3000",
+        }
+    ]
