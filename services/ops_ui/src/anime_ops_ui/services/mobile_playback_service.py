@@ -13,6 +13,7 @@ from anime_ops_ui.services.jellyfin_auth_service import (
     JellyfinSession,
     authenticate_jellyfin_session,
     internal_jellyfin_base_url,
+    jellyfin_request_headers,
 )
 
 
@@ -162,13 +163,34 @@ def build_reporting_ack(
     public_base_url: str | None = None,
 ) -> dict[str, Any]:
     normalized_phase = str(phase or "").strip().lower()
-    if normalized_phase == "stop" and completed:
-        mark_jellyfin_item_played(
+    if normalized_phase in {"start", "progress", "stop"}:
+        normalized_episode_id = resolve_reporting_episode_id(
             app_item_id,
             jellyfin_episode_id=jellyfin_episode_id,
             public_host=public_host,
             public_base_url=public_base_url,
         )
+        jellyfin_session = authenticate_jellyfin_session()
+        if normalized_phase != "stop" or not completed:
+            post_jellyfin_playback_position(
+            item_id=normalized_episode_id,
+            user_id=jellyfin_session.user_id,
+            session_id=session_id,
+            position_ticks=position_ticks,
+            media_source_id=media_source_id,
+            audio_track_id=audio_track_id,
+            subtitle_track_id=subtitle_track_id,
+            play_method=play_method,
+            is_paused=is_paused,
+            failed=failed,
+            access_token=jellyfin_session.access_token,
+            )
+        if normalized_phase == "stop" and completed:
+            post_jellyfin_mark_played(
+                item_id=normalized_episode_id,
+                user_id=jellyfin_session.user_id,
+                access_token=jellyfin_session.access_token,
+            )
     return {
         "ok": True,
         "appItemId": app_item_id,
@@ -182,6 +204,7 @@ def mark_jellyfin_item_played(
     app_item_id: str,
     *,
     jellyfin_episode_id: str | None = None,
+    jellyfin_session: JellyfinSession | None = None,
     public_host: str | None = None,
     public_base_url: str | None = None,
 ) -> None:
@@ -191,11 +214,11 @@ def mark_jellyfin_item_played(
         public_host=public_host,
         public_base_url=public_base_url,
     )
-    jellyfin_session = authenticate_jellyfin_session()
+    active_session = jellyfin_session or authenticate_jellyfin_session()
     post_jellyfin_mark_played(
         item_id=normalized_episode_id,
-        user_id=jellyfin_session.user_id,
-        access_token=jellyfin_session.access_token,
+        user_id=active_session.user_id,
+        access_token=active_session.access_token,
     )
 
 
@@ -226,13 +249,41 @@ def post_jellyfin_mark_played(*, item_id: str, user_id: str, access_token: str) 
     response = requests.post(
         f"{internal_jellyfin_base_url()}/UserPlayedItems/{item_id}",
         params={"userId": user_id},
-        headers={"X-Emby-Token": access_token},
+        headers=jellyfin_request_headers(access_token),
         timeout=10,
     )
     if response.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Jellyfin played-state update failed for mobile playback.",
+        )
+
+
+def post_jellyfin_playback_position(
+    *,
+    item_id: str,
+    user_id: str,
+    access_token: str,
+    session_id: str | None = None,
+    position_ticks: int | None = None,
+    media_source_id: str | None = None,
+    audio_track_id: str | None = None,
+    subtitle_track_id: str | None = None,
+    play_method: str | None = None,
+    is_paused: bool | None = None,
+    failed: bool | None = None,
+) -> None:
+    response = requests.post(
+        f"{internal_jellyfin_base_url()}/UserItems/{item_id}/UserData",
+        params={"userId": user_id},
+        headers=jellyfin_request_headers(access_token, json_body=True),
+        json={"PlaybackPositionTicks": max(int(position_ticks or 0), 0)},
+        timeout=10,
+    )
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Jellyfin playback-position update failed.",
         )
 
 

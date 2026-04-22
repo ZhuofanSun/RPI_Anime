@@ -282,16 +282,41 @@ def test_mobile_playback_session_returns_direct_play_stream_descriptor(client, m
     assert payload["reporting"]["stopUrl"] == "/api/mobile/items/app_following_ab_42/playback/session/stop"
 
 
-def test_mobile_playback_reporting_endpoints_only_mark_played_on_completed_stop(client, monkeypatch):
+def test_mobile_playback_reporting_endpoints_bridge_resume_events_and_mark_completed_stop(client, monkeypatch):
     from anime_ops_ui.services import mobile_playback_service
 
+    position_updates: list[dict] = []
     marked_played: list[dict] = []
 
     monkeypatch.setattr(mobile_playback_service, "build_detail_payload", lambda *args, **kwargs: _playable_detail_payload())
     monkeypatch.setattr(
         mobile_playback_service,
-        "mark_jellyfin_item_played",
-        lambda app_item_id, **kwargs: marked_played.append({"appItemId": app_item_id, **kwargs}),
+        "authenticate_jellyfin_session",
+        lambda: mobile_playback_service.JellyfinSession(user_id="USER-1", access_token="TOKEN-1"),
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "post_jellyfin_playback_position",
+        lambda item_id, user_id, access_token, position_ticks, **kwargs: position_updates.append(
+            {
+                "item_id": item_id,
+                "user_id": user_id,
+                "access_token": access_token,
+                "position_ticks": position_ticks,
+                **kwargs,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "post_jellyfin_mark_played",
+        lambda item_id, user_id, access_token: marked_played.append(
+            {
+                "itemId": item_id,
+                "userId": user_id,
+                "accessToken": access_token,
+            }
+        ),
     )
 
     start = client.post(
@@ -322,11 +347,81 @@ def test_mobile_playback_reporting_endpoints_only_mark_played_on_completed_stop(
     }
     assert progress.json()["phase"] == "progress"
     assert stop.json()["phase"] == "stop"
+    assert position_updates == [
+        {
+            "item_id": "JF-EP-42-1",
+            "user_id": "USER-1",
+            "access_token": "TOKEN-1",
+            "position_ticks": 120000000,
+            "session_id": "play_session_demo",
+            "media_source_id": "MS-1",
+            "audio_track_id": "audio:1",
+            "subtitle_track_id": "subtitle:2",
+            "play_method": "directPlay",
+            "is_paused": False,
+            "failed": False,
+        },
+        {
+            "item_id": "JF-EP-42-1",
+            "user_id": "USER-1",
+            "access_token": "TOKEN-1",
+            "position_ticks": 240000000,
+            "session_id": "play_session_demo",
+            "media_source_id": "MS-1",
+            "audio_track_id": "audio:1",
+            "subtitle_track_id": "subtitle:2",
+            "play_method": "directStream",
+            "is_paused": True,
+            "failed": False,
+        },
+    ]
     assert marked_played == [
         {
-            "appItemId": "app_following_ab_42",
-            "jellyfin_episode_id": "JF-EP-42-1",
-            "public_host": "100.123.232.73",
-            "public_base_url": "http://100.123.232.73:3000",
+            "itemId": "JF-EP-42-1",
+            "userId": "USER-1",
+            "accessToken": "TOKEN-1",
         }
     ]
+
+
+def test_post_jellyfin_playback_position_updates_user_item_data(monkeypatch):
+    from anime_ops_ui.services import mobile_playback_service
+
+    recorded_request: dict = {}
+
+    class Response:
+        status_code = 200
+
+    def fake_post(url, *, headers=None, json=None, timeout=None, params=None):
+        recorded_request["url"] = url
+        recorded_request["headers"] = headers
+        recorded_request["json"] = json
+        recorded_request["timeout"] = timeout
+        recorded_request["params"] = params
+        return Response()
+
+    monkeypatch.setattr(mobile_playback_service, "internal_jellyfin_base_url", lambda: "http://jellyfin:8096")
+    monkeypatch.setattr(mobile_playback_service.requests, "post", fake_post)
+
+    mobile_playback_service.post_jellyfin_playback_position(
+        item_id="JF-EP-42-1",
+        user_id="USER-1",
+        access_token="TOKEN-1",
+        session_id="play_session_demo",
+        position_ticks=240000000,
+        media_source_id="MS-1",
+        audio_track_id="audio:1",
+        subtitle_track_id="subtitle:off",
+        play_method="transcodeHls",
+        is_paused=True,
+        failed=False,
+    )
+
+    assert recorded_request["url"] == "http://jellyfin:8096/UserItems/JF-EP-42-1/UserData"
+    assert recorded_request["headers"] == {
+        "X-Emby-Authorization": 'MediaBrowser Client="NekoYa", Device="NekoYaMobile", DeviceId="nekoya-mobile-playback", Version="1.0.0"',
+        "X-Emby-Token": "TOKEN-1",
+        "Content-Type": "application/json",
+    }
+    assert recorded_request["params"] == {"userId": "USER-1"}
+    assert recorded_request["json"] == {"PlaybackPositionTicks": 240000000}

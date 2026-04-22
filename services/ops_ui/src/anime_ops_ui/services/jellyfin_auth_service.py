@@ -21,6 +21,16 @@ class JellyfinSession:
     access_token: str
 
 
+def jellyfin_request_headers(access_token: str, *, json_body: bool = False) -> dict[str, str]:
+    headers = {
+        "X-Emby-Authorization": _AUTHORIZATION_HEADER,
+        "X-Emby-Token": access_token,
+    }
+    if json_body:
+        headers["Content-Type"] = "application/json"
+    return headers
+
+
 def internal_jellyfin_base_url() -> str:
     main_module = runtime_main_module()
     explicit = str(main_module._env("JELLYFIN_INTERNAL_BASE_URL", "")).strip()
