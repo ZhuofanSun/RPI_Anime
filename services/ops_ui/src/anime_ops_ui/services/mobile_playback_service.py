@@ -427,7 +427,6 @@ def build_media_sources_payload(
                     media_source_id=source_id,
                     access_token=access_token,
                 ),
-                "transcodeHlsUrl": None,
                 "audioTracks": audio_tracks,
                 "subtitleTracks": subtitle_tracks,
             }

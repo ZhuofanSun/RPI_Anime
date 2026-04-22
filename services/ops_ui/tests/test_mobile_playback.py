@@ -204,7 +204,6 @@ def test_mobile_playback_bootstrap_returns_media_sources_and_tracks(client, monk
     assert direct_play.path == "/Videos/JF-EP-42-1/stream"
     assert direct_query["MediaSourceId"] == ["MS-1"]
     assert direct_query["api_key"] == ["TOKEN-1"]
-    assert media_source["transcodeHlsUrl"] is None
     assert media_source["audioTracks"] == [
         {
             "id": "audio:1",
@@ -503,7 +502,7 @@ def test_post_jellyfin_playback_position_updates_user_item_data(monkeypatch):
         media_source_id="MS-1",
         audio_track_id="audio:1",
         subtitle_track_id="subtitle:off",
-        play_method="transcodeHls",
+        play_method="directPlay",
         is_paused=True,
         failed=False,
     )
