@@ -258,6 +258,12 @@ def _print_compatibility_report(report, *, target_root: Path, resolver) -> None:
     print(f"green: {summary['green']}")
     print(f"yellow: {summary['yellow']}")
     print(f"red: {summary['red']}")
+    if report.queue_summary:
+        print("\naction queues:")
+        for queue_key, queue in report.queue_summary.items():
+            print(f"- {queue_key}: {queue['count']}")
+            print(f"  steps: {', '.join(queue['steps'])}")
+            print(f"  summary: {queue['summary']}")
 
     if not report.decisions:
         return
@@ -277,6 +283,7 @@ def _print_compatibility_report(report, *, target_root: Path, resolver) -> None:
         print(f"  winner: {decision.winner.relative_path}")
         print(f"  target: {target}")
         print(f"  classification: {item.assessment.classification}")
+        print(f"  action_queue: {item.assessment.action_queue.summary}")
         print(f"  sync_risk: {item.assessment.sync_risk}")
         print(f"  quality_risk: {item.assessment.quality_risk}")
         print(
@@ -296,6 +303,41 @@ def _print_compatibility_report(report, *, target_root: Path, resolver) -> None:
             print(f"  reason: {reason}")
         for action in item.assessment.suggested_actions:
             print(f"  action: {action}")
+
+
+def _build_series_queue_summary(compatibility, *, target_root: Path, resolver) -> dict[str, dict]:
+    summary: dict[str, dict] = {}
+    for item in compatibility.decisions:
+        target = build_target_path(
+            target_root,
+            item.decision.winner,
+            resolver=resolver,
+        )
+        relative_target = target.relative_to(target_root)
+        series_title = relative_target.parts[0] if relative_target.parts else item.decision.winner.title
+        bucket = summary.setdefault(
+            series_title,
+            {
+                "total": 0,
+                "classification_counts": {"green": 0, "yellow": 0, "red": 0},
+                "queues": {},
+            },
+        )
+        bucket["total"] += 1
+        bucket["classification_counts"][item.assessment.classification] += 1
+        queue = item.assessment.action_queue
+        queue_bucket = bucket["queues"].setdefault(
+            queue.key,
+            {
+                "count": 0,
+                "steps": queue.steps,
+                "summary": queue.summary,
+                "note": queue.note,
+            },
+        )
+        queue_bucket["count"] += 1
+
+    return dict(sorted(summary.items()))
 
 
 def main() -> None:
@@ -457,6 +499,11 @@ def main() -> None:
             ffprobe_bin=args.ffprobe_bin,
         )
         if getattr(args, "json", False):
+            series_queue_summary = _build_series_queue_summary(
+                compatibility,
+                target_root=target_root,
+                resolver=plan.resolver,
+            )
             print(
                 json.dumps(
                     {
@@ -465,6 +512,7 @@ def main() -> None:
                         "review_root": str(review_root),
                         "report": report.to_dict(),
                         "compatibility": compatibility.to_dict(),
+                        "series_queue_summary": series_queue_summary,
                     },
                     ensure_ascii=False,
                     indent=2,

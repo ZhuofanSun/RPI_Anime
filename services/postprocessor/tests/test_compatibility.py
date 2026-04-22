@@ -3,6 +3,7 @@ from pathlib import Path
 from anime_postprocessor.compatibility import (
     CompatibilityAssessment,
     MediaProbe,
+    build_action_queue,
     build_compatibility_report,
     classify_media_for_ios,
 )
@@ -89,6 +90,7 @@ def test_classify_media_for_ios_marks_safe_h264_aac_mp4_as_green():
 
     assert assessment.classification == "green"
     assert assessment.suggested_actions == ["publish_direct"]
+    assert assessment.action_queue.key == "publish_direct"
     assert assessment.sync_risk == "low"
     assert assessment.quality_risk == "low"
 
@@ -111,6 +113,10 @@ def test_classify_media_for_ios_marks_mkv_ass_as_yellow():
     assert assessment.classification == "yellow"
     assert "remux_to_mp4_or_fmp4" in assessment.suggested_actions
     assert "convert_subtitles_to_webvtt" in assessment.suggested_actions
+    assert (
+        assessment.action_queue.key
+        == "subtitles_to_webvtt__then__remux_to_mp4_or_fmp4"
+    )
     assert assessment.sync_risk == "medium"
 
 
@@ -134,6 +140,10 @@ def test_classify_media_for_ios_marks_hevc_opus_ass_as_yellow_without_video_tran
     assert "device_gate_hevc_or_generate_h264_fallback" in assessment.suggested_actions
     assert "transcode_audio_to_aac" in assessment.suggested_actions
     assert "convert_subtitles_to_webvtt" in assessment.suggested_actions
+    assert (
+        assessment.action_queue.key
+        == "audio_to_aac__then__subtitles_to_webvtt__then__remux_to_mp4_or_fmp4__then__hevc_gate_or_h264_fallback"
+    )
     assert assessment.quality_risk == "medium"
 
 
@@ -154,6 +164,10 @@ def test_classify_media_for_ios_marks_image_subtitles_as_red():
 
     assert assessment.classification == "red"
     assert "manual_review_image_subtitles" in assessment.suggested_actions
+    assert (
+        assessment.action_queue.key
+        == "audio_to_aac__then__remux_to_mp4_or_fmp4__then__hevc_gate_or_h264_fallback__then__manual_review_image_subtitles"
+    )
     assert assessment.sync_risk == "high"
 
 
@@ -204,3 +218,42 @@ def test_build_compatibility_report_summarizes_classification_counts(monkeypatch
     }
     assert report.decisions[0].assessment.classification == "green"
     assert report.decisions[1].assessment.classification == "yellow"
+    assert report.queue_summary == {
+        "publish_direct": {
+            "count": 1,
+            "steps": ["publish_direct"],
+            "summary": "publish_direct",
+            "note": "Publish as-is. No offline preprocessing is required for the current iOS-safe target.",
+        },
+        "subtitles_to_webvtt__then__remux_to_mp4_or_fmp4": {
+            "count": 1,
+            "steps": ["convert_subtitles_to_webvtt", "remux_to_mp4_or_fmp4"],
+            "summary": "subtitles_to_webvtt -> remux_to_mp4_or_fmp4",
+            "note": (
+                "Convert styled subtitles to a stable text subtitle format before publish. "
+                "Remux the container without touching video when possible."
+            ),
+        },
+    }
+
+
+def test_build_action_queue_orders_pipeline_steps_stably():
+    queue = build_action_queue(
+        [
+            "device_gate_hevc_or_generate_h264_fallback",
+            "convert_subtitles_to_webvtt",
+            "transcode_audio_to_aac",
+            "remux_to_mp4_or_fmp4",
+        ]
+    )
+
+    assert queue.key == (
+        "audio_to_aac__then__subtitles_to_webvtt__then__remux_to_mp4_or_fmp4"
+        "__then__hevc_gate_or_h264_fallback"
+    )
+    assert queue.steps == [
+        "transcode_audio_to_aac",
+        "convert_subtitles_to_webvtt",
+        "remux_to_mp4_or_fmp4",
+        "device_gate_hevc_or_generate_h264_fallback",
+    ]

@@ -23,6 +23,52 @@ _IMAGE_SUBTITLE_CODECS = {
     "dvb_subtitle",
 }
 _AUDIO_TRANSCODE_CODECS = {"opus", "flac", "vorbis", "dts", "truehd", "pcm_s16le"}
+_ACTION_ORDER = {
+    "publish_direct": 0,
+    "transcode_audio_to_aac": 1,
+    "convert_subtitles_to_webvtt": 2,
+    "normalize_text_subtitles": 2,
+    "remux_to_mp4_or_fmp4": 3,
+    "device_gate_hevc_or_generate_h264_fallback": 4,
+    "offline_video_transcode": 5,
+    "manual_review_image_subtitles": 6,
+}
+_ACTION_LABELS = {
+    "publish_direct": "publish_direct",
+    "transcode_audio_to_aac": "audio_to_aac",
+    "convert_subtitles_to_webvtt": "subtitles_to_webvtt",
+    "normalize_text_subtitles": "normalize_text_subtitles",
+    "remux_to_mp4_or_fmp4": "remux_to_mp4_or_fmp4",
+    "device_gate_hevc_or_generate_h264_fallback": "hevc_gate_or_h264_fallback",
+    "offline_video_transcode": "offline_video_transcode",
+    "manual_review_image_subtitles": "manual_review_image_subtitles",
+}
+_QUEUE_NOTES = {
+    "publish_direct": "Publish as-is. No offline preprocessing is required for the current iOS-safe target.",
+    "transcode_audio_to_aac": "Normalize audio to AAC first, then keep the rest of the asset unchanged.",
+    "convert_subtitles_to_webvtt": "Convert styled subtitles to a stable text subtitle format before publish.",
+    "normalize_text_subtitles": "Normalize text subtitles into the iOS-safe text subtitle set before publish.",
+    "remux_to_mp4_or_fmp4": "Remux the container without touching video when possible.",
+    "device_gate_hevc_or_generate_h264_fallback": "Keep the HEVC master if AVPlayer/device gate passes; otherwise queue an H.264 fallback later.",
+    "offline_video_transcode": "Offline video transcode is required before this asset can be considered iOS-safe.",
+    "manual_review_image_subtitles": "Image subtitles need manual review before deciding between OCR, burn-in, or an external subtitle strategy.",
+}
+
+
+@dataclass(frozen=True)
+class ActionQueue:
+    key: str
+    steps: list[str]
+    summary: str
+    note: str
+
+    def to_dict(self) -> dict:
+        return {
+            "key": self.key,
+            "steps": self.steps,
+            "summary": self.summary,
+            "note": self.note,
+        }
 
 
 @dataclass(frozen=True)
@@ -58,6 +104,7 @@ class CompatibilityAssessment:
     classification: str
     reasons: list[str]
     suggested_actions: list[str]
+    action_queue: ActionQueue
     sync_risk: str
     quality_risk: str
 
@@ -66,6 +113,7 @@ class CompatibilityAssessment:
             "classification": self.classification,
             "reasons": self.reasons,
             "suggested_actions": self.suggested_actions,
+            "action_queue": self.action_queue.to_dict(),
             "sync_risk": self.sync_risk,
             "quality_risk": self.quality_risk,
         }
@@ -103,9 +151,27 @@ class CompatibilityReport:
             "total": len(self.decisions),
         }
 
+    @property
+    def queue_summary(self) -> dict[str, dict]:
+        queues: dict[str, dict] = {}
+        for item in self.decisions:
+            queue = item.assessment.action_queue
+            bucket = queues.setdefault(
+                queue.key,
+                {
+                    "count": 0,
+                    "steps": queue.steps,
+                    "summary": queue.summary,
+                    "note": queue.note,
+                },
+            )
+            bucket["count"] += 1
+        return dict(sorted(queues.items()))
+
     def to_dict(self) -> dict:
         return {
             "summary": self.summary,
+            "queue_summary": self.queue_summary,
             "decisions": [item.to_dict() for item in self.decisions],
         }
 
@@ -261,13 +327,34 @@ def classify_media_for_ios(media: ParsedMedia, probe: MediaProbe) -> Compatibili
         reasons.append("matches the current direct iOS-safe target without offline preprocessing")
         actions.append("publish_direct")
 
+    action_queue = build_action_queue(actions)
+
     return CompatibilityAssessment(
         classification=classification,
         reasons=dedupe(actions_to_reasons(reasons)),
         suggested_actions=dedupe(actions),
+        action_queue=action_queue,
         sync_risk=sync_risk,
         quality_risk=quality_risk,
     )
+
+
+def build_action_queue(actions: list[str]) -> ActionQueue:
+    ordered_actions = normalize_actions_for_queue(actions)
+    key = "__then__".join(_ACTION_LABELS[action] for action in ordered_actions)
+    summary = " -> ".join(_ACTION_LABELS[action] for action in ordered_actions)
+    note = " ".join(_QUEUE_NOTES[action] for action in ordered_actions)
+    return ActionQueue(
+        key=key,
+        steps=ordered_actions,
+        summary=summary,
+        note=note,
+    )
+
+
+def normalize_actions_for_queue(actions: list[str]) -> list[str]:
+    ordered = dedupe(actions)
+    return sorted(ordered, key=lambda action: (_ACTION_ORDER[action], action))
 
 
 def actions_to_reasons(reasons: list[str]) -> list[str]:
