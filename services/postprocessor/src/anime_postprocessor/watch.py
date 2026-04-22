@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import time
 import traceback
 from dataclasses import dataclass
@@ -459,6 +460,27 @@ def watch_from_env(
     ffprobe_bin = os.environ.get("POSTPROCESSOR_FFPROBE_BIN", "ffprobe")
     ffmpeg_bin = os.environ.get("POSTPROCESSOR_FFMPEG_BIN", "ffmpeg")
     target_profile = os.environ.get("POSTPROCESSOR_TARGET_PROFILE", "personal_modern_apple")
+
+    missing_tools = [
+        name for name in (ffprobe_bin, ffmpeg_bin)
+        if shutil.which(name) is None
+    ]
+    if missing_tools:
+        append_event(
+            source="postprocessor",
+            level="error",
+            action="watch-missing-runtime-tools",
+            message="Postprocessor runtime is missing required media tools",
+            details={
+                "missing_tools": missing_tools,
+                "ffprobe_bin": ffprobe_bin,
+                "ffmpeg_bin": ffmpeg_bin,
+            },
+        )
+        raise RuntimeError(
+            f"missing required runtime tools: {', '.join(missing_tools)}"
+        )
+
     delete = (
         delete_losers
         if delete_losers is not None
