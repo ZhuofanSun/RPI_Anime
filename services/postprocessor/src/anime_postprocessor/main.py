@@ -104,6 +104,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="ffprobe binary to use for media inspection. Defaults to ffprobe.",
     )
     classify.add_argument(
+        "--target-profile",
+        choices=("personal_modern_apple", "generic_ios"),
+        default="personal_modern_apple",
+        help="Compatibility target profile. Defaults to personal_modern_apple.",
+    )
+    classify.add_argument(
         "--json",
         action="store_true",
         help="Emit the compatibility report as JSON.",
@@ -284,6 +290,10 @@ def _print_compatibility_report(report, *, target_root: Path, resolver) -> None:
         print(f"  target: {target}")
         print(f"  classification: {item.assessment.classification}")
         print(f"  action_queue: {item.assessment.action_queue.summary}")
+        print(
+            f"  device_validation_required: "
+            f"{'yes' if item.assessment.device_validation_required else 'no'}"
+        )
         print(f"  sync_risk: {item.assessment.sync_risk}")
         print(f"  quality_risk: {item.assessment.quality_risk}")
         print(
@@ -301,6 +311,8 @@ def _print_compatibility_report(report, *, target_root: Path, resolver) -> None:
         )
         for reason in item.assessment.reasons:
             print(f"  reason: {reason}")
+        for note in item.assessment.device_validation_notes:
+            print(f"  validation_note: {note}")
         for action in item.assessment.suggested_actions:
             print(f"  action: {action}")
 
@@ -497,6 +509,7 @@ def main() -> None:
         compatibility = build_compatibility_report(
             plan.decisions,
             ffprobe_bin=args.ffprobe_bin,
+            target_profile=args.target_profile,
         )
         if getattr(args, "json", False):
             series_queue_summary = _build_series_queue_summary(
@@ -510,6 +523,7 @@ def main() -> None:
                         "source_root": str(source_root),
                         "target_root": str(target_root),
                         "review_root": str(review_root),
+                        "target_profile": args.target_profile,
                         "report": report.to_dict(),
                         "compatibility": compatibility.to_dict(),
                         "series_queue_summary": series_queue_summary,

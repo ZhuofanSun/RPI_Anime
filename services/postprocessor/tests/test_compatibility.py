@@ -91,6 +91,7 @@ def test_classify_media_for_ios_marks_safe_h264_aac_mp4_as_green():
     assert assessment.classification == "green"
     assert assessment.suggested_actions == ["publish_direct"]
     assert assessment.action_queue.key == "publish_direct"
+    assert assessment.device_validation_required is False
     assert assessment.sync_risk == "low"
     assert assessment.quality_risk == "low"
 
@@ -137,13 +138,14 @@ def test_classify_media_for_ios_marks_hevc_opus_ass_as_yellow_without_video_tran
 
     assert assessment.classification == "yellow"
     assert "offline_video_transcode" not in assessment.suggested_actions
-    assert "device_gate_hevc_or_generate_h264_fallback" in assessment.suggested_actions
+    assert "verify_hevc_on_target_devices" in assessment.suggested_actions
     assert "transcode_audio_to_aac" in assessment.suggested_actions
     assert "convert_subtitles_to_webvtt" in assessment.suggested_actions
     assert (
         assessment.action_queue.key
-        == "audio_to_aac__then__subtitles_to_webvtt__then__remux_to_mp4_or_fmp4__then__hevc_gate_or_h264_fallback"
+        == "audio_to_aac__then__subtitles_to_webvtt__then__remux_to_mp4_or_fmp4__then__verify_hevc_on_target_devices"
     )
+    assert assessment.device_validation_required is True
     assert assessment.quality_risk == "medium"
 
 
@@ -166,9 +168,63 @@ def test_classify_media_for_ios_marks_image_subtitles_as_red():
     assert "manual_review_image_subtitles" in assessment.suggested_actions
     assert (
         assessment.action_queue.key
-        == "audio_to_aac__then__remux_to_mp4_or_fmp4__then__hevc_gate_or_h264_fallback__then__manual_review_image_subtitles"
+        == "audio_to_aac__then__remux_to_mp4_or_fmp4__then__verify_hevc_on_target_devices__then__manual_review_image_subtitles"
     )
     assert assessment.sync_risk == "high"
+
+
+def test_classify_media_for_ios_marks_clean_hevc_as_green_with_device_validation():
+    media = _media("Show/Season 1/Demo Show S01E01.mp4")
+    probe = _probe(
+        media.path,
+        container="mov",
+        video_codec="hevc",
+        video_profile="Main 10",
+        pixel_format="yuv420p10le",
+        bit_depth=10,
+        audio_codecs=["aac"],
+        subtitle_codecs=[],
+    )
+
+    assessment = classify_media_for_ios(media, probe)
+
+    assert assessment.classification == "green"
+    assert assessment.device_validation_required is True
+    assert assessment.suggested_actions == [
+        "verify_hevc_on_target_devices",
+        "publish_direct",
+    ]
+    assert (
+        assessment.action_queue.key
+        == "publish_direct__then__verify_hevc_on_target_devices"
+    )
+
+
+def test_classify_media_for_ios_keeps_generic_profile_more_conservative():
+    media = _media("Show/Season 1/Demo Show S01E01.mp4")
+    probe = _probe(
+        media.path,
+        container="mov",
+        video_codec="hevc",
+        video_profile="Main 10",
+        pixel_format="yuv420p10le",
+        bit_depth=10,
+        audio_codecs=["aac"],
+        subtitle_codecs=[],
+    )
+
+    assessment = classify_media_for_ios(
+        media,
+        probe,
+        target_profile="generic_ios",
+    )
+
+    assert assessment.classification == "yellow"
+    assert assessment.device_validation_required is False
+    assert assessment.suggested_actions == [
+        "device_gate_hevc_or_generate_h264_fallback",
+    ]
+    assert assessment.action_queue.key == "hevc_gate_or_h264_fallback"
 
 
 def test_build_compatibility_report_summarizes_classification_counts(monkeypatch):
@@ -240,7 +296,7 @@ def test_build_compatibility_report_summarizes_classification_counts(monkeypatch
 def test_build_action_queue_orders_pipeline_steps_stably():
     queue = build_action_queue(
         [
-            "device_gate_hevc_or_generate_h264_fallback",
+            "verify_hevc_on_target_devices",
             "convert_subtitles_to_webvtt",
             "transcode_audio_to_aac",
             "remux_to_mp4_or_fmp4",
@@ -249,11 +305,11 @@ def test_build_action_queue_orders_pipeline_steps_stably():
 
     assert queue.key == (
         "audio_to_aac__then__subtitles_to_webvtt__then__remux_to_mp4_or_fmp4"
-        "__then__hevc_gate_or_h264_fallback"
+        "__then__verify_hevc_on_target_devices"
     )
     assert queue.steps == [
         "transcode_audio_to_aac",
         "convert_subtitles_to_webvtt",
         "remux_to_mp4_or_fmp4",
-        "device_gate_hevc_or_generate_h264_fallback",
+        "verify_hevc_on_target_devices",
     ]

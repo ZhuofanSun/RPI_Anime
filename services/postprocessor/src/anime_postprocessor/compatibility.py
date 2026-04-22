@@ -24,14 +24,15 @@ _IMAGE_SUBTITLE_CODECS = {
 }
 _AUDIO_TRANSCODE_CODECS = {"opus", "flac", "vorbis", "dts", "truehd", "pcm_s16le"}
 _ACTION_ORDER = {
-    "publish_direct": 0,
     "transcode_audio_to_aac": 1,
     "convert_subtitles_to_webvtt": 2,
     "normalize_text_subtitles": 2,
     "remux_to_mp4_or_fmp4": 3,
-    "device_gate_hevc_or_generate_h264_fallback": 4,
-    "offline_video_transcode": 5,
-    "manual_review_image_subtitles": 6,
+    "publish_direct": 4,
+    "verify_hevc_on_target_devices": 5,
+    "device_gate_hevc_or_generate_h264_fallback": 6,
+    "offline_video_transcode": 7,
+    "manual_review_image_subtitles": 8,
 }
 _ACTION_LABELS = {
     "publish_direct": "publish_direct",
@@ -39,6 +40,7 @@ _ACTION_LABELS = {
     "convert_subtitles_to_webvtt": "subtitles_to_webvtt",
     "normalize_text_subtitles": "normalize_text_subtitles",
     "remux_to_mp4_or_fmp4": "remux_to_mp4_or_fmp4",
+    "verify_hevc_on_target_devices": "verify_hevc_on_target_devices",
     "device_gate_hevc_or_generate_h264_fallback": "hevc_gate_or_h264_fallback",
     "offline_video_transcode": "offline_video_transcode",
     "manual_review_image_subtitles": "manual_review_image_subtitles",
@@ -49,10 +51,15 @@ _QUEUE_NOTES = {
     "convert_subtitles_to_webvtt": "Convert styled subtitles to a stable text subtitle format before publish.",
     "normalize_text_subtitles": "Normalize text subtitles into the iOS-safe text subtitle set before publish.",
     "remux_to_mp4_or_fmp4": "Remux the container without touching video when possible.",
+    "verify_hevc_on_target_devices": "Keep the HEVC master and confirm stable AVPlayer playback on the target iPhone/iPad before escalating to an H.264 fallback.",
     "device_gate_hevc_or_generate_h264_fallback": "Keep the HEVC master if AVPlayer/device gate passes; otherwise queue an H.264 fallback later.",
     "offline_video_transcode": "Offline video transcode is required before this asset can be considered iOS-safe.",
     "manual_review_image_subtitles": "Image subtitles need manual review before deciding between OCR, burn-in, or an external subtitle strategy.",
 }
+
+_GENERIC_IOS_PROFILE = "generic_ios"
+_PERSONAL_APPLE_PROFILE = "personal_modern_apple"
+_TARGET_PROFILES = {_GENERIC_IOS_PROFILE, _PERSONAL_APPLE_PROFILE}
 
 
 @dataclass(frozen=True)
@@ -105,6 +112,8 @@ class CompatibilityAssessment:
     reasons: list[str]
     suggested_actions: list[str]
     action_queue: ActionQueue
+    device_validation_required: bool
+    device_validation_notes: list[str]
     sync_risk: str
     quality_risk: str
 
@@ -114,6 +123,8 @@ class CompatibilityAssessment:
             "reasons": self.reasons,
             "suggested_actions": self.suggested_actions,
             "action_queue": self.action_queue.to_dict(),
+            "device_validation_required": self.device_validation_required,
+            "device_validation_notes": self.device_validation_notes,
             "sync_risk": self.sync_risk,
             "quality_risk": self.quality_risk,
         }
@@ -180,13 +191,18 @@ def build_compatibility_report(
     decisions: list[SelectionDecision],
     *,
     ffprobe_bin: str = "ffprobe",
+    target_profile: str = _PERSONAL_APPLE_PROFILE,
 ) -> CompatibilityReport:
     return CompatibilityReport(
         decisions=[
             DecisionCompatibility(
                 decision=decision,
                 probe=(probe := probe_media(decision.winner.path, ffprobe_bin=ffprobe_bin)),
-                assessment=classify_media_for_ios(decision.winner, probe),
+                assessment=classify_media_for_ios(
+                    decision.winner,
+                    probe,
+                    target_profile=target_profile,
+                ),
             )
             for decision in decisions
         ]
@@ -269,10 +285,20 @@ def media_probe_from_ffprobe(path: Path, payload: dict) -> MediaProbe:
     )
 
 
-def classify_media_for_ios(media: ParsedMedia, probe: MediaProbe) -> CompatibilityAssessment:
+def classify_media_for_ios(
+    media: ParsedMedia,
+    probe: MediaProbe,
+    *,
+    target_profile: str = _PERSONAL_APPLE_PROFILE,
+) -> CompatibilityAssessment:
+    if target_profile not in _TARGET_PROFILES:
+        raise ValueError(f"unknown target profile: {target_profile}")
+
     reasons: list[str] = []
     actions: list[str] = []
     classification = "green"
+    device_validation_required = False
+    device_validation_notes: list[str] = []
     sync_risk = "low"
     quality_risk = "low"
 
@@ -288,15 +314,30 @@ def classify_media_for_ios(media: ParsedMedia, probe: MediaProbe) -> Compatibili
         actions.append("offline_video_transcode")
         quality_risk = "high"
     elif video_codec == "hevc":
-        classification = max_classification(classification, "yellow")
-        reasons.append("HEVC delivery should be device-gated and preflighted for AVPlayer")
-        actions.append("device_gate_hevc_or_generate_h264_fallback")
+        if target_profile == _GENERIC_IOS_PROFILE:
+            classification = max_classification(classification, "yellow")
+            reasons.append("HEVC delivery should be device-gated and preflighted for AVPlayer")
+            actions.append("device_gate_hevc_or_generate_h264_fallback")
+        else:
+            reasons.append("HEVC is allowed for the current target devices, but it should be validated once on the real iPhone/iPad before we treat it as stable")
+            actions.append("verify_hevc_on_target_devices")
+            device_validation_required = True
+            device_validation_notes.append(
+                "Validate HEVC startup, seek, resume, and track switching on the target iPhone/iPad before escalating to an H.264 fallback."
+            )
 
     if probe.bit_depth and probe.bit_depth > 8:
-        classification = max_classification(classification, "yellow")
-        reasons.append(f"{probe.bit_depth}-bit video should be treated as conditional AVPlayer input")
-        if "device_gate_hevc_or_generate_h264_fallback" not in actions:
-            actions.append("device_gate_hevc_or_generate_h264_fallback")
+        if target_profile == _GENERIC_IOS_PROFILE or video_codec != "hevc":
+            classification = max_classification(classification, "yellow")
+            reasons.append(f"{probe.bit_depth}-bit video should be treated as conditional AVPlayer input")
+            if "device_gate_hevc_or_generate_h264_fallback" not in actions:
+                actions.append("device_gate_hevc_or_generate_h264_fallback")
+        else:
+            reasons.append(f"{probe.bit_depth}-bit HEVC should be verified on the target devices before we rely on it long-term")
+            device_validation_required = True
+            device_validation_notes.append(
+                "Main10/10-bit HEVC should be checked on the target devices for startup stability and seek latency."
+            )
 
     unsupported_audio = sorted({codec for codec in probe.audio_codecs if codec not in _SAFE_AUDIO_CODECS})
     if unsupported_audio:
@@ -334,6 +375,8 @@ def classify_media_for_ios(media: ParsedMedia, probe: MediaProbe) -> Compatibili
         reasons=dedupe(actions_to_reasons(reasons)),
         suggested_actions=dedupe(actions),
         action_queue=action_queue,
+        device_validation_required=device_validation_required,
+        device_validation_notes=dedupe(device_validation_notes),
         sync_risk=sync_risk,
         quality_risk=quality_risk,
     )
