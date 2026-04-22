@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from .compatibility import build_compatibility_report
+from .preprocess import apply_preprocess_entries, build_preprocess_entries
 from .publisher import (
     apply_publish_plan,
     build_publish_plan,
@@ -115,6 +116,77 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Emit the compatibility report as JSON.",
     )
 
+    preprocess = subparsers.add_parser(
+        "preprocess",
+        help="Build or apply lightweight iOS preprocessing entries for supported queues.",
+    )
+    preprocess.add_argument(
+        "--source-root",
+        type=Path,
+        help="Root to scan. Defaults to $ANIME_DOWNLOAD_ROOT or downloads/Bangumi.",
+    )
+    preprocess.add_argument(
+        "--target-root",
+        type=Path,
+        help="Library root used for target path resolution. Defaults to $ANIME_LIBRARY_ROOT or library/seasonal.",
+    )
+    preprocess.add_argument(
+        "--review-root",
+        type=Path,
+        help="Manual review root. Defaults to $ANIME_REVIEW_ROOT or processing/manual_review.",
+    )
+    preprocess.add_argument(
+        "--target-profile",
+        choices=("personal_modern_apple", "generic_ios"),
+        default="personal_modern_apple",
+        help="Compatibility target profile. Defaults to personal_modern_apple.",
+    )
+    preprocess.add_argument(
+        "--staging-root",
+        type=Path,
+        help="Preprocess staging root. Defaults to $ANIME_PREPROCESS_ROOT or processing/ios_preprocess.",
+    )
+    preprocess.add_argument(
+        "--backup-root",
+        type=Path,
+        help="Backup root when replacing library files. Defaults to $ANIME_PREPROCESS_BACKUP_ROOT or processing/ios_preprocess_backups.",
+    )
+    preprocess.add_argument(
+        "--ffmpeg-bin",
+        default="ffmpeg",
+        help="ffmpeg binary to use for preprocessing. Defaults to ffmpeg.",
+    )
+    preprocess.add_argument(
+        "--queue-key",
+        action="append",
+        help="Only include matching action queues. Can be passed multiple times.",
+    )
+    preprocess.add_argument(
+        "--series-title",
+        action="append",
+        help="Only include matching series titles. Can be passed multiple times.",
+    )
+    preprocess.add_argument(
+        "--limit",
+        type=int,
+        help="Optional maximum number of entries to include.",
+    )
+    preprocess.add_argument(
+        "--replace-library",
+        action="store_true",
+        help="After preprocessing, move the original file to backup and replace the library file with the processed MP4.",
+    )
+    preprocess.add_argument(
+        "--apply",
+        action="store_true",
+        help="Run ffmpeg and materialize the preprocess entries. Without this flag, only print the manifest.",
+    )
+    preprocess.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the preprocess manifest or result as JSON.",
+    )
+
     watch = subparsers.add_parser(
         "watch",
         help="Poll qBittorrent for completed Bangumi torrents and process them automatically.",
@@ -221,6 +293,24 @@ def _default_review_root(anime_data_root: Path) -> Path:
         os.environ.get(
             "ANIME_REVIEW_ROOT",
             anime_data_root / "processing" / "manual_review",
+        )
+    )
+
+
+def _default_preprocess_root(anime_data_root: Path) -> Path:
+    return Path(
+        os.environ.get(
+            "ANIME_PREPROCESS_ROOT",
+            anime_data_root / "processing" / "ios_preprocess",
+        )
+    )
+
+
+def _default_preprocess_backup_root(anime_data_root: Path) -> Path:
+    return Path(
+        os.environ.get(
+            "ANIME_PREPROCESS_BACKUP_ROOT",
+            anime_data_root / "processing" / "ios_preprocess_backups",
         )
     )
 
@@ -350,6 +440,19 @@ def _build_series_queue_summary(compatibility, *, target_root: Path, resolver) -
         queue_bucket["count"] += 1
 
     return dict(sorted(summary.items()))
+
+
+def _print_preprocess_entries(entries) -> None:
+    print(f"preprocess entries: {len(entries)}")
+    for entry in entries:
+        print(f"- {entry.title} S{entry.season:02d}E{entry.episode:02d}")
+        print(f"  queue: {entry.queue_key}")
+        print(f"  strategy: {entry.strategy}")
+        print(f"  source: {entry.source_path}")
+        print(f"  staging_output: {entry.staging_output_path}")
+        print(f"  library_output: {entry.library_output_path}")
+        print(f"  backup: {entry.backup_path}")
+        print(f"  note: {entry.note}")
 
 
 def main() -> None:
@@ -545,6 +648,74 @@ def main() -> None:
             print("\nunparsed files:")
             for item in report.unparsed_files:
                 print(f"- {item.relative_path} ({item.reason})")
+        return
+
+    if args.command == "preprocess":
+        source_root = args.source_root or _default_download_root(anime_data_root)
+        target_root = args.target_root or _default_library_root(anime_data_root)
+        review_root = args.review_root or _default_review_root(anime_data_root)
+        staging_root = args.staging_root or _default_preprocess_root(anime_data_root)
+        backup_root = args.backup_root or _default_preprocess_backup_root(anime_data_root)
+        report = scan_root(source_root)
+        plan = build_publish_plan(
+            report=report,
+            download_root=source_root,
+            library_root=target_root,
+            review_root=review_root,
+        )
+        compatibility = build_compatibility_report(
+            plan.decisions,
+            ffprobe_bin="ffprobe",
+            target_profile=args.target_profile,
+        )
+        entries = build_preprocess_entries(
+            compatibility,
+            library_root=target_root,
+            resolver=plan.resolver,
+            staging_root=staging_root,
+            backup_root=backup_root,
+            queue_filters=set(args.queue_key or []),
+            title_filters=set(args.series_title or []),
+            limit=args.limit,
+        )
+        if not args.apply:
+            if getattr(args, "json", False):
+                print(
+                    json.dumps(
+                        {
+                            "source_root": str(source_root),
+                            "target_root": str(target_root),
+                            "review_root": str(review_root),
+                            "staging_root": str(staging_root),
+                            "backup_root": str(backup_root),
+                            "target_profile": args.target_profile,
+                            "entries": [entry.to_dict() for entry in entries],
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+                return
+            _print_preprocess_entries(entries)
+            return
+
+        result = apply_preprocess_entries(
+            entries,
+            ffmpeg_bin=args.ffmpeg_bin,
+            replace_library=args.replace_library,
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        print(f"processed entries: {len(result['processed'])}")
+        for item in result["processed"]:
+            print(
+                f"- {item['title']} S{item['season']:02d}E{item['episode']:02d}: "
+                f"{item['strategy']}"
+            )
+            if item.get("replaced_library"):
+                print(f"  backup: {item['backup_path']}")
+                print(f"  library_output: {item['library_output_path']}")
         return
 
 
