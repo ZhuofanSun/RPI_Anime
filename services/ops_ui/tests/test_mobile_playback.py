@@ -93,6 +93,7 @@ def _playback_info_payload() -> dict:
                 "Name": "Main",
                 "Container": "mkv",
                 "Bitrate": 2770756,
+                "SupportsTranscoding": True,
                 "SupportsDirectPlay": True,
                 "SupportsDirectStream": True,
                 "DefaultAudioStreamIndex": 1,
@@ -124,6 +125,26 @@ def _playback_info_payload() -> dict:
                         "IsTextSubtitleStream": True,
                     },
                 ],
+            }
+        ],
+    }
+
+
+def _hls_playback_info_payload() -> dict:
+    return {
+        "PlaySessionId": "play_session_hls_demo",
+        "MediaSources": [
+            {
+                "Id": "MS-1",
+                "SupportsTranscoding": True,
+                "SupportsDirectPlay": False,
+                "SupportsDirectStream": False,
+                "TranscodingUrl": (
+                    "/videos/JF-EP-42-1/master.m3u8"
+                    "?DeviceId=nekoya-ios&MediaSourceId=MS-1&AudioStreamIndex=1"
+                    "&SubtitleStreamIndex=2&SubtitleMethod=Encode&PlaySessionId=play_session_hls_demo"
+                    "&ApiKey=TOKEN-1"
+                ),
             }
         ],
     }
@@ -253,7 +274,7 @@ def test_mobile_playback_session_returns_direct_play_stream_descriptor(client, m
     monkeypatch.setattr(
         mobile_playback_service,
         "fetch_jellyfin_playback_info",
-        lambda user_id, jellyfin_item_id, access_token: _playback_info_payload(),
+        lambda user_id, jellyfin_item_id, access_token, playback_request=None: _playback_info_payload(),
     )
 
     response = client.post(
@@ -285,6 +306,8 @@ def test_mobile_playback_session_returns_direct_play_stream_descriptor(client, m
 def test_mobile_playback_session_auto_prefers_hls_for_unsupported_subtitle_format(client, monkeypatch):
     from anime_ops_ui.services import mobile_playback_service
 
+    playback_requests: list[dict | None] = []
+
     monkeypatch.setattr(mobile_playback_service, "build_detail_payload", lambda *args, **kwargs: _playable_detail_payload())
     monkeypatch.setattr(
         mobile_playback_service,
@@ -302,7 +325,10 @@ def test_mobile_playback_session_auto_prefers_hls_for_unsupported_subtitle_forma
     monkeypatch.setattr(
         mobile_playback_service,
         "fetch_jellyfin_playback_info",
-        lambda user_id, jellyfin_item_id, access_token: _playback_info_payload(),
+        lambda user_id, jellyfin_item_id, access_token, playback_request=None: (
+            playback_requests.append(playback_request),
+            _hls_playback_info_payload() if playback_request else _playback_info_payload(),
+        )[1],
     )
 
     response = client.post(
@@ -316,10 +342,27 @@ def test_mobile_playback_session_auto_prefers_hls_for_unsupported_subtitle_forma
 
     assert response.status_code == 200
     payload = response.json()
+    assert playback_requests[0] is None
+    assert playback_requests[1] == {
+        "UserId": "USER-1",
+        "MediaSourceId": "MS-1",
+        "AudioStreamIndex": 1,
+        "SubtitleStreamIndex": 2,
+        "EnableDirectPlay": False,
+        "EnableDirectStream": False,
+        "EnableTranscoding": True,
+        "AllowVideoStreamCopy": False,
+        "AllowAudioStreamCopy": False,
+        "AlwaysBurnInSubtitleWhenTranscoding": True,
+        "DeviceProfile": mobile_playback_service.ios_hls_device_profile(),
+    }
+    assert payload["sessionId"] == "play_session_hls_demo"
     assert payload["stream"]["delivery"] == "transcodeHls"
     assert payload["stream"]["url"] == (
-        "http://100.123.232.73:8096/Videos/JF-EP-42-1/master.m3u8"
-        "?MediaSourceId=MS-1&api_key=TOKEN-1"
+        "http://100.123.232.73:8096/videos/JF-EP-42-1/master.m3u8"
+        "?DeviceId=nekoya-ios&MediaSourceId=MS-1&AudioStreamIndex=1"
+        "&SubtitleStreamIndex=2&SubtitleMethod=Encode&PlaySessionId=play_session_hls_demo"
+        "&ApiKey=TOKEN-1"
     )
     assert payload["selectedSubtitleTrackId"] == "subtitle:2"
 

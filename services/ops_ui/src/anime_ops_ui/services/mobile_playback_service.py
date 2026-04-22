@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from fastapi import HTTPException, status
@@ -136,14 +136,46 @@ def create_playback_session_payload(
 
     selected_audio_track_id = normalize_audio_track_id(selected_source, audio_track_id)
     selected_subtitle_track_id = normalize_subtitle_track_id(selected_source, subtitle_track_id)
-    delivery, stream_url = resolve_stream_delivery(
+    delivery = resolve_stream_delivery(
         selected_source,
         preferred_delivery=preferred_delivery,
+        selected_audio_track_id=selected_audio_track_id,
         selected_subtitle_track_id=selected_subtitle_track_id,
     )
+    stream_url: str
+    session_id = str(bootstrap.get("jellyfinPlaySessionId") or uuid.uuid4().hex)
+    if delivery == "transcodeHls":
+        jellyfin_session = authenticate_jellyfin_session()
+        session_playback_info = fetch_jellyfin_playback_info(
+            jellyfin_session.user_id,
+            bootstrap["target"]["jellyfinEpisodeId"],
+            jellyfin_session.access_token,
+            playback_request=build_ios_hls_playback_request(
+                user_id=jellyfin_session.user_id,
+                source=selected_source,
+                audio_track_id=selected_audio_track_id,
+                subtitle_track_id=selected_subtitle_track_id,
+            ),
+        )
+        selected_session_source = next(
+            (
+                source
+                for source in session_playback_info.get("MediaSources") or []
+                if str(source.get("Id") or "") == selected_source["id"]
+            ),
+            None,
+        )
+        stream_url = resolve_transcode_stream_url(
+            playback_info=session_playback_info,
+            source=selected_session_source,
+            public_jellyfin_base=public_jellyfin_base_url(public_base_url),
+        )
+        session_id = str(session_playback_info.get("PlaySessionId") or session_id)
+    else:
+        stream_url = resolve_direct_stream_url(selected_source, delivery=delivery)
 
     return {
-        "sessionId": str(bootstrap.get("jellyfinPlaySessionId") or uuid.uuid4().hex),
+        "sessionId": session_id,
         "target": bootstrap["target"],
         "stream": {
             "delivery": delivery,
@@ -315,7 +347,13 @@ def fetch_jellyfin_item_detail(user_id: str, jellyfin_item_id: str, access_token
     return response.json()
 
 
-def fetch_jellyfin_playback_info(user_id: str, jellyfin_item_id: str, access_token: str) -> dict[str, Any]:
+def fetch_jellyfin_playback_info(
+    user_id: str,
+    jellyfin_item_id: str,
+    access_token: str,
+    *,
+    playback_request: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     response = requests.post(
         f"{internal_jellyfin_base_url()}/Items/{jellyfin_item_id}/PlaybackInfo",
         params={"UserId": user_id},
@@ -323,7 +361,7 @@ def fetch_jellyfin_playback_info(user_id: str, jellyfin_item_id: str, access_tok
             "Content-Type": "application/json",
             "X-Emby-Token": access_token,
         },
-        json={},
+        json=playback_request or {},
         timeout=10,
     )
     if response.status_code != 200:
@@ -434,11 +472,15 @@ def build_media_sources_payload(
                     media_source_id=source_id,
                     access_token=access_token,
                 ),
-                "transcodeHlsUrl": build_transcode_hls_url(
-                    public_jellyfin_base,
-                    jellyfin_item_id=jellyfin_item_id,
-                    media_source_id=source_id,
-                    access_token=access_token,
+                "transcodeHlsUrl": (
+                    build_transcode_hls_url(
+                        public_jellyfin_base,
+                        jellyfin_item_id=jellyfin_item_id,
+                        media_source_id=source_id,
+                        access_token=access_token,
+                    )
+                    if source.get("SupportsTranscoding")
+                    else None
                 ),
                 "audioTracks": audio_tracks,
                 "subtitleTracks": subtitle_tracks,
@@ -452,23 +494,28 @@ def resolve_stream_delivery(
     source: dict[str, Any],
     *,
     preferred_delivery: str | None = None,
+    selected_audio_track_id: str | None = None,
     selected_subtitle_track_id: str | None = None,
-) -> tuple[str, str]:
+) -> str:
     preferred = str(preferred_delivery or "").strip()
 
     if preferred in {"directPlay", "directStream"} and source.get("directPlayUrl"):
-        return preferred, str(source["directPlayUrl"])
+        return preferred
     if preferred == "transcodeHls" and source.get("transcodeHlsUrl"):
-        return "transcodeHls", str(source["transcodeHlsUrl"])
-    if should_prefer_transcode_hls(source, selected_subtitle_track_id=selected_subtitle_track_id):
-        return "transcodeHls", str(source["transcodeHlsUrl"])
+        return "transcodeHls"
+    if should_prefer_transcode_hls(
+        source,
+        selected_audio_track_id=selected_audio_track_id,
+        selected_subtitle_track_id=selected_subtitle_track_id,
+    ):
+        return "transcodeHls"
 
     if source.get("supportsDirectPlay") and source.get("directPlayUrl"):
-        return "directPlay", str(source["directPlayUrl"])
+        return "directPlay"
     if source.get("supportsDirectStream") and source.get("directPlayUrl"):
-        return "directStream", str(source["directPlayUrl"])
+        return "directStream"
     if source.get("transcodeHlsUrl"):
-        return "transcodeHls", str(source["transcodeHlsUrl"])
+        return "transcodeHls"
 
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
@@ -479,18 +526,19 @@ def resolve_stream_delivery(
 def should_prefer_transcode_hls(
     source: dict[str, Any],
     *,
+    selected_audio_track_id: str | None = None,
     selected_subtitle_track_id: str | None = None,
 ) -> bool:
     if not source.get("transcodeHlsUrl"):
         return False
+    if selected_audio_track_id and selected_audio_track_id != source.get("defaultAudioTrackId"):
+        return True
     selected_subtitle = selected_subtitle_track(source, selected_subtitle_track_id)
     if selected_subtitle is None:
         return False
     if selected_subtitle.get("id") == "subtitle:off":
         return False
-
-    subtitle_format = str(selected_subtitle.get("format") or "").strip().lower()
-    return subtitle_format in _UNSUPPORTED_DIRECT_SUBTITLE_FORMATS
+    return True
 
 
 def selected_subtitle_track(source: dict[str, Any], track_id: str | None) -> dict[str, Any] | None:
@@ -515,6 +563,118 @@ def normalize_subtitle_track_id(source: dict[str, Any], track_id: str | None) ->
     if requested and any(track["id"] == requested for track in source.get("subtitleTracks") or []):
         return requested
     return source.get("defaultSubtitleTrackId")
+
+
+def resolve_direct_stream_url(source: dict[str, Any], *, delivery: str) -> str:
+    direct_play_url = source.get("directPlayUrl")
+    if delivery in {"directPlay", "directStream"} and direct_play_url:
+        return str(direct_play_url)
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Selected direct playback delivery is unavailable.",
+    )
+
+
+def build_ios_hls_playback_request(
+    *,
+    user_id: str,
+    source: dict[str, Any],
+    audio_track_id: str | None,
+    subtitle_track_id: str | None,
+) -> dict[str, Any]:
+    selected_audio = selected_audio_track(source, audio_track_id)
+    selected_subtitle = selected_subtitle_track(source, subtitle_track_id)
+    subtitle_format = str((selected_subtitle or {}).get("format") or "").strip().lower()
+
+    request: dict[str, Any] = {
+        "UserId": user_id,
+        "MediaSourceId": source["id"],
+        "EnableDirectPlay": False,
+        "EnableDirectStream": False,
+        "EnableTranscoding": True,
+        "AllowVideoStreamCopy": False,
+        "AllowAudioStreamCopy": False,
+        "AlwaysBurnInSubtitleWhenTranscoding": subtitle_format in _UNSUPPORTED_DIRECT_SUBTITLE_FORMATS,
+        "DeviceProfile": ios_hls_device_profile(),
+    }
+    if selected_audio and selected_audio.get("streamIndex") is not None:
+        request["AudioStreamIndex"] = int(selected_audio["streamIndex"])
+    if selected_subtitle and selected_subtitle.get("streamIndex") is not None:
+        request["SubtitleStreamIndex"] = int(selected_subtitle["streamIndex"])
+    return request
+
+
+def ios_hls_device_profile() -> dict[str, Any]:
+    return {
+        "Name": "NekoYa iOS",
+        "MaxStreamingBitrate": 120_000_000,
+        "MaxStaticBitrate": 120_000_000,
+        "TranscodingProfiles": [
+            {
+                "Container": "ts",
+                "Type": "Video",
+                "Protocol": "hls",
+                "VideoCodec": "h264",
+                "AudioCodec": "aac",
+                "Context": "Streaming",
+                "MaxAudioChannels": "6",
+                "MinSegments": 1,
+                "SegmentLength": 3,
+                "BreakOnNonKeyFrames": False,
+                "EnableSubtitlesInManifest": True,
+                "EnableAudioVbrEncoding": True,
+            }
+        ],
+        "SubtitleProfiles": [
+            {"Format": "vtt", "Method": "Hls"},
+            {"Format": "ttml", "Method": "Hls"},
+            {"Format": "subrip", "Method": "Hls"},
+            {"Format": "ass", "Method": "Encode"},
+            {"Format": "ssa", "Method": "Encode"},
+            {"Format": "pgs", "Method": "Encode"},
+            {"Format": "pgssub", "Method": "Encode"},
+            {"Format": "sup", "Method": "Encode"},
+            {"Format": "vobsub", "Method": "Encode"},
+            {"Format": "dvdsub", "Method": "Encode"},
+            {"Format": "dvbsub", "Method": "Encode"},
+        ],
+    }
+
+
+def resolve_transcode_stream_url(
+    *,
+    playback_info: dict[str, Any],
+    source: dict[str, Any] | None,
+    public_jellyfin_base: str,
+) -> str:
+    transcoding_url = None
+    if source is not None:
+        transcoding_url = source.get("TranscodingUrl")
+    if not transcoding_url:
+        transcoding_url = next(
+            (
+                media_source.get("TranscodingUrl")
+                for media_source in playback_info.get("MediaSources") or []
+                if media_source.get("TranscodingUrl")
+            ),
+            None,
+        )
+    if not transcoding_url:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Jellyfin did not return a mobile HLS transcoding URL.",
+        )
+    return urljoin(f"{public_jellyfin_base}/", str(transcoding_url).lstrip("/"))
+
+
+def selected_audio_track(source: dict[str, Any], track_id: str | None) -> dict[str, Any] | None:
+    normalized = str(track_id or "").strip()
+    if not normalized:
+        return None
+    return next(
+        (track for track in source.get("audioTracks") or [] if track.get("id") == normalized),
+        None,
+    )
 
 
 def build_direct_play_url(
