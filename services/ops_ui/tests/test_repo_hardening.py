@@ -15,14 +15,17 @@ def test_readmes_link_core_services_to_official_github_repositories():
         "Jellyfin": "https://github.com/jellyfin/jellyfin",
         "Tailscale": "https://github.com/tailscale/tailscale",
     }
+    expected_snapshots = {
+        "README.md": ["./docs/dash1_new_en.png", "./docs/dash2_new_en.png"],
+        "README.zh-Hans.md": ["./docs/dash1_new_zh.png", "./docs/dash2_new_zh.png"],
+    }
 
     for relative_path in ["README.md", "README.zh-Hans.md"]:
         text = _read_text(relative_path)
         for label, url in expected_links.items():
             assert f"[{label}]({url})" in text
-        assert "./docs/dash1.png" in text
-        assert "./docs/dash2.png" in text
-        assert "_new_" not in text
+        for snapshot_path in expected_snapshots[relative_path]:
+            assert snapshot_path in text
 
 
 def test_compose_pins_external_service_images_instead_of_latest_tags():
@@ -82,25 +85,31 @@ def test_sync_script_excludes_local_only_artifacts_from_remote_sync():
     assert "--exclude 'docs/*_new_*.png'" in sync_script
 
 
-def test_sync_script_restarts_live_source_services_after_sync():
+def test_sync_script_reloads_live_source_and_image_based_services_after_sync():
     sync_script = _read_text("scripts/sync_to_pi.sh")
 
     assert "--itemize-changes" in sync_script
     assert "restart homepage" in sync_script
-    assert "restart postprocessor" in sync_script
+    assert "build postprocessor" in sync_script
+    assert 'changed_services+=("postprocessor")' in sync_script
+    assert 'up -d --no-build ${changed_services[*]}' in sync_script
+
+
+def test_sync_script_refuses_to_sync_when_remote_app_repo_is_present():
+    sync_script = _read_text("scripts/sync_to_pi.sh")
+
+    assert "RPI_Anime_APP already exists on the Raspberry Pi" in sync_script
+    assert "APP repository must stay outside the backend deploy tree" in sync_script
 
 
 def test_sync_script_reconciles_remote_stack_when_runtime_config_changes():
     sync_script = _read_text("scripts/sync_to_pi.sh")
 
     assert "deploy/compose.yaml" in sync_script
-    assert "services/ops_ui/Dockerfile" in sync_script
-    assert "services/ops_ui/pyproject" in sync_script
-    assert "services/postprocessor/Dockerfile" in sync_script
-    assert "services/postprocessor/pyproject" in sync_script
+    assert 'services/ops_ui/(Dockerfile|pyproject\\.toml)' in sync_script
+    assert 'services/postprocessor/(Dockerfile|pyproject\\.toml)' in sync_script
     assert "deploy/.env" in sync_script
     assert "build homepage" in sync_script
-    assert "up -d --build postprocessor" in sync_script
     assert "up -d --no-build" in sync_script
 
 

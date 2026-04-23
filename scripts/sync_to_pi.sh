@@ -70,6 +70,20 @@ fi
 
 ssh "${PI_HOST}" "sudo mkdir -p '${PI_REMOTE_ROOT}' && sudo chown -R '${PI_REMOTE_USER}:${PI_REMOTE_USER}' '${PI_REMOTE_ROOT}'"
 
+if ! remote_app_repo_guard_output="$(
+  ssh "${PI_HOST}" "bash -s -- '${PI_REMOTE_ROOT}'" <<'EOF'
+set -euo pipefail
+
+if [[ -e "$1/RPI_Anime_APP" ]]; then
+  echo "Refusing to sync because $1/RPI_Anime_APP already exists on the Raspberry Pi. The APP repository must stay outside the backend deploy tree."
+  exit 13
+fi
+EOF
+)"; then
+  echo "${remote_app_repo_guard_output}" >&2
+  exit 1
+fi
+
 SYNC_PREVIEW="$(
   rsync "${RSYNC_ARGS[@]}" --dry-run --itemize-changes \
     "${PROJECT_ROOT}/" \
@@ -77,7 +91,8 @@ SYNC_PREVIEW="$(
 )"
 
 restart_homepage=false
-restart_postprocessor=false
+build_homepage=false
+build_postprocessor=false
 reconcile_stack=false
 deploy_env_changed=false
 
@@ -85,11 +100,19 @@ if grep -Eq '(^|[[:space:]])services/ops_ui/src/' <<<"${SYNC_PREVIEW}"; then
   restart_homepage=true
 fi
 
-if grep -Eq '(^|[[:space:]])services/postprocessor/src/' <<<"${SYNC_PREVIEW}"; then
-  restart_postprocessor=true
+if grep -Eq '(^|[[:space:]])services/ops_ui/(Dockerfile|pyproject\.toml)' <<<"${SYNC_PREVIEW}"; then
+  build_homepage=true
 fi
 
-if grep -Eq '(^|[[:space:]])(deploy/compose\.yaml|services/ops_ui/Dockerfile|services/ops_ui/pyproject\.toml|services/postprocessor/Dockerfile|services/postprocessor/pyproject\.toml)' <<<"${SYNC_PREVIEW}"; then
+if grep -Eq '(^|[[:space:]])services/postprocessor/src/' <<<"${SYNC_PREVIEW}"; then
+  build_postprocessor=true
+fi
+
+if grep -Eq '(^|[[:space:]])services/postprocessor/(Dockerfile|pyproject\.toml)' <<<"${SYNC_PREVIEW}"; then
+  build_postprocessor=true
+fi
+
+if grep -Eq '(^|[[:space:]])deploy/compose\.yaml' <<<"${SYNC_PREVIEW}"; then
   reconcile_stack=true
 fi
 
@@ -113,40 +136,50 @@ if [[ -f "${DEPLOY_ENV}" ]]; then
   rsync -az "${DEPLOY_ENV}" "${PI_HOST}:${PI_REMOTE_ROOT}/deploy/.env"
 fi
 
+remote_runtime_commands=()
+remote_runtime_commands+=("set -euo pipefail")
+remote_runtime_commands+=("cd '${PI_REMOTE_ROOT}'")
+
+changed_services=()
+
+if [[ "${build_homepage}" == true ]]; then
+  remote_runtime_commands+=("${COMPOSE_CMD} build homepage")
+  changed_services+=("homepage")
+fi
+
+if [[ "${build_postprocessor}" == true ]]; then
+  remote_runtime_commands+=("${COMPOSE_CMD} build postprocessor")
+  changed_services+=("postprocessor")
+fi
+
 if [[ "${reconcile_stack}" == true ]]; then
-  remote_reconcile_commands=()
-  remote_reconcile_commands+=("set -euo pipefail")
-  remote_reconcile_commands+=("cd '${PI_REMOTE_ROOT}'")
-  remote_reconcile_commands+=("${COMPOSE_CMD} build homepage")
-  remote_reconcile_commands+=("${COMPOSE_CMD} up -d --build postprocessor")
-  remote_reconcile_commands+=("${COMPOSE_CMD} up -d --no-build")
-  remote_reconcile_commands+=("${COMPOSE_CMD} restart homepage")
-  ssh "${PI_HOST}" "$(printf '%s\n' "${remote_reconcile_commands[@]}")"
-elif [[ "${restart_homepage}" == true || "${restart_postprocessor}" == true ]]; then
-  remote_restart_commands=()
-  remote_restart_commands+=("set -euo pipefail")
-  remote_restart_commands+=("cd '${PI_REMOTE_ROOT}'")
-  if [[ "${restart_postprocessor}" == true ]]; then
-    remote_restart_commands+=("${COMPOSE_CMD} restart postprocessor")
-  fi
-  if [[ "${restart_homepage}" == true ]]; then
-    remote_restart_commands+=("${COMPOSE_CMD} restart homepage")
-  fi
-  ssh "${PI_HOST}" "$(printf '%s\n' "${remote_restart_commands[@]}")"
+  remote_runtime_commands+=("${COMPOSE_CMD} up -d --no-build")
+elif [[ "${#changed_services[@]}" -gt 0 ]]; then
+  remote_runtime_commands+=("${COMPOSE_CMD} up -d --no-build ${changed_services[*]}")
+fi
+
+if [[ "${restart_homepage}" == true && "${build_homepage}" == false ]]; then
+  remote_runtime_commands+=("${COMPOSE_CMD} restart homepage")
+fi
+
+if [[ "${#remote_runtime_commands[@]}" -gt 2 ]]; then
+  ssh "${PI_HOST}" "$(printf '%s\n' "${remote_runtime_commands[@]}")"
 fi
 
 echo "Synced ${PROJECT_ROOT} -> ${PI_HOST}:${PI_REMOTE_ROOT}"
 
-if [[ "${restart_postprocessor}" == true ]]; then
-  echo "Restarted remote postprocessor to load synced source changes."
+if [[ "${build_postprocessor}" == true ]]; then
+  echo "Rebuilt and relaunched remote postprocessor because its runtime comes from the image, not a source bind mount."
 fi
 
-if [[ "${restart_homepage}" == true ]]; then
+if [[ "${build_homepage}" == true ]]; then
+  echo "Rebuilt and relaunched remote homepage because its image inputs changed."
+elif [[ "${restart_homepage}" == true ]]; then
   echo "Restarted remote homepage to load synced source changes."
 fi
 
 if [[ "${reconcile_stack}" == true ]]; then
-  echo "Reconciled the remote compose stack because runtime config or build inputs changed."
+  echo "Reconciled the remote compose stack because runtime config changed."
 fi
 
 if [[ "${deploy_env_changed}" == true ]]; then
