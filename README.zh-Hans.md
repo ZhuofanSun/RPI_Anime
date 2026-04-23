@@ -142,10 +142,18 @@ df -h /srv/anime-data /srv/anime-collection
 - `PI_REMOTE_USER`
 - `PI_REMOTE_ROOT`
 - `TZ`
+- `JELLYFIN_PLAYBACK_USER_ID`
+- `JELLYFIN_PLAYBACK_ACCESS_TOKEN`
 - `QBITTORRENT_USERNAME`
 - `QBITTORRENT_PASSWORD`
 - `AUTOBANGUMI_USERNAME`
 - `AUTOBANGUMI_PASSWORD`
+
+对这个项目，当前最稳的 Jellyfin 方案是：
+
+- 所有你自己的设备继续共用一个 Jellyfin 用户，保持 watched / resume truth 统一
+- 给 `ops_ui` 单独配置这个同一用户的长期 token，也就是 `JELLYFIN_PLAYBACK_USER_ID` 和 `JELLYFIN_PLAYBACK_ACCESS_TOKEN`
+- 不要让移动端 playback bootstrap 依赖每次都重新走 `Users/AuthenticateByName`，因为 Jellyfin 的密码登录链路一旦坏掉，移动端播放会整条一起掉
 
 ### 3. 同步仓库到树莓派
 
@@ -153,7 +161,14 @@ df -h /srv/anime-data /srv/anime-collection
 ./scripts/sync_to_pi.sh
 ```
 
-这个脚本会把仓库同步到 `${PI_REMOTE_ROOT}`，单独同步 `deploy/.env`，并在 `deploy/compose.yaml`、服务构建输入或 `deploy/.env` 变化时自动对远端 compose 栈做一次对齐。
+这个脚本会把主仓库同步到 `${PI_REMOTE_ROOT}`，单独同步 `deploy/.env`，并且**不会**同步 `RPI_Anime_APP/`。
+
+当前同步语义是：
+
+- 如果改了 `services/ops_ui/src/`，脚本会 restart `homepage`
+- 如果改了 `services/postprocessor/src/`，脚本会 rebuild 并重新拉起 `postprocessor`
+- 如果改了 `deploy/compose.yaml`、服务构建输入或 `deploy/.env`，脚本会对远端 compose 栈做一次对齐
+- 如果 Pi 上 `${PI_REMOTE_ROOT}/RPI_Anime_APP` 已存在，脚本会直接拒绝继续，避免把 APP 仓库混进 backend deploy tree
 
 ### 4. 构建并启动服务
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 
@@ -13,6 +14,7 @@ DEFAULT_PLAYBACK_PASSWORD = "root1234"
 _AUTHORIZATION_HEADER = (
     'MediaBrowser Client="NekoYa", Device="NekoYaMobile", DeviceId="nekoya-mobile-playback", Version="1.0.0"'
 )
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass(frozen=True)
@@ -69,8 +71,16 @@ def configured_jellyfin_session() -> JellyfinSession | None:
 def authenticate_jellyfin_session() -> JellyfinSession:
     configured_session = configured_jellyfin_session()
     if configured_session is not None:
+        logger.info(
+            "Using configured Jellyfin playback token auth user_id=%s",
+            configured_session.user_id,
+        )
         return configured_session
 
+    logger.warning(
+        "Falling back to Jellyfin password auth username=%s",
+        playback_username(),
+    )
     response = requests.post(
         f"{internal_jellyfin_base_url()}/Users/AuthenticateByName",
         headers={

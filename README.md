@@ -142,10 +142,18 @@ Create `deploy/.env` locally and fill in at least:
 - `PI_REMOTE_USER`
 - `PI_REMOTE_ROOT`
 - `TZ`
+- `JELLYFIN_PLAYBACK_USER_ID`
+- `JELLYFIN_PLAYBACK_ACCESS_TOKEN`
 - `QBITTORRENT_USERNAME`
 - `QBITTORRENT_PASSWORD`
 - `AUTOBANGUMI_USERNAME`
 - `AUTOBANGUMI_PASSWORD`
+
+For this project, the stable Jellyfin setup is:
+
+- keep a single Jellyfin user for all of your own devices and watch-state truth
+- give `ops_ui` a dedicated long-lived token for that same user via `JELLYFIN_PLAYBACK_USER_ID` and `JELLYFIN_PLAYBACK_ACCESS_TOKEN`
+- avoid relying on `Users/AuthenticateByName` for every playback bootstrap, because a broken password-auth path in Jellyfin can take mobile playback down even when token auth still works
 
 ### 3. Sync the repository to the Pi
 
@@ -153,7 +161,14 @@ Create `deploy/.env` locally and fill in at least:
 ./scripts/sync_to_pi.sh
 ```
 
-This copies the repo to `${PI_REMOTE_ROOT}`, syncs `deploy/.env` separately, and automatically reconciles the remote compose stack when `deploy/compose.yaml`, service build inputs, or `deploy/.env` change.
+This copies the main repo to `${PI_REMOTE_ROOT}`, syncs `deploy/.env` separately, and does **not** sync `RPI_Anime_APP/`.
+
+Current sync semantics:
+
+- if `services/ops_ui/src/` changes, the script restarts `homepage`
+- if `services/postprocessor/src/` changes, the script rebuilds and relaunches `postprocessor`
+- if `deploy/compose.yaml`, service build inputs, or `deploy/.env` change, the script reconciles the remote compose stack
+- if `${PI_REMOTE_ROOT}/RPI_Anime_APP` already exists on the Pi, the script refuses to continue so the APP repo does not get mixed into the backend deploy tree
 
 ### 4. Build and start services
 

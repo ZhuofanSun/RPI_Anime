@@ -130,6 +130,66 @@
 - `ops-ui` 总览新增 `mount:/srv-storage-layout` 诊断
 - `README.md` / `README.zh-Hans.md` 补充了挂载核对命令和 `usb-storage.quirks=0781:55ae:u` 运维说明
 
+### 今天新增落实：同步脚本与 postprocessor 运行语义对齐
+
+风险：
+
+- `postprocessor` 运行的是镜像内安装代码，不是热挂载源码
+- 如果源码改动后只 sync + restart，会制造“以为部署生效了，其实没生效”的假象
+- 如果远端 deploy tree 混入 `RPI_Anime_APP/`，后续同步边界会持续变脏
+
+措施：
+
+- `scripts/sync_to_pi.sh` 现在会在 `services/postprocessor/src/` 变化时 rebuild 并重新拉起 `postprocessor`
+- 脚本继续对 `ops_ui` 保留轻量 restart 路径，不把两类服务混成同一种 deploy 语义
+- 如果 Pi 上 `${PI_REMOTE_ROOT}/RPI_Anime_APP` 已存在，脚本会直接拒绝继续同步
+
+今天已落实：
+
+- 已在 `sunzhuofan.local` 上确认当前 deploy tree 不包含 `RPI_Anime_APP/`
+- 已实际运行一次 `./scripts/sync_to_pi.sh` 验证新的同步保护和差异化部署语义
+
+### 今天新增落实：Jellyfin 改为轻量 series refresh
+
+风险：
+
+- preprocess 替换媒体文件后，如果没有定向刷新，Jellyfin 可能继续暴露旧 tracks / metadata
+- 如果用整库 refresh 去兜底，会把播放器调试和每周新集发布建立在高扰动扫描上
+
+措施：
+
+- postprocessor 在 publish / replace-library 后，向 Jellyfin 发送 series-scoped update
+- 刷新范围保持在作品目录级别，不触发整库 `/Library/Refresh`
+
+今天已落实：
+
+- 已补上 Jellyfin update 通知闭环
+- 当前 residual risk 主要只剩 Jellyfin chapter / trickplay 后台任务本身仍是异步
+
+### 今天新增落实：mobile playback 改为固定 token auth
+
+风险：
+
+- `ops_ui` 之前每次建立 mobile playback session 都会重新调用 Jellyfin `Users/AuthenticateByName`
+- 当前 Jellyfin 对主用户密码登录稳定报 `DbUpdateConcurrencyException`，会把 `/api/mobile/items/.../playback` 整条链路打成 `502`
+- 如果继续把 backend playback auth 建在用户名密码登录上，播放器调试会被基础认证故障反复打断
+
+措施：
+
+- `ops_ui` 现在优先读取 `JELLYFIN_PLAYBACK_USER_ID` 和 `JELLYFIN_PLAYBACK_ACCESS_TOKEN`
+- playback bootstrap / reporting 继续使用同一个 Jellyfin 用户的 token，不再默认每次重新密码登录
+- `Users/AuthenticateByName` 仅保留为未配置 token 时的 fallback，并在日志里明确标出当前走的是 token auth 还是 password fallback
+
+今天已落实：
+
+- 已确认当前 Pi 上 Jellyfin 只有一个主用户，且现有 device token 仍可正常访问 `/Users/Me`、`/Items/.../PlaybackInfo`
+- 已给 `homepage` 注入 backend 专用 Jellyfin token
+- 已验证 `/api/mobile/items/app_following_ab_9/playback` 从 `502` 恢复到 `200`
+
+当前建议：
+
+- 对这个项目继续保持“单用户 + backend 固定 token”即可，不需要为了移动端 playback 再拆一套 Jellyfin 用户
+
 ## 第一轮之外，下一批值得继续做的事
 
 ### 6. 给关键状态做定时备份
