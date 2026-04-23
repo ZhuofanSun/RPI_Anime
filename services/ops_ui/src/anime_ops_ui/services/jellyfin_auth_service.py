@@ -48,7 +48,29 @@ def playback_password() -> str:
     return os.environ.get("JELLYFIN_PLAYBACK_PASSWORD", DEFAULT_PLAYBACK_PASSWORD)
 
 
+def playback_user_id() -> str | None:
+    value = str(os.environ.get("JELLYFIN_PLAYBACK_USER_ID", "")).strip()
+    return value or None
+
+
+def playback_access_token() -> str | None:
+    value = str(os.environ.get("JELLYFIN_PLAYBACK_ACCESS_TOKEN", "")).strip()
+    return value or None
+
+
+def configured_jellyfin_session() -> JellyfinSession | None:
+    user_id = playback_user_id()
+    access_token = playback_access_token()
+    if not user_id or not access_token:
+        return None
+    return JellyfinSession(user_id=user_id, access_token=access_token)
+
+
 def authenticate_jellyfin_session() -> JellyfinSession:
+    configured_session = configured_jellyfin_session()
+    if configured_session is not None:
+        return configured_session
+
     response = requests.post(
         f"{internal_jellyfin_base_url()}/Users/AuthenticateByName",
         headers={

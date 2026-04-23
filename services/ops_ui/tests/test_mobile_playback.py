@@ -138,6 +138,78 @@ def _playback_info_payload_with_mov_text() -> dict:
     return payload
 
 
+def test_authenticate_jellyfin_session_prefers_configured_access_token(monkeypatch):
+    from anime_ops_ui.services import jellyfin_auth_service
+
+    monkeypatch.setenv("JELLYFIN_PLAYBACK_USER_ID", "USER-1")
+    monkeypatch.setenv("JELLYFIN_PLAYBACK_ACCESS_TOKEN", "TOKEN-1")
+
+    def fake_post(*args, **kwargs):
+        raise AssertionError("password auth should not be used when playback token is configured")
+
+    monkeypatch.setattr(jellyfin_auth_service.requests, "post", fake_post)
+
+    session = jellyfin_auth_service.authenticate_jellyfin_session()
+
+    assert session == jellyfin_auth_service.JellyfinSession(
+        user_id="USER-1",
+        access_token="TOKEN-1",
+    )
+
+
+def test_authenticate_jellyfin_session_falls_back_to_password_login(monkeypatch):
+    from anime_ops_ui.services import jellyfin_auth_service
+
+    monkeypatch.delenv("JELLYFIN_PLAYBACK_USER_ID", raising=False)
+    monkeypatch.delenv("JELLYFIN_PLAYBACK_ACCESS_TOKEN", raising=False)
+    monkeypatch.setenv("JELLYFIN_PLAYBACK_USERNAME", "playback-user")
+    monkeypatch.setenv("JELLYFIN_PLAYBACK_PASSWORD", "playback-password")
+    monkeypatch.setattr(jellyfin_auth_service, "internal_jellyfin_base_url", lambda: "http://jellyfin:8096")
+
+    recorded_request: dict = {}
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "User": {"Id": "USER-2"},
+                "AccessToken": "TOKEN-2",
+            }
+
+    def fake_post(url, *, headers=None, json=None, timeout=None):
+        recorded_request["url"] = url
+        recorded_request["headers"] = headers
+        recorded_request["json"] = json
+        recorded_request["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(jellyfin_auth_service.requests, "post", fake_post)
+
+    session = jellyfin_auth_service.authenticate_jellyfin_session()
+
+    assert session == jellyfin_auth_service.JellyfinSession(
+        user_id="USER-2",
+        access_token="TOKEN-2",
+    )
+    assert recorded_request == {
+        "url": "http://jellyfin:8096/Users/AuthenticateByName",
+        "headers": {
+            "Content-Type": "application/json",
+            "X-Emby-Authorization": (
+                'MediaBrowser Client="NekoYa", Device="NekoYaMobile", '
+                'DeviceId="nekoya-mobile-playback", Version="1.0.0"'
+            ),
+        },
+        "json": {
+            "Username": "playback-user",
+            "Pw": "playback-password",
+        },
+        "timeout": 10,
+    }
+
+
 def test_mobile_playback_bootstrap_returns_media_sources_and_tracks(client, monkeypatch):
     from anime_ops_ui.services import mobile_playback_service
 
