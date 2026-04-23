@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from .compatibility import build_compatibility_report
+from .jellyfin_refresh import collect_series_updates, post_series_updates
 from .preprocess import (
     apply_preprocess_entries,
     build_preprocess_entries,
@@ -30,6 +31,16 @@ def _default_download_root(anime_data_root: Path) -> Path:
             anime_data_root / "downloads" / "Bangumi",
         )
     )
+
+
+def _apply_jellyfin_series_refresh(items: list[dict]) -> tuple[dict | None, str | None]:
+    updates = collect_series_updates(items)
+    if not updates:
+        return None, None
+    try:
+        return post_series_updates(updates), None
+    except Exception as exc:
+        return None, str(exc)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -599,6 +610,13 @@ def main() -> None:
             preprocess_entries=entries,
             ffmpeg_bin=ffmpeg_bin,
         )
+        jellyfin_refresh, jellyfin_refresh_error = _apply_jellyfin_series_refresh(
+            result["published"]
+        )
+        if jellyfin_refresh is not None:
+            result["jellyfin_refresh"] = jellyfin_refresh
+        if jellyfin_refresh_error is not None:
+            result["jellyfin_refresh_error"] = jellyfin_refresh_error
         if getattr(args, "json", False):
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return
@@ -617,6 +635,12 @@ def main() -> None:
             print(f"- delete {item}")
         for item in result["reviewed"]:
             print(f"- review {item['source']} -> {item['target']}")
+        if jellyfin_refresh is not None:
+            print(
+                f"jellyfin refresh: notified {jellyfin_refresh['path_count']} series paths"
+            )
+        if jellyfin_refresh_error is not None:
+            print(f"warning: jellyfin refresh skipped: {jellyfin_refresh_error}")
         return
 
     if args.command == "watch":
@@ -766,6 +790,13 @@ def main() -> None:
             ffmpeg_bin=args.ffmpeg_bin,
             replace_library=args.replace_library,
         )
+        jellyfin_refresh, jellyfin_refresh_error = _apply_jellyfin_series_refresh(
+            result["processed"]
+        )
+        if jellyfin_refresh is not None:
+            result["jellyfin_refresh"] = jellyfin_refresh
+        if jellyfin_refresh_error is not None:
+            result["jellyfin_refresh_error"] = jellyfin_refresh_error
         if getattr(args, "json", False):
             print(
                 json.dumps(
@@ -789,6 +820,12 @@ def main() -> None:
                 print(f"  library_output: {item['library_output_path']}")
         for action in result.get("post_apply_actions", []):
             print(f"follow-up: {action}")
+        if jellyfin_refresh is not None:
+            print(
+                f"jellyfin refresh: notified {jellyfin_refresh['path_count']} series paths"
+            )
+        if jellyfin_refresh_error is not None:
+            print(f"warning: jellyfin refresh skipped: {jellyfin_refresh_error}")
         return
 
 

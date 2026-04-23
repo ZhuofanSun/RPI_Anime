@@ -202,6 +202,12 @@ def apply_publish_plan(
             if preprocess_entry is not None
             else build_target_path(plan.library_root, decision.winner, resolver=plan.resolver)
         )
+        show_dir = build_series_folder_path(
+            plan.library_root,
+            decision.winner,
+            resolver=plan.resolver,
+        )
+        show_dir_preexisting = show_dir.exists()
         if target.exists():
             raise FileExistsError(f"target already exists: {target}")
 
@@ -236,11 +242,6 @@ def apply_publish_plan(
             _cleanup_empty_dirs(decision.winner.path.parent, plan.download_root)
 
         series = resolve_series(decision.winner, resolver=plan.resolver)
-        show_dir = build_series_folder_path(
-            plan.library_root,
-            decision.winner,
-            resolver=plan.resolver,
-        )
         show_dir.mkdir(parents=True, exist_ok=True)
         nfo_path = _write_tvshow_nfo(show_dir, series)
         episode_nfo_path = _write_episode_nfo(
@@ -256,6 +257,10 @@ def apply_publish_plan(
                 "nfo": str(nfo_path),
                 "episode_nfo": str(episode_nfo_path),
                 "preprocess": preprocess_details,
+                "jellyfin_refresh_path": str(show_dir),
+                "jellyfin_refresh_update_type": (
+                    "Modified" if show_dir_preexisting else "Created"
+                ),
             }
         )
 

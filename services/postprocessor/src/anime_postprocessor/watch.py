@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .eventlog import append_event
+from .jellyfin_refresh import collect_series_updates, post_series_updates
 from .models import EpisodeKey, ParsedMedia, UnparsedMedia
 from .parser import parse_media_file
 from .preprocess import summarize_preprocess_entries
@@ -269,6 +270,35 @@ def _run_once(
                 preprocess_entries=preprocess_entries,
                 ffmpeg_bin=ffmpeg_bin,
             )
+            jellyfin_refresh_updates = collect_series_updates(result["published"])
+            jellyfin_refresh = None
+            jellyfin_refresh_error = None
+            if jellyfin_refresh_updates:
+                try:
+                    jellyfin_refresh = post_series_updates(jellyfin_refresh_updates)
+                    print(
+                        f"[watch] jellyfin series refresh notified: "
+                        f"paths={jellyfin_refresh['path_count']}"
+                    )
+                except Exception as exc:
+                    jellyfin_refresh_error = str(exc)
+                    print(
+                        f"[watch] jellyfin series refresh warning for "
+                        f"{key.normalized_title} S{key.season:02d}E{key.episode:02d}: {exc}"
+                    )
+                    append_event(
+                        source="postprocessor",
+                        level="warning",
+                        action="watch-jellyfin-refresh",
+                        message=(
+                            f"Jellyfin series refresh skipped for {key.normalized_title} "
+                            f"S{key.season:02d}E{key.episode:02d}"
+                        ),
+                        details={
+                            "error": str(exc),
+                            "updates": jellyfin_refresh_updates,
+                        },
+                    )
             print(
                 f"[watch] processed {key.normalized_title} "
                 f"S{key.season:02d}E{key.episode:02d}: "
@@ -295,6 +325,8 @@ def _run_once(
                     "deleted": len(result["deleted"]),
                     "reviewed": len(result["reviewed"]),
                     "winner_targets": [item["target"] for item in result["published"]],
+                    "jellyfin_refresh": jellyfin_refresh,
+                    "jellyfin_refresh_error": jellyfin_refresh_error,
                 },
             )
         except Exception as exc:

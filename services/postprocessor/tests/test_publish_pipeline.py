@@ -99,3 +99,5 @@ def test_apply_publish_plan_preprocesses_supported_winner_before_publish(tmp_pat
     assert result["published"][0]["preprocess"]["strategy"] == "mp4_text_remux"
     assert Path(result["published"][0]["nfo"]).exists()
     assert Path(result["published"][0]["episode_nfo"]).exists()
+    assert result["published"][0]["jellyfin_refresh_path"] == str(library_root / "Demo Show")
+    assert result["published"][0]["jellyfin_refresh_update_type"] == "Created"

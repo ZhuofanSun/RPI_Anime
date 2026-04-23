@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .compatibility import CompatibilityReport
+from .jellyfin_refresh import derive_series_refresh_path
 from .publisher import build_target_path
 from .selector import SelectionDecision
 
@@ -240,4 +241,6 @@ def _replace_library_source(entry: PreprocessEntry) -> dict:
         "replaced_library": True,
         "backup_path": str(entry.backup_path),
         "library_output_path": str(entry.library_output_path),
+        "jellyfin_refresh_path": str(derive_series_refresh_path(entry.library_output_path)),
+        "jellyfin_refresh_update_type": "Modified",
     }

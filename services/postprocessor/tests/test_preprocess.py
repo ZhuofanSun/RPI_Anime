@@ -11,6 +11,7 @@ from anime_postprocessor.models import EpisodeKey, ParsedMedia
 from anime_postprocessor.preprocess import (
     PreprocessEntry,
     _run_preprocess_entry,
+    apply_preprocess_entries,
     build_preprocess_entries,
     filter_preprocess_decisions,
     summarize_preprocess_entries,
@@ -239,3 +240,53 @@ def test_run_preprocess_entry_tags_hevc_outputs_as_hvc1(tmp_path, monkeypatch):
     assert "-tag:v" in recorded["command"]
     tag_index = recorded["command"].index("-tag:v")
     assert recorded["command"][tag_index + 1] == "hvc1"
+
+
+def test_apply_preprocess_entries_marks_series_scoped_jellyfin_refresh_on_replace(
+    tmp_path,
+    monkeypatch,
+):
+    source_path = tmp_path / "Demo Show/Season 1/Demo Show S01E01.mkv"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_bytes(b"original")
+
+    output_path = tmp_path / "library/Demo Show/Season 1/Demo Show S01E01.mp4"
+    backup_path = tmp_path / "backups/Demo Show/Season 1/Demo Show S01E01.mkv"
+
+    entry = PreprocessEntry(
+        title="Demo Show",
+        season=1,
+        episode=1,
+        queue_key="subtitles_to_webvtt__then__remux_to_mp4_or_fmp4",
+        strategy="mp4_text_remux",
+        video_codec="h264",
+        source_path=source_path,
+        staging_output_path=tmp_path / "staging/Demo Show/Season 1/Demo Show S01E01.mp4",
+        library_output_path=output_path,
+        backup_path=backup_path,
+        actions=["convert_subtitles_to_webvtt", "remux_to_mp4_or_fmp4"],
+        note="demo",
+        strategy_note="demo",
+        requires_jellyfin_refresh=True,
+    )
+
+    def fake_run_preprocess_entry(materialized_entry, *, ffmpeg_bin):
+        assert materialized_entry == entry
+        assert ffmpeg_bin == "ffmpeg"
+        materialized_entry.staging_output_path.parent.mkdir(parents=True, exist_ok=True)
+        materialized_entry.staging_output_path.write_bytes(b"processed")
+
+    monkeypatch.setattr(
+        "anime_postprocessor.preprocess._run_preprocess_entry",
+        fake_run_preprocess_entry,
+    )
+
+    result = apply_preprocess_entries(
+        [entry],
+        ffmpeg_bin="ffmpeg",
+        replace_library=True,
+    )
+
+    assert result["processed"][0]["replaced_library"] is True
+    assert result["processed"][0]["jellyfin_refresh_path"] == str(tmp_path / "library/Demo Show")
+    assert result["processed"][0]["jellyfin_refresh_update_type"] == "Modified"
