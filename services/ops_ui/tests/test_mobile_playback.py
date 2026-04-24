@@ -296,6 +296,8 @@ def test_mobile_playback_bootstrap_returns_media_sources_and_tracks(client, monk
             "delivery": "none",
             "format": None,
             "streamIndex": None,
+            "streamUrl": None,
+            "streamFormat": None,
         },
         {
             "id": "subtitle:2",
@@ -305,8 +307,52 @@ def test_mobile_playback_bootstrap_returns_media_sources_and_tracks(client, monk
             "delivery": "embedded",
             "format": "ass",
             "streamIndex": 2,
+            "streamUrl": (
+                "http://100.123.232.73:8096/Videos/JF-EP-42-1/MS-1/"
+                "Subtitles/2/0/Stream.vtt?api_key=TOKEN-1"
+            ),
+            "streamFormat": "vtt",
         },
     ]
+
+
+def test_mobile_playback_bootstrap_exposes_postprocessed_mov_text_subtitle_stream(client, monkeypatch):
+    from anime_ops_ui.services import mobile_playback_service
+
+    monkeypatch.setattr(mobile_playback_service, "build_detail_payload", lambda *args, **kwargs: _playable_detail_payload())
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "authenticate_jellyfin_session",
+        lambda: mobile_playback_service.JellyfinSession(user_id="USER-1", access_token="TOKEN-1"),
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_item_detail",
+        lambda user_id, jellyfin_item_id, access_token: {
+            "RunTimeTicks": 13821445000,
+            "UserData": {"PlaybackPositionTicks": 4200000000},
+        },
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_playback_info",
+        lambda user_id, jellyfin_item_id, access_token: _playback_info_payload_with_mov_text(),
+    )
+
+    response = client.get(
+        "/api/mobile/items/app_following_ab_42/playback",
+        params={"episodeId": "ep_s2_01"},
+        headers={"host": "100.123.232.73:3000"},
+    )
+
+    assert response.status_code == 200
+    subtitle_track = response.json()["mediaSources"][0]["subtitleTracks"][1]
+    assert subtitle_track["format"] == "mov_text"
+    assert subtitle_track["streamFormat"] == "vtt"
+    assert subtitle_track["streamUrl"] == (
+        "http://100.123.232.73:8096/Videos/JF-EP-42-1/MS-1/"
+        "Subtitles/2/0/Stream.vtt?api_key=TOKEN-1"
+    )
 
 
 def test_mobile_playback_session_returns_direct_play_stream_descriptor(client, monkeypatch):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlencode, urlparse
 
 import requests
 from fastapi import HTTPException, status
@@ -15,6 +15,20 @@ from anime_ops_ui.services.jellyfin_auth_service import (
     internal_jellyfin_base_url,
     jellyfin_request_headers,
 )
+
+_TEXT_SUBTITLE_CODECS = {
+    "ass",
+    "mov_text",
+    "movtext",
+    "ssa",
+    "srt",
+    "subrip",
+    "text",
+    "ttml",
+    "tx3g",
+    "vtt",
+    "webvtt",
+}
 
 def build_playback_bootstrap_payload(
     app_item_id: str,
@@ -350,6 +364,8 @@ def build_media_sources_payload(
                 "delivery": "none",
                 "format": None,
                 "streamIndex": None,
+                "streamUrl": None,
+                "streamFormat": None,
             }
         ]
 
@@ -385,6 +401,7 @@ def build_media_sources_payload(
             if is_subtitle:
                 track_id = f"subtitle:{stream_index}"
                 is_default = bool(stream.get("IsDefault"))
+                stream_format = subtitle_stream_format(stream)
                 if is_default and default_subtitle_track_id is None:
                     default_subtitle_track_id = track_id
                 subtitle_tracks.append(
@@ -396,6 +413,17 @@ def build_media_sources_payload(
                         "delivery": "external" if stream.get("IsExternal") else "embedded",
                         "format": stream.get("Codec"),
                         "streamIndex": stream_index,
+                        "streamUrl": build_subtitle_stream_url(
+                            public_jellyfin_base,
+                            jellyfin_item_id=jellyfin_item_id,
+                            media_source_id=source_id,
+                            stream_index=stream_index,
+                            access_token=access_token,
+                            route_format=stream_format,
+                        )
+                        if stream_format
+                        else None,
+                        "streamFormat": stream_format,
                     }
                 )
 
@@ -491,6 +519,33 @@ def build_direct_play_url(
     return (
         f"{public_jellyfin_base}/Videos/{jellyfin_item_id}/stream"
         f"?static=true&MediaSourceId={media_source_id}&api_key={access_token}"
+    )
+
+
+def subtitle_stream_format(stream: dict[str, Any]) -> str | None:
+    codec = str(stream.get("Codec") or "").strip().lower()
+    if bool(stream.get("IsTextSubtitleStream")) or codec in _TEXT_SUBTITLE_CODECS:
+        return "vtt"
+    return None
+
+
+def build_subtitle_stream_url(
+    public_jellyfin_base: str,
+    *,
+    jellyfin_item_id: str,
+    media_source_id: str,
+    stream_index: int,
+    access_token: str,
+    route_format: str,
+) -> str:
+    item_id = quote(str(jellyfin_item_id), safe="")
+    source_id = quote(str(media_source_id), safe="")
+    index = quote(str(stream_index), safe="")
+    normalized_format = quote(str(route_format).strip().lstrip("."), safe="")
+    query = urlencode({"api_key": access_token})
+    return (
+        f"{public_jellyfin_base}/Videos/{item_id}/{source_id}/"
+        f"Subtitles/{index}/0/Stream.{normalized_format}?{query}"
     )
 
 
