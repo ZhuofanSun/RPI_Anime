@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 
 from anime_ops_ui import runtime_main_module
 from anime_ops_ui.services.mobile_detail_service import build_detail_payload
+from anime_ops_ui.services.mobile_media_service import build_mobile_trickplay_tile_url_template
 from anime_ops_ui.services.jellyfin_auth_service import (
     JellyfinSession,
     authenticate_jellyfin_session,
@@ -64,8 +65,10 @@ def build_playback_bootstrap_payload(
     public_jellyfin_base = public_jellyfin_base_url(public_base_url)
     media_sources = build_media_sources_payload(
         playback_info=playback_info,
+        jellyfin_item=jellyfin_item,
         jellyfin_item_id=selection["jellyfinEpisodeId"],
         public_jellyfin_base=public_jellyfin_base,
+        public_base_url=public_base_url,
         access_token=jellyfin_session.access_token,
     )
     default_media_source_id = media_sources[0]["id"] if media_sources else None
@@ -344,8 +347,10 @@ def fetch_jellyfin_playback_info(
 def build_media_sources_payload(
     *,
     playback_info: dict[str, Any],
+    jellyfin_item: dict[str, Any] | None = None,
     jellyfin_item_id: str,
     public_jellyfin_base: str,
+    public_base_url: str | None = None,
     access_token: str,
 ) -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
@@ -455,6 +460,12 @@ def build_media_sources_payload(
                     media_source_id=source_id,
                     access_token=access_token,
                 ),
+                "trickplay": build_trickplay_payload(
+                    jellyfin_item=jellyfin_item or {},
+                    jellyfin_item_id=jellyfin_item_id,
+                    media_source_id=source_id,
+                    public_base_url=public_base_url,
+                ),
                 "audioTracks": audio_tracks,
                 "subtitleTracks": subtitle_tracks,
             }
@@ -547,6 +558,108 @@ def build_subtitle_stream_url(
         f"{public_jellyfin_base}/Videos/{item_id}/{source_id}/"
         f"Subtitles/{index}/0/Stream.{normalized_format}?{query}"
     )
+
+
+def build_trickplay_payload(
+    *,
+    jellyfin_item: dict[str, Any],
+    jellyfin_item_id: str,
+    media_source_id: str,
+    public_base_url: str | None,
+) -> dict[str, Any] | None:
+    info = select_trickplay_info(jellyfin_item.get("Trickplay"), media_source_id=media_source_id)
+    if info is None:
+        return None
+
+    width = _int_field(info, "Width", "width")
+    height = _int_field(info, "Height", "height")
+    tile_columns = _int_field(info, "TileWidth", "tileWidth")
+    tile_rows = _int_field(info, "TileHeight", "tileHeight")
+    thumbnail_count = _int_field(info, "ThumbnailCount", "thumbnailCount")
+    interval = _int_field(info, "Interval", "interval")
+    if min(width, height, tile_columns, tile_rows, thumbnail_count, interval) <= 0:
+        return None
+
+    tile_url_template = build_mobile_trickplay_tile_url_template(
+        jellyfin_item_id=jellyfin_item_id,
+        media_source_id=media_source_id,
+        width=width,
+        public_base_url=public_base_url,
+    )
+    if tile_url_template is None:
+        return None
+
+    return {
+        "state": "available",
+        "source": "jellyfin",
+        "itemId": jellyfin_item_id,
+        "mediaSourceId": media_source_id,
+        "width": width,
+        "thumbnailWidth": width,
+        "thumbnailHeight": height,
+        "tileColumns": tile_columns,
+        "tileRows": tile_rows,
+        "thumbnailCount": thumbnail_count,
+        "intervalMilliseconds": interval,
+        "tileUrlTemplate": tile_url_template,
+    }
+
+
+def select_trickplay_info(trickplay: Any, *, media_source_id: str) -> dict[str, Any] | None:
+    candidates: list[tuple[tuple[str, ...], dict[str, Any]]] = []
+    _collect_trickplay_candidates(trickplay, path=(), candidates=candidates)
+    if not candidates:
+        return None
+
+    def sort_key(candidate: tuple[tuple[str, ...], dict[str, Any]]) -> tuple[int, int, int]:
+        path, info = candidate
+        path_matches_source = media_source_id in path
+        width = _int_field(info, "Width", "width")
+        preferred_width_penalty = abs(width - 320) if width else 10_000
+        valid_penalty = 0 if _is_valid_trickplay_info(info) else 1
+        return (valid_penalty, 0 if path_matches_source else 1, preferred_width_penalty)
+
+    selected = min(candidates, key=sort_key)[1]
+    return selected if _is_valid_trickplay_info(selected) else None
+
+
+def _collect_trickplay_candidates(
+    value: Any,
+    *,
+    path: tuple[str, ...],
+    candidates: list[tuple[tuple[str, ...], dict[str, Any]]],
+) -> None:
+    if not isinstance(value, dict):
+        return
+    if any(key in value for key in ("Width", "width")) and any(
+        key in value for key in ("ThumbnailCount", "thumbnailCount")
+    ):
+        candidates.append((path, value))
+        return
+    for key, child in value.items():
+        _collect_trickplay_candidates(child, path=(*path, str(key)), candidates=candidates)
+
+
+def _is_valid_trickplay_info(info: dict[str, Any]) -> bool:
+    return (
+        _int_field(info, "Width", "width") > 0
+        and _int_field(info, "Height", "height") > 0
+        and _int_field(info, "TileWidth", "tileWidth") > 0
+        and _int_field(info, "TileHeight", "tileHeight") > 0
+        and _int_field(info, "ThumbnailCount", "thumbnailCount") > 0
+        and _int_field(info, "Interval", "interval") > 0
+    )
+
+
+def _int_field(payload: dict[str, Any], *keys: str) -> int:
+    for key in keys:
+        try:
+            value = int(payload.get(key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            return value
+    return 0
 
 
 def first_media_stream_value(source: dict[str, Any], *, stream_type: str, key: str) -> Any | None:

@@ -355,6 +355,72 @@ def test_mobile_playback_bootstrap_exposes_postprocessed_mov_text_subtitle_strea
     )
 
 
+def test_mobile_playback_bootstrap_exposes_signed_trickplay_tile_template(client, monkeypatch):
+    from anime_ops_ui.services import mobile_playback_service
+
+    monkeypatch.setattr(mobile_playback_service, "build_detail_payload", lambda *args, **kwargs: _playable_detail_payload())
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "authenticate_jellyfin_session",
+        lambda: mobile_playback_service.JellyfinSession(user_id="USER-1", access_token="TOKEN-1"),
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_item_detail",
+        lambda user_id, jellyfin_item_id, access_token: {
+            "RunTimeTicks": 13821445000,
+            "UserData": {"PlaybackPositionTicks": 4200000000},
+            "Trickplay": {
+                "MS-1": {
+                    "320": {
+                        "Width": 320,
+                        "Height": 180,
+                        "TileWidth": 10,
+                        "TileHeight": 10,
+                        "ThumbnailCount": 142,
+                        "Interval": 10000,
+                    }
+                }
+            },
+        },
+    )
+    monkeypatch.setattr(
+        mobile_playback_service,
+        "fetch_jellyfin_playback_info",
+        lambda user_id, jellyfin_item_id, access_token: _playback_info_payload(),
+    )
+
+    response = client.get(
+        "/api/mobile/items/app_following_ab_42/playback",
+        params={"episodeId": "ep_s2_01"},
+        headers={"host": "100.123.232.73:3000"},
+    )
+
+    assert response.status_code == 200
+    trickplay = response.json()["mediaSources"][0]["trickplay"]
+    assert trickplay["state"] == "available"
+    assert trickplay["source"] == "jellyfin"
+    assert trickplay["itemId"] == "JF-EP-42-1"
+    assert trickplay["mediaSourceId"] == "MS-1"
+    assert trickplay["thumbnailWidth"] == 320
+    assert trickplay["thumbnailHeight"] == 180
+    assert trickplay["tileColumns"] == 10
+    assert trickplay["tileRows"] == 10
+    assert trickplay["thumbnailCount"] == 142
+    assert trickplay["intervalMilliseconds"] == 10000
+
+    tile_template = urlsplit(trickplay["tileUrlTemplate"])
+    tile_query = parse_qs(tile_template.query)
+    assert tile_template.netloc == "100.123.232.73:3000"
+    assert tile_template.path == "/api/mobile/media/trickplay/tile"
+    assert tile_query["itemId"] == ["JF-EP-42-1"]
+    assert tile_query["mediaSourceId"] == ["MS-1"]
+    assert tile_query["width"] == ["320"]
+    assert tile_query["index"] == ["{index}"]
+    assert "sig" in tile_query
+    assert "TOKEN-1" not in trickplay["tileUrlTemplate"]
+
+
 def test_mobile_playback_session_returns_direct_play_stream_descriptor(client, monkeypatch):
     from anime_ops_ui.services import mobile_playback_service
 

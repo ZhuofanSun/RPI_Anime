@@ -13,6 +13,11 @@ from fastapi.responses import Response
 
 from anime_ops_ui import runtime_main_module
 from anime_ops_ui.mobile.auth import session_token
+from anime_ops_ui.services.jellyfin_auth_service import (
+    authenticate_jellyfin_session,
+    internal_jellyfin_base_url,
+    jellyfin_request_headers,
+)
 
 
 def build_mobile_poster_url(*, poster_link: str | None, public_base_url: str | None) -> str | None:
@@ -42,6 +47,39 @@ def build_mobile_jellyfin_poster_url(*, jellyfin_item_id: str | None, public_bas
     )
 
 
+def build_mobile_trickplay_tile_url_template(
+    *,
+    jellyfin_item_id: str | None,
+    media_source_id: str | None,
+    width: int,
+    public_base_url: str | None,
+) -> str | None:
+    normalized_item_id = _normalize_jellyfin_item_id(jellyfin_item_id)
+    normalized_media_source_id = _normalize_trickplay_media_source_id(media_source_id)
+    normalized_width = _normalize_trickplay_width(width)
+    if normalized_item_id is None or normalized_media_source_id is None:
+        return None
+
+    base_url = str(public_base_url or "").strip().rstrip("/")
+    if not base_url:
+        return None
+
+    query = urlencode(
+        {
+            "itemId": normalized_item_id,
+            "mediaSourceId": normalized_media_source_id,
+            "width": normalized_width,
+            "index": "{index}",
+            "sig": sign_mobile_trickplay_tile_set(
+                item_id=normalized_item_id,
+                media_source_id=normalized_media_source_id,
+                width=normalized_width,
+            ),
+        }
+    ).replace("%7Bindex%7D", "{index}")
+    return f"{base_url}/api/mobile/media/trickplay/tile?{query}"
+
+
 def sign_mobile_poster_path(path: str) -> str:
     normalized_path = _normalize_poster_path(path)
     return hmac.new(
@@ -58,6 +96,22 @@ def sign_mobile_jellyfin_item_id(item_id: str) -> str:
     return hmac.new(
         session_token().encode("utf-8"),
         normalized_item_id.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def sign_mobile_trickplay_tile_set(*, item_id: str, media_source_id: str, width: int) -> str:
+    normalized_item_id = _normalize_jellyfin_item_id(item_id)
+    normalized_media_source_id = _normalize_trickplay_media_source_id(media_source_id)
+    normalized_width = _normalize_trickplay_width(width)
+    if normalized_item_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing Jellyfin item id.")
+    if normalized_media_source_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing media source id.")
+    payload = f"trickplay:{normalized_item_id}:{normalized_media_source_id}:{normalized_width}"
+    return hmac.new(
+        session_token().encode("utf-8"),
+        payload.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
 
@@ -119,6 +173,64 @@ def proxy_mobile_poster(*, path: str | None = None, jellyfin_item_id: str | None
     )
 
 
+def proxy_mobile_trickplay_tile(
+    *,
+    item_id: str | None,
+    media_source_id: str | None,
+    width: int,
+    index: int,
+    sig: str,
+) -> Response:
+    normalized_item_id = _normalize_jellyfin_item_id(item_id)
+    normalized_media_source_id = _normalize_trickplay_media_source_id(media_source_id)
+    normalized_width = _normalize_trickplay_width(width)
+    normalized_index = _normalize_trickplay_tile_index(index)
+    if normalized_item_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing Jellyfin item id.")
+    if normalized_media_source_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing media source id.")
+
+    expected_sig = sign_mobile_trickplay_tile_set(
+        item_id=normalized_item_id,
+        media_source_id=normalized_media_source_id,
+        width=normalized_width,
+    )
+    if not hmac.compare_digest(sig, expected_sig):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid trickplay signature.")
+
+    jellyfin_session = authenticate_jellyfin_session()
+    try:
+        upstream = requests.get(
+            f"{internal_jellyfin_base_url()}/Videos/{normalized_item_id}/Trickplay/{normalized_width}/{normalized_index}.jpg",
+            params={"mediaSourceId": normalized_media_source_id},
+            headers=jellyfin_request_headers(jellyfin_session.access_token),
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to fetch trickplay tile: {exc}",
+        ) from exc
+
+    if upstream.status_code == 404:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trickplay tile not available.")
+    if upstream.status_code >= 400:
+        raise HTTPException(status_code=upstream.status_code, detail="Trickplay tile not available.")
+
+    headers = {}
+    for header in ("Cache-Control", "ETag", "Last-Modified", "Content-Length"):
+        value = upstream.headers.get(header)
+        if value:
+            headers[header] = value
+    headers.setdefault("Cache-Control", "public, max-age=86400")
+
+    return Response(
+        content=upstream.content,
+        media_type=upstream.headers.get("Content-Type", "image/jpeg"),
+        headers=headers,
+    )
+
+
 def _proxyable_poster_path(poster_link: str | None) -> str | None:
     raw_value = str(poster_link or "").strip()
     if not raw_value:
@@ -172,6 +284,35 @@ def _normalize_jellyfin_item_id(item_id: str | None) -> str | None:
         return None
     if not re.fullmatch(r"[A-Za-z0-9-]+", normalized):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Jellyfin item id.")
+    return normalized
+
+
+def _normalize_trickplay_media_source_id(media_source_id: str | None) -> str | None:
+    normalized = str(media_source_id or "").strip()
+    if not normalized:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", normalized):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid media source id.")
+    return normalized
+
+
+def _normalize_trickplay_width(width: int | str | None) -> int:
+    try:
+        normalized = int(width or 0)
+    except (TypeError, ValueError):
+        normalized = 0
+    if normalized <= 0 or normalized > 8192:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid trickplay width.")
+    return normalized
+
+
+def _normalize_trickplay_tile_index(index: int | str | None) -> int:
+    try:
+        normalized = int(index or 0)
+    except (TypeError, ValueError):
+        normalized = -1
+    if normalized < 0 or normalized > 1_000_000:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid trickplay tile index.")
     return normalized
 
 
