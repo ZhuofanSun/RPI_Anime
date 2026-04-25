@@ -15,6 +15,9 @@
 
 ## 概览
 
+这个仓库保存树莓派后端栈。
+原生 iPhone / iPad 伴随 APP 位于独立仓库 [ZhuofanSun/RPI_Anime_APP](https://github.com/ZhuofanSun/RPI_Anime_APP)。
+
 <p align="center">
   <img src="./docs/media/nekoya-multi-device-zh-Hans.png" alt="RPI Anime 网页 dashboard、iPhone APP 和 iPad APP mockup" width="920">
 </p>

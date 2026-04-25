@@ -15,6 +15,9 @@ The repository combines off-the-shelf services with a custom control layer:
 
 ## Overview
 
+This repository contains the Raspberry Pi backend stack.
+The native iPhone/iPad companion app is maintained separately at [ZhuofanSun/RPI_Anime_APP](https://github.com/ZhuofanSun/RPI_Anime_APP).
+
 <p align="center">
   <img src="./docs/media/nekoya-multi-device-en.png" alt="RPI Anime web dashboard, iPhone app, and iPad app mockup" width="920">
 </p>
