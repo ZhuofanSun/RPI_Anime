@@ -16,8 +16,8 @@ This folder keeps long-lived notes for the Raspberry Pi backend stack.
 
 ## Media
 
-The dashboard screenshots used by the root README live in this folder. Keep large exploratory captures out of git unless they are part of the public project presentation.
+The multi-device mockup and dashboard screenshots used by the root README live in this folder. Keep large exploratory captures out of git unless they are part of the public project presentation.
 
 ## Companion App
 
-The iOS/iPadOS app lives in `RPI_Anime_APP/`, which is a separate git repository and is excluded from backend deployment sync.
+The iOS/iPadOS app is maintained as a separate repository and is excluded from backend deployment sync.

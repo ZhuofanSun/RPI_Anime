@@ -13,6 +13,12 @@ The repository combines off-the-shelf services with a custom control layer:
 - [Jellyfin](https://github.com/jellyfin/jellyfin) for library browsing and playback
 - a custom `ops-ui` for dashboard, review queue, logs, service controls, and weekly broadcast tracking
 
+## Overview
+
+<p align="center">
+  <img src="./docs/media/nekoya-multi-device-en.png" alt="RPI Anime web dashboard, iPhone app, and iPad app mockup" width="920">
+</p>
+
 ## [Stone Badge](https://github.com/professor-lee/StoneBadge/tree/main)
 
 ![Stone Badge for RPI Anime](https://stone.professorlee.work/api/stone/ZhuofanSun/RPI_Anime)
@@ -98,10 +104,15 @@ flowchart LR
 - `ops-ui` supports both `zh-Hans` and `en`.
 - The repository intentionally keeps public-facing documentation lightweight; internal planning scratch files are not part of the tracked docs set.
 
+## Companion App
+
+NekoYa is the separate iPhone and iPad companion app for this stack.
+Its showcase uses one multi-device mockup that places the web dashboard, iPhone app, and iPad app in a single image, plus one short GIF showing synchronized phone and tablet playback.
+
 ## Documentation
 
 - [Documentation Index](./docs/README.md)
 - [Deployment Notes](./docs/deployment.md)
 - [Reliability Hardening Notes](./docs/reliability-hardening.md)
 
-The companion iOS/iPadOS app lives in a separate repository at `RPI_Anime_APP/` and is intentionally excluded from backend sync and deployment flows.
+The companion iOS/iPadOS app is maintained as a separate repository and is intentionally excluded from backend sync and deployment flows.

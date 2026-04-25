@@ -13,6 +13,12 @@
 - [Jellyfin](https://github.com/jellyfin/jellyfin) 负责媒体库和播放
 - 自定义 `ops-ui` 负责总览、审核队列、日志、服务控制和周放送表
 
+## 概览
+
+<p align="center">
+  <img src="./docs/media/nekoya-multi-device-zh-Hans.png" alt="RPI Anime 网页 dashboard、iPhone APP 和 iPad APP mockup" width="920">
+</p>
+
 ## [石墩子](https://github.com/professor-lee/StoneBadge/tree/main)
 
 ![RPI Anime 的石墩子](https://stone.professorlee.work/api/stone/ZhuofanSun/RPI_Anime)
@@ -98,10 +104,15 @@ flowchart LR
 - `ops-ui` 目前支持 `zh-Hans` 和 `en` 两种语言。
 - 仓库里的公开文档只保留长期有用的说明，阶段性计划和本地草稿不再作为受控文档保留。
 
+## 伴随 APP
+
+NekoYa 是这套系统独立维护的 iPhone / iPad 伴随 APP。
+项目展示使用一张跨设备 mockup 把网页 dashboard、手机 APP、平板 APP 放在同一张图里，再用一个短 GIF 展示手机和平板同屏同步播放。
+
 ## 文档
 
 - [文档索引](./docs/README.zh-Hans.md)
 - [部署说明](./docs/deployment.zh-Hans.md)
 - [可靠性加固记录](./docs/reliability-hardening.md)
 
-iOS/iPadOS 伴随 APP 位于独立仓库 `RPI_Anime_APP/`，不会参与后端同步和部署流程。
+iOS/iPadOS 伴随 APP 作为独立仓库维护，不会参与后端同步和部署流程。

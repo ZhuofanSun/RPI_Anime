@@ -16,8 +16,8 @@
 
 ## 图片素材
 
-根目录 README 使用的 dashboard 截图放在这个目录。探索性截图和临时录屏不应进入 git，除非它们属于公开展示材料。
+根目录 README 使用的跨设备 mockup 和 dashboard 截图放在这个目录。探索性截图和临时录屏不应进入 git，除非它们属于公开展示材料。
 
 ## 伴随 APP
 
-iOS/iPadOS APP 位于 `RPI_Anime_APP/`，这是独立 git 仓库，并且被后端部署同步流程排除。
+iOS/iPadOS APP 作为独立仓库维护，并且被后端部署同步流程排除。
