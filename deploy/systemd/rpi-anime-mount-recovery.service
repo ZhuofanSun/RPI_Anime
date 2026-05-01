@@ -1,0 +1,13 @@
+[Unit]
+Description=RPI Anime mount-aware Compose recovery
+Wants=docker.service
+After=local-fs.target
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/rpi-anime-stack/recover_ops_stack_mounts.sh --repair
+TimeoutStartSec=240
+
+[Install]
+WantedBy=multi-user.target

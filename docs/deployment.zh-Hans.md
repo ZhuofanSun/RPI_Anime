@@ -19,7 +19,8 @@
 
 ```bash
 lsblk -o NAME,MODEL,SIZE,FSTYPE,MOUNTPOINTS,LABEL,UUID
-findmnt /srv/anime-data /srv/anime-collection
+findmnt --target /srv/anime-data
+findmnt --target /srv/anime-collection
 df -h /srv/anime-data /srv/anime-collection
 ```
 
@@ -36,6 +37,22 @@ df -h /srv/anime-data /srv/anime-collection
 ```bash
 ./scripts/install_tailscale_pi.sh
 ./scripts/install_fan_control_pi.sh
+./scripts/install_mount_recovery_pi.sh
+```
+
+`install_mount_recovery_pi.sh` 会安装 `rpi-anime-mount-recovery.timer`。它会在开机后和运行中定期检查：
+
+- `/srv/anime-data` 和 `/srv/anime-collection` 是否真的挂在外置盘上，而不是回落到 SD 卡根分区
+- 已运行容器里的绑定路径是否也看到同一块外置盘
+
+如果 host 挂载已经恢复、但容器仍绑定到 SD 卡目录，脚本会重启 Compose 服务来重新绑定正确路径。这个机制也覆盖运行中 SSD 掉线后手动重插的场景：设备重新被 USB 层识别，并且 `mount /srv/anime-data` / `mount /srv/anime-collection` 成功后，下一次 timer 会自动恢复容器绑定。它不能修复物理层没有识别到 SSD 的情况；这类问题需要先看供电、线材、USB reset 或内核日志。
+
+手动检查方式：
+
+```bash
+sudo /usr/local/lib/rpi-anime-stack/recover_ops_stack_mounts.sh --repair
+systemctl status rpi-anime-mount-recovery.timer --no-pager
+journalctl -u rpi-anime-mount-recovery.service -n 80 --no-pager
 ```
 
 ## 2. 在本地准备部署配置
@@ -98,3 +115,24 @@ curl http://<ops-host>:3000/api/overview
 ```
 
 如果你明确想做一次整栈重建，再执行 `./scripts/remote_up.sh`。
+
+## 6. SSD 重挂载排查
+
+如果服务运行中外置 SSD 掉线，先不要直接让容器继续写入。推荐顺序是：
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+docker compose --env-file deploy/.env -f deploy/compose.yaml stop
+sudo umount /srv/anime-collection
+sudo umount /srv/anime-data
+sudo mount /srv/anime-data
+sudo mount /srv/anime-collection
+sudo /usr/local/lib/rpi-anime-stack/recover_ops_stack_mounts.sh --repair
+```
+
+如果 `mount` 提示找不到 UUID，或者 `lsblk` / `lsusb` 看不到 SanDisk 设备，说明问题在 USB、供电、线材或设备识别层，单纯卸载重挂不会解决。可以先看：
+
+```bash
+vcgencmd get_throttled
+journalctl -k --since "30 min ago" --no-pager | grep -Ei 'under-voltage|usb|uas|sd[a-z]|reset|disconnect|I/O error|exfat|ext4'
+```

@@ -19,7 +19,8 @@ Storage notes:
 
 ```bash
 lsblk -o NAME,MODEL,SIZE,FSTYPE,MOUNTPOINTS,LABEL,UUID
-findmnt /srv/anime-data /srv/anime-collection
+findmnt --target /srv/anime-data
+findmnt --target /srv/anime-collection
 df -h /srv/anime-data /srv/anime-collection
 ```
 
@@ -36,6 +37,22 @@ Optional host-side setup:
 ```bash
 ./scripts/install_tailscale_pi.sh
 ./scripts/install_fan_control_pi.sh
+./scripts/install_mount_recovery_pi.sh
+```
+
+`install_mount_recovery_pi.sh` installs `rpi-anime-mount-recovery.timer`. It checks after boot and periodically while the system is running that:
+
+- `/srv/anime-data` and `/srv/anime-collection` are mounted from the external disk, not the SD-card root filesystem
+- running containers see those same external-disk bindings
+
+If the host mount has recovered but containers are still bound to SD-card directories, the script restarts the Compose services so they rebind the correct paths. This also covers the case where the SSD disconnects during runtime and is later replugged: after USB detection and `mount /srv/anime-data` / `mount /srv/anime-collection` succeed, the next timer run repairs the container bindings. It cannot fix a physical USB detection failure; check power, cable, USB resets, and kernel logs first.
+
+Manual checks:
+
+```bash
+sudo /usr/local/lib/rpi-anime-stack/recover_ops_stack_mounts.sh --repair
+systemctl status rpi-anime-mount-recovery.timer --no-pager
+journalctl -u rpi-anime-mount-recovery.service -n 80 --no-pager
 ```
 
 ## 2. Create local deployment config
@@ -98,3 +115,24 @@ For later updates, start with:
 ```
 
 Use `./scripts/remote_up.sh` when you explicitly want a full-stack rebuild.
+
+## 6. SSD Remount Checks
+
+If the external SSD disconnects while services are running, avoid letting containers continue writing. Recommended sequence:
+
+```bash
+cd /srv/anime-data/appdata/rpi-anime
+docker compose --env-file deploy/.env -f deploy/compose.yaml stop
+sudo umount /srv/anime-collection
+sudo umount /srv/anime-data
+sudo mount /srv/anime-data
+sudo mount /srv/anime-collection
+sudo /usr/local/lib/rpi-anime-stack/recover_ops_stack_mounts.sh --repair
+```
+
+If `mount` cannot find the UUID or `lsblk` / `lsusb` cannot see the SanDisk device, the failure is at the USB, power, cable, or device-detection layer and unmount/remount alone will not help. Useful checks:
+
+```bash
+vcgencmd get_throttled
+journalctl -k --since "30 min ago" --no-pager | grep -Ei 'under-voltage|usb|uas|sd[a-z]|reset|disconnect|I/O error|exfat|ext4'
+```

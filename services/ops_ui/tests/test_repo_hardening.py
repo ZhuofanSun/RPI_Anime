@@ -127,3 +127,28 @@ def test_bootstrap_script_prepares_shared_ops_ui_state_directory():
 
     assert "/srv/anime-data/appdata/ops-ui" in bootstrap_script
     assert "/srv/anime-data/appdata/jellyfin/fonts" in bootstrap_script
+
+
+def test_stack_mount_recovery_script_repairs_mount_ready_container_bindings():
+    recovery_script = _read_text("scripts/recover_ops_stack_mounts.sh")
+
+    assert "mountpoint -q" in recovery_script
+    assert "findmnt -n -o SOURCE --target /" in recovery_script
+    assert "mount \"${target}\"" in recovery_script
+    assert "docker exec" in recovery_script
+    assert "df -P" in recovery_script
+    assert "docker compose --env-file deploy/.env -f deploy/compose.yaml restart" in recovery_script
+    assert "Container storage bindings already match host mounts" in recovery_script
+
+
+def test_stack_mount_recovery_systemd_units_run_at_boot_and_periodically():
+    service_unit = _read_text("deploy/systemd/rpi-anime-mount-recovery.service")
+    timer_unit = _read_text("deploy/systemd/rpi-anime-mount-recovery.timer")
+    install_script = _read_text("scripts/install_mount_recovery_pi.sh")
+
+    assert "ExecStart=/usr/local/lib/rpi-anime-stack/recover_ops_stack_mounts.sh --repair" in service_unit
+    assert "After=docker.service" in service_unit
+    assert "OnBootSec=" in timer_unit
+    assert "OnUnitActiveSec=" in timer_unit
+    assert "rpi-anime-mount-recovery.timer" in install_script
+    assert "systemctl enable --now" in install_script

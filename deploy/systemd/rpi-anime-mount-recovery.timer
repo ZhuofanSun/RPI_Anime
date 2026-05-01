@@ -1,0 +1,12 @@
+[Unit]
+Description=Run RPI Anime mount-aware Compose recovery periodically
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=2min
+AccuracySec=20s
+Persistent=true
+Unit=rpi-anime-mount-recovery.service
+
+[Install]
+WantedBy=timers.target
